@@ -1,6 +1,6 @@
 {
   "name": "@insforge/sdk",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "description": "TypeScript SDK for InsForge Backend-as-a-Service platform",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -17,7 +17,10 @@
   ],
   "scripts": {
     "build": "tsup",
+    "build:tsc": "tsc && tsc --module commonjs --outDir dist/cjs",
+    "build:tsc-only": "tsc",
     "dev": "tsup --watch",
+    "dev:tsc": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "eslint src --ext .ts",

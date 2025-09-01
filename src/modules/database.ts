@@ -34,6 +34,8 @@ export class QueryBuilder<T = any> {
    * @example
    * .select('*')
    * .select('id, title, content')
+   * .select('*, users!inner(*)')  // Join with users table
+   * .select('*, profile:profiles(*)')  // Join with alias
    * .insert({ title: 'New' }).select()  // Returns inserted data
    */
   select(columns: string = '*'): this {
@@ -47,7 +49,12 @@ export class QueryBuilder<T = any> {
       this.headers['Prefer'] = preferParts.join(',');
     }
     
-    if (columns !== '*') {
+    // Always set the select parameter for GET requests
+    // This enables PostgREST joins and nested queries
+    if (this.method === 'GET' && columns) {
+      this.queryParams.select = columns;
+    } else if (columns !== '*') {
+      // For mutations, only set if not default
       this.queryParams.select = columns;
     }
     return this;

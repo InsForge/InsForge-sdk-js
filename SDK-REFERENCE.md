@@ -139,6 +139,21 @@ await insforge.database
   .eq('user_id', '123')
   .order('created_at', { ascending: false })
   .limit(10)
+
+// With joins (PostgREST syntax)
+await insforge.database
+  .from('posts')
+  .select('*, users!inner(*)')  // Inner join with users table
+
+// Join with specific columns
+await insforge.database
+  .from('posts')
+  .select('id, title, users(nickname, avatar_url)')
+
+// Aliased joins
+await insforge.database
+  .from('posts')
+  .select('*, author:users(*)')  // Alias users as author
 // Response: { data: [...], error }
 ```
 
