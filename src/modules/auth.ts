@@ -6,6 +6,7 @@
 import { HttpClient } from '../lib/http-client';
 import { TokenManager } from '../lib/token-manager';
 import { AuthSession, InsForgeError } from '../types';
+import { Database } from './database';
 
 import type {
   CreateUserRequest,
@@ -17,10 +18,14 @@ import type {
 } from '@insforge/shared-schemas';
 
 export class Auth {
+  private database: Database;
+  
   constructor(
     private http: HttpClient,
     private tokenManager: TokenManager
-  ) {}
+  ) {
+    this.database = new Database(http);
+  }
 
   /**
    * Sign up a new user
@@ -174,11 +179,11 @@ export class Auth {
   }
 
   /**
-   * Get the current user from the API
-   * Returns exactly what the backend returns: {id, email, role}
+   * Get the current user with full profile information
+   * Returns both auth info (id, email, role) and profile data (nickname, avatar_url, bio, etc.)
    */
   async getCurrentUser(): Promise<{
-    data: GetCurrentSessionResponse | null;
+    data: { user: any; profile: any } | null;
     error: InsForgeError | null;
   }> {
     try {
@@ -188,12 +193,26 @@ export class Auth {
         return { data: null, error: null };
       }
 
-      // Call the API
+      // Call the API for auth info
       this.http.setAuthToken(session.accessToken);
-      const response = await this.http.get<GetCurrentSessionResponse>('/api/auth/sessions/current');
+      const authResponse = await this.http.get<GetCurrentSessionResponse>('/api/auth/sessions/current');
+      
+      // Get the user's profile using query builder
+      const { data: profile, error: profileError } = await this.database
+        .from('users')
+        .select('*')
+        .eq('id', authResponse.user.id)
+        .single();
+      
+      if (profileError && profileError.statusCode !== 406) {  // 406 = not found
+        return { data: null, error: profileError };
+      }
       
       return {
-        data: response,
+        data: {
+          user: authResponse.user,
+          profile: profile
+        },
         error: null
       };
     } catch (error) {
@@ -221,9 +240,32 @@ export class Auth {
   }
 
   /**
-   * Get the stored session (no API call)
+   * Get any user's profile by ID
+   * Returns profile information from the users table (nickname, avatar_url, bio, etc.)
    */
-  async getSession(): Promise<{
+  async getProfile(userId: string): Promise<{
+    data: any | null;
+    error: InsForgeError | null;
+  }> {
+    const { data, error } = await this.database
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    
+    // Handle not found as null, not error
+    if (error && error.statusCode === 406) {
+      return { data: null, error: null };
+    }
+    
+    return { data, error };
+  }
+
+  /**
+   * Get the current session (only session data, no API call)
+   * Returns the stored JWT token and basic user info from local storage
+   */
+  async getCurrentSession(): Promise<{
     data: { session: AuthSession | null };
     error: InsForgeError | null;
   }> {
@@ -253,5 +295,42 @@ export class Auth {
       };
     }
   }
+
+  /**
+   * Set/Update the current user's profile
+   * Updates profile information in the users table (nickname, avatar_url, bio, etc.)
+   */
+  async setProfile(profile: {
+    nickname?: string;
+    avatar_url?: string;
+    bio?: string;
+    birthday?: string;
+    [key: string]: any;
+  }): Promise<{
+    data: any | null;
+    error: InsForgeError | null;
+  }> {
+    // Get current session to get user ID
+    const session = this.tokenManager.getSession();
+    if (!session?.user?.id) {
+      return { 
+        data: null, 
+        error: new InsForgeError(
+          'No authenticated user found',
+          401,
+          'UNAUTHENTICATED'
+        )
+      };
+    }
+
+    // Update the profile using query builder
+    return await this.database
+      .from('users')
+      .update(profile)
+      .eq('id', session.user.id)
+      .select()
+      .single();
+  }
+
 
 }

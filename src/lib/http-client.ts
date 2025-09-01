@@ -85,7 +85,8 @@ export class HttpClient {
     // Try to parse JSON response
     let data: any;
     const contentType = response.headers.get('content-type');
-    if (contentType?.includes('application/json')) {
+    // Check for any JSON content type (including PostgREST's vnd.pgrst.object+json)
+    if (contentType?.includes('json')) {
       data = await response.json();
     } else {
       // For non-JSON responses, return text

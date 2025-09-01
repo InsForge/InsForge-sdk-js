@@ -58,20 +58,41 @@ await insforge.auth.signOut()
 // Clears stored tokens
 ```
 
-### `getCurrentUser()`
+### `getCurrentSession()`
 ```javascript
-await insforge.auth.getCurrentUser()
-// Response: { data: { user }, error }
-// user: { id, email, role }  // Partial user data from API
-// Returns null if not authenticated
-```
-
-### `getSession()`
-```javascript
-await insforge.auth.getSession()
+await insforge.auth.getCurrentSession()
 // Response: { data: { session }, error }
 // session: { accessToken, user }
 // Gets from local storage, no API call
+```
+
+### `getCurrentUser()`
+```javascript
+await insforge.auth.getCurrentUser()
+// Response: { data: { user, profile }, error }
+// user: { id, email, role }  // Auth info from API
+// profile: { id, nickname, avatar_url, bio, birthday, ... }  // Profile from users table
+// Returns null if not authenticated
+```
+
+### `getProfile()`
+```javascript
+await insforge.auth.getProfile(userId)
+// Response: { data: profile, error }
+// profile: { id, nickname, avatar_url, bio, birthday, ... }
+// Gets any user's profile from users table
+```
+
+### `setProfile()`
+```javascript
+await insforge.auth.setProfile({
+  nickname: 'JohnDoe',
+  avatar_url: 'https://...',
+  bio: 'Software developer',
+  birthday: '1990-01-01'
+})
+// Response: { data: profile, error }
+// Updates current user's profile in users table
 ```
 
 ## Error Response

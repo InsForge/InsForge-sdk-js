@@ -1,6 +1,6 @@
 {
   "name": "@insforge/sdk",
-  "version": "0.0.8",
+  "version": "0.0.12",
   "description": "TypeScript SDK for InsForge Backend-as-a-Service platform",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -32,7 +32,9 @@
   ],
   "author": "InsForge",
   "license": "MIT",
-  "dependencies": {},
+  "dependencies": {
+    "@insforge/shared-schemas": "^1.0.4"
+  },
   "devDependencies": {
     "@types/node": "^20.11.24",
     "@typescript-eslint/eslint-plugin": "^7.1.0",
