@@ -15,6 +15,34 @@ const insforge = createClient({
 });
 ```
 
+## OAuth Auto-Detection (v0.0.14+)
+
+The SDK automatically detects and handles OAuth callback parameters when initialized. This feature works seamlessly with the InsForge backend OAuth flow.
+
+**How it works:**
+1. User calls `signInWithOAuth()` and is redirected to OAuth provider
+2. After authentication, provider redirects back to your app with tokens in URL
+3. SDK automatically detects these parameters on initialization
+4. Session is saved and URL is cleaned - no manual handling needed!
+
+**Example:**
+```javascript
+// Just initialize the client - OAuth is handled automatically
+const insforge = createClient({
+  baseUrl: 'http://localhost:7130'
+});
+
+// If the URL contains OAuth callback parameters like:
+// ?access_token=xxx&user_id=yyy&email=user@example.com&name=John
+// The SDK will:
+// - Save the session to localStorage
+// - Set the auth token for API calls
+// - Clean the URL (remove sensitive parameters)
+
+// You can then immediately use authenticated methods:
+const { data } = await insforge.auth.getCurrentUser();
+```
+
 ## Auth Methods
 
 ### `signUp()`
@@ -49,6 +77,13 @@ await insforge.auth.signInWithOAuth({
 })
 // Response: { data: { url, provider }, error }
 // Auto-redirects in browser unless skipBrowserRedirect: true
+
+// AUTOMATIC OAuth Callback Detection (v0.0.14+):
+// When users are redirected back from OAuth provider, the SDK automatically:
+// 1. Detects OAuth parameters (access_token, user_id, email, name) in URL
+// 2. Saves the session to localStorage
+// 3. Cleans the URL of sensitive parameters
+// No manual handling needed - just initialize the client!
 ```
 
 ### `signOut()`

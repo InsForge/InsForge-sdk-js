@@ -25,6 +25,69 @@ export class Auth {
     private tokenManager: TokenManager
   ) {
     this.database = new Database(http);
+    
+    // Auto-detect OAuth callback parameters in the URL
+    this.detectOAuthCallback();
+  }
+
+  /**
+   * Automatically detect and handle OAuth callback parameters in the URL
+   * This runs on initialization to seamlessly complete the OAuth flow
+   * Matches the backend's OAuth callback response (backend/src/api/routes/auth.ts:540-544)
+   */
+  private detectOAuthCallback(): void {
+    // Only run in browser environment
+    if (typeof window === 'undefined') return;
+    
+    try {
+      const params = new URLSearchParams(window.location.search);
+      
+      // Backend returns: access_token, user_id, email, name (optional)
+      const accessToken = params.get('access_token');
+      const userId = params.get('user_id');
+      const email = params.get('email');
+      const name = params.get('name');
+      
+      // Check if we have OAuth callback parameters
+      if (accessToken && userId && email) {
+        // Create session with the data from backend
+        const session: AuthSession = {
+          accessToken,
+          user: {
+            id: userId,
+            email: email,
+            name: name || '',
+            // These fields are not provided by backend OAuth callback
+            // They'll be populated when calling getCurrentUser()
+            emailVerified: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          } as any,
+        };
+        
+        // Save session and set auth token
+        this.tokenManager.saveSession(session);
+        this.http.setAuthToken(accessToken);
+        
+        // Clean up the URL to remove sensitive parameters
+        const url = new URL(window.location.href);
+        url.searchParams.delete('access_token');
+        url.searchParams.delete('user_id');
+        url.searchParams.delete('email');
+        url.searchParams.delete('name');
+        
+        // Also handle error case from backend (line 581)
+        if (params.has('error')) {
+          url.searchParams.delete('error');
+        }
+        
+        // Replace URL without adding to browser history
+        window.history.replaceState({}, document.title, url.toString());
+      }
+    } catch (error) {
+      // Silently continue - don't break initialization
+      console.debug('OAuth callback detection skipped:', error);
+    }
   }
 
   /**
