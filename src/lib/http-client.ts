@@ -36,8 +36,20 @@ export class HttpClient {
         // For select parameter, preserve the exact formatting by normalizing whitespace
         // This ensures PostgREST relationship queries work correctly
         if (key === 'select') {
-          // Normalize multiline select strings: remove extra whitespace but preserve structure
-          const normalizedValue = value.replace(/\s+/g, ' ').trim();
+          // Normalize multiline select strings for PostgREST:
+          // 1. Replace all whitespace (including newlines) with single space
+          // 2. Remove spaces inside parentheses for proper PostgREST syntax
+          // 3. Keep spaces after commas at the top level for readability
+          let normalizedValue = value.replace(/\s+/g, ' ').trim();
+          
+          // Fix spaces around parentheses and inside them
+          normalizedValue = normalizedValue
+            .replace(/\s*\(\s*/g, '(')  // Remove spaces around opening parens
+            .replace(/\s*\)\s*/g, ')')  // Remove spaces around closing parens
+            .replace(/\(\s+/g, '(')     // Remove spaces after opening parens
+            .replace(/\s+\)/g, ')')     // Remove spaces before closing parens
+            .replace(/,\s+(?=[^()]*\))/g, ','); // Remove spaces after commas inside parens
+          
           url.searchParams.append(key, normalizedValue);
         } else {
           url.searchParams.append(key, value);
