@@ -33,7 +33,15 @@ export class HttpClient {
     const url = new URL(path, this.baseUrl);
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.append(key, value);
+        // For select parameter, preserve the exact formatting by normalizing whitespace
+        // This ensures PostgREST relationship queries work correctly
+        if (key === 'select') {
+          // Normalize multiline select strings: remove extra whitespace but preserve structure
+          const normalizedValue = value.replace(/\s+/g, ' ').trim();
+          url.searchParams.append(key, normalizedValue);
+        } else {
+          url.searchParams.append(key, value);
+        }
       });
     }
     return url.toString();
