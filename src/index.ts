@@ -37,6 +37,9 @@ export type { DatabaseResponse } from './modules/database';
 export { Storage, StorageBucket } from './modules/storage';
 export type { StorageResponse } from './modules/storage';
 
+// Re-export AI module
+export { AI } from './modules/ai';
+
 // Re-export utilities for advanced usage
 export { HttpClient } from './lib/http-client';
 export { TokenManager } from './lib/token-manager';
