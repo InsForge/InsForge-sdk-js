@@ -27,18 +27,15 @@ export class StorageBucket {
   /**
    * Upload a file with a specific key
    * @param path - The object key/path
-   * @param file - File, Blob, or FormData to upload
+   * @param file - File or Blob to upload
    */
   async upload(
     path: string,
-    file: File | Blob | FormData
+    file: File | Blob
   ): Promise<StorageResponse<StorageFileSchema>> {
     try {
-      const formData = file instanceof FormData ? file : new FormData();
-      
-      if (!(file instanceof FormData)) {
-        formData.append('file', file);
-      }
+      const formData = new FormData();
+      formData.append('file', file);
 
       // Use PUT for specific path
       const response = await this.http.request<StorageFileSchema>(
@@ -67,17 +64,14 @@ export class StorageBucket {
 
   /**
    * Upload a file with auto-generated key
-   * @param file - File, Blob, or FormData to upload
+   * @param file - File or Blob to upload
    */
   async uploadAuto(
-    file: File | Blob | FormData
+    file: File | Blob
   ): Promise<StorageResponse<StorageFileSchema>> {
     try {
-      const formData = file instanceof FormData ? file : new FormData();
-      
-      if (!(file instanceof FormData)) {
-        formData.append('file', file);
-      }
+      const formData = new FormData();
+      formData.append('file', file);
 
       // Use POST for auto-generated key
       const response = await this.http.request<StorageFileSchema>(
