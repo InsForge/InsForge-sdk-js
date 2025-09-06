@@ -7,10 +7,10 @@ import type { UserSchema } from '@insforge/shared-schemas';
 
 export interface InsForgeConfig {
   /**
-   * The URL of the InsForge backend API
+   * The base URL of the InsForge backend API
    * @default "http://localhost:7130"
    */
-  url?: string;
+  baseUrl?: string;
 
   /**
    * API key (optional)

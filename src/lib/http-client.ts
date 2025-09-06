@@ -10,7 +10,7 @@ export class HttpClient {
   private defaultHeaders: Record<string, string>;
 
   constructor(config: InsForgeConfig) {
-    this.baseUrl = config.url || 'http://localhost:7130';
+    this.baseUrl = config.baseUrl || 'http://localhost:7130';
     // Properly bind fetch to maintain its context
     this.fetch = config.fetch || (globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined as any);
     this.defaultHeaders = {

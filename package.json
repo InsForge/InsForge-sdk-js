@@ -1,6 +1,6 @@
 {
   "name": "@insforge/sdk",
-  "version": "0.0.16",
+  "version": "0.0.18",
   "description": "TypeScript SDK for InsForge Backend-as-a-Service platform",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -22,6 +22,7 @@
     "dev": "tsup --watch",
     "dev:tsc": "tsc --watch",
     "test": "vitest",
+    "test:integration": "node integration-tests/run-all.js",
     "test:run": "vitest run",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
@@ -36,7 +37,7 @@
   "author": "InsForge",
   "license": "MIT",
   "dependencies": {
-    "@insforge/shared-schemas": "file:../InsForge/shared-schemas/insforge-shared-schemas-1.0.5.tgz"
+    "@insforge/shared-schemas": "^1.0.5"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
