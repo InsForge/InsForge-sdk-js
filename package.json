@@ -1,6 +1,6 @@
 {
   "name": "@insforge/sdk",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "description": "TypeScript SDK for InsForge Backend-as-a-Service platform",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -37,7 +37,7 @@
   "author": "InsForge",
   "license": "MIT",
   "dependencies": {
-    "@insforge/shared-schemas": "^1.0.5"
+    "@insforge/shared-schemas": "^1.0.6"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",

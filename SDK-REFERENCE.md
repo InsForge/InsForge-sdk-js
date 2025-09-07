@@ -322,6 +322,134 @@ bucket.getPublicUrl('path/file.jpg')
 // Returns: string URL (no API call)
 ```
 
+## AI Methods
+
+### `ai.chat.completions.create()`
+Create AI chat completions with support for both streaming and non-streaming responses.
+
+#### Non-Streaming
+```javascript
+const { data, error } = await insforge.ai.chat.completions.create({
+  model: 'anthropic/claude-3.5-haiku',
+  messages: [
+    { role: 'system', content: 'You are a helpful assistant' },
+    { role: 'user', content: 'Hello, how are you?' }
+  ],
+  temperature: 0.7,
+  maxTokens: 500
+})
+// Response: { data: { response, usage, model }, error }
+// response: The complete AI response text
+// usage: Token usage information
+// model: The model used for generation
+```
+
+#### Streaming
+```javascript
+// Returns async iterable for real-time streaming
+const stream = await insforge.ai.chat.completions.create({
+  model: 'anthropic/claude-3.5-haiku',
+  messages: [
+    { role: 'user', content: 'Tell me a story' }
+  ],
+  stream: true
+})
+
+// Process stream events
+for await (const event of stream) {
+  if (event.chunk) {
+    // Partial response chunk
+    process.stdout.write(event.chunk);
+  }
+  if (event.done) {
+    // Stream complete
+    console.log('\nStream finished');
+  }
+}
+```
+
+#### Parameters
+- `model` (string, required): AI model to use (e.g., 'anthropic/claude-3.5-haiku', 'openai/gpt-4', etc.)
+- `messages` (array): Conversation messages with role ('system', 'user', 'assistant') and content
+- `message` (string): Simple message string (alternative to messages array)
+- `systemPrompt` (string): System prompt for the conversation
+- `temperature` (number): Sampling temperature (0-1)
+- `maxTokens` (number): Maximum tokens to generate
+- `topP` (number): Top-p sampling parameter
+- `stream` (boolean): Enable streaming mode
+
+### `ai.images.generate()`
+Generate images using AI models.
+
+```javascript
+const { data, error } = await insforge.ai.images.generate({
+  model: 'google/gemini-2.5-flash-image-preview',
+  prompt: 'A serene landscape with mountains at sunset',
+  size: '1024x1024',
+  numImages: 1,
+  quality: 'hd',
+  style: 'vivid'
+})
+// Response: { data: { images: [{ url, ... }] }, error }
+// images: Array of generated images with URLs
+```
+
+#### Parameters
+- `model` (string, required): Image generation model (e.g., 'google/gemini-2.5-flash-image-preview', 'openai/dall-e-3', 'stable-diffusion', etc.)
+- `prompt` (string, required): Text description of the image to generate
+- `negativePrompt` (string): What to avoid in the image (some models)
+- `width` (number): Image width in pixels
+- `height` (number): Image height in pixels  
+- `size` (string): Predefined size (e.g., '1024x1024', '512x512')
+- `numImages` (number): Number of images to generate
+- `quality` ('standard' | 'hd'): Image quality setting
+- `style` ('vivid' | 'natural'): Image style preference
+- `responseFormat` ('url' | 'b64_json'): Response format for images
+
+### Complete AI Example
+```javascript
+import { createClient } from '@insforge/sdk';
+
+const insforge = createClient({
+  baseUrl: 'http://localhost:7130'
+});
+
+// Chat completion
+const { data: chat } = await insforge.ai.chat.completions.create({
+  model: 'anthropic/claude-3.5-haiku',
+  messages: [
+    { role: 'user', content: 'What is the capital of France?' }
+  ]
+});
+console.log(chat.response); // "The capital of France is Paris."
+
+// Streaming chat
+const stream = await insforge.ai.chat.completions.create({
+  model: 'anthropic/claude-3.5-haiku',
+  messages: [
+    { role: 'user', content: 'Write a haiku about coding' }
+  ],
+  stream: true
+});
+
+let fullResponse = '';
+for await (const event of stream) {
+  if (event.chunk) {
+    fullResponse += event.chunk;
+    process.stdout.write(event.chunk);
+  }
+}
+
+// Image generation
+const { data: images } = await insforge.ai.images.generate({
+  model: 'google/gemini-2.5-flash-image-preview',
+  prompt: 'A futuristic city with flying cars',
+  size: '1024x1024',
+  quality: 'hd'
+});
+console.log(images.images[0].url); // URL to generated image
+```
+
 
 ## Types (from @insforge/shared-schemas)
 ```typescript

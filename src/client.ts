@@ -4,6 +4,7 @@ import { TokenManager } from './lib/token-manager';
 import { Auth } from './modules/auth';
 import { Database } from './modules/database';
 import { Storage } from './modules/storage';
+import { AI } from './modules/ai';
 
 /**
  * Main InsForge SDK Client
@@ -45,6 +46,7 @@ export class InsForgeClient {
   public readonly auth: Auth;
   public readonly database: Database;
   public readonly storage: Storage;
+  public readonly ai: AI;
 
   constructor(config: InsForgeConfig = {}) {
     this.http = new HttpClient(config);
@@ -57,6 +59,7 @@ export class InsForgeClient {
     
     this.database = new Database(this.http);
     this.storage = new Storage(this.http);
+    this.ai = new AI(this.http);
   }
 
 

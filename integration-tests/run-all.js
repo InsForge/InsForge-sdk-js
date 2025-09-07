@@ -9,6 +9,7 @@ const { testAuth } = require('./auth.test');
 const { testDatabase } = require('./database.test');
 const { testStorage } = require('./storage.test');
 const { testAI } = require('./ai.test');
+const { testOAuth } = require('./oauth.test');
 
 async function runAllTests() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -17,6 +18,7 @@ async function runAllTests() {
 
   const tests = [
     { name: 'Auth', fn: testAuth },
+    { name: 'OAuth', fn: testOAuth },
     { name: 'Database', fn: testDatabase },
     { name: 'Storage', fn: testStorage },
     { name: 'AI', fn: testAI }
