@@ -74,7 +74,7 @@ class ChatCompletions {
       headers['Content-Type'] = 'application/json';
       
       const response = await this.http.fetch(
-        `${this.http.baseUrl}/api/ai/chat`,
+        `${this.http.baseUrl}/api/ai/chat/completion`,
         {
           method: 'POST',
           headers,
@@ -92,7 +92,7 @@ class ChatCompletions {
     }
 
     // Non-streaming: use regular post method
-    return this.http.post('/api/ai/chat', params);
+    return this.http.post('/api/ai/chat/completion', params);
   }
 
   /**
