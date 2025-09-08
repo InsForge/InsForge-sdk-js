@@ -41,6 +41,16 @@ class ChatCompletions {
    * });
    * console.log(completion.choices[0].message.content);
    * 
+   * // With images
+   * const response = await client.ai.chat.completions.create({
+   *   model: 'gpt-4-vision',
+   *   messages: [{ 
+   *     role: 'user', 
+   *     content: 'What is in this image?',
+   *     images: [{ url: 'https://example.com/image.jpg' }]
+   *   }]
+   * });
+   * 
    * // Streaming - returns async iterable
    * const stream = await client.ai.chat.completions.create({
    *   model: 'gpt-4',
@@ -57,7 +67,11 @@ class ChatCompletions {
    */
   async create(params: {
     model: string;
-    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+    messages?: Array<{ 
+      role: 'user' | 'assistant' | 'system'; 
+      content: string;
+      images?: Array<{ url: string }>; // URL or data URL (e.g., 'data:image/jpeg;base64,...')
+    }>;
     temperature?: number;
     maxTokens?: number;  // OpenAI Node SDK uses camelCase
     topP?: number;
@@ -191,18 +205,31 @@ class Images {
    * 
    * @example
    * ```typescript
+   * // Text-to-image
    * const response = await client.ai.images.generate({
    *   model: 'dall-e-3',
    *   prompt: 'A sunset over mountains',
    *   n: 1,
    *   size: '1024x1024'
    * });
-   * console.log(response.data[0].url);
+   * console.log(response.images[0].url);
+   * 
+   * // Image-to-image (with input images)
+   * const response = await client.ai.images.generate({
+   *   model: 'stable-diffusion-xl',
+   *   prompt: 'Transform this into a watercolor painting',
+   *   images: [
+   *     { url: 'https://example.com/input.jpg' },
+   *     // or base64-encoded Data URI:
+   *     { url: 'data:image/jpeg;base64,/9j/4AAQ...' }
+   *   ]
+   * });
    * ```
    */
   async generate(params: {
     model: string;
     prompt: string;
+    images?: Array<{ url: string }>; // Input images for image-to-image models
     n?: number;  // OpenAI uses 'n' for number of images
     size?: string;
     quality?: 'standard' | 'hd';
