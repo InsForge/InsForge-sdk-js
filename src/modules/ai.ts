@@ -1,9 +1,9 @@
 /**
  * AI Module for Insforge SDK
- * Wrapper for AI endpoints that follows OpenAI-like patterns
+ * Response format roughly matches OpenAI SDK for compatibility
  * 
  * The backend handles all the complexity of different AI providers
- * and returns a unified format. This SDK just calls the endpoints.
+ * and returns a unified format. This SDK transforms responses to match OpenAI-like format.
  */
 
 import { HttpClient } from '../lib/http-client';
@@ -30,16 +30,16 @@ class ChatCompletions {
   constructor(private http: HttpClient) {}
 
   /**
-   * Create a chat completion
+   * Create a chat completion - OpenAI-like response format
    * 
    * @example
    * ```typescript
    * // Non-streaming
-   * const response = await client.ai.chat.completions.create({
+   * const completion = await client.ai.chat.completions.create({
    *   model: 'gpt-4',
    *   messages: [{ role: 'user', content: 'Hello!' }]
    * });
-   * console.log(response.response);
+   * console.log(completion.choices[0].message.content);
    * 
    * // Streaming - returns async iterable
    * const stream = await client.ai.chat.completions.create({
@@ -48,27 +48,32 @@ class ChatCompletions {
    *   stream: true
    * });
    * 
-   * for await (const event of stream) {
-   *   if (event.chunk) {
-   *     process.stdout.write(event.chunk);
-   *   }
-   *   if (event.done) {
-   *     console.log('Stream complete!');
+   * for await (const chunk of stream) {
+   *   if (chunk.choices[0]?.delta?.content) {
+   *     process.stdout.write(chunk.choices[0].delta.content);
    *   }
    * }
    * ```
    */
   async create(params: {
     model: string;
-    messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
-    message?: string;
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
     temperature?: number;
-    maxTokens?: number;
+    maxTokens?: number;  // OpenAI Node SDK uses camelCase
     topP?: number;
-    systemPrompt?: string;
     stream?: boolean;
   }): Promise<any> {
-    // For streaming, return an async iterable that yields parsed SSE events
+    // Backend already expects camelCase, no transformation needed
+    const backendParams = {
+      model: params.model,
+      messages: params.messages,
+      temperature: params.temperature,
+      maxTokens: params.maxTokens,
+      topP: params.topP,
+      stream: params.stream
+    };
+
+    // For streaming, return an async iterable that yields OpenAI-like chunks
     if (params.stream) {
       const headers = this.http.getHeaders();
       headers['Content-Type'] = 'application/json';
@@ -78,7 +83,7 @@ class ChatCompletions {
         {
           method: 'POST',
           headers,
-          body: JSON.stringify(params)
+          body: JSON.stringify(backendParams)
         }
       );
 
@@ -87,19 +92,41 @@ class ChatCompletions {
         throw new Error(error.error || 'Stream request failed');
       }
 
-      // Return async iterable that parses SSE for the user
-      return this.parseSSEStream(response);
+      // Return async iterable that parses SSE and transforms to OpenAI-like format
+      return this.parseSSEStream(response, params.model);
     }
 
-    // Non-streaming: use regular post method
-    return this.http.post('/api/ai/chat/completion', params);
+    // Non-streaming: transform response to OpenAI-like format
+    const response: any = await this.http.post('/api/ai/chat/completion', backendParams);
+    
+    // Transform to OpenAI-like format
+    const content = response.content || response.response || response.message || response.text || '';
+    
+    return {
+      id: response.id || `chatcmpl-${Date.now()}`,
+      object: 'chat.completion',
+      created: Math.floor(Date.now() / 1000),
+      model: params.model,
+      choices: [{
+        index: 0,
+        message: {
+          role: 'assistant',
+          content
+        },
+        finish_reason: 'stop'
+      }],
+      usage: response.usage || {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0
+      }
+    };
   }
 
   /**
-   * Parse SSE stream into async iterable of parsed events
-   * Users don't need to handle SSE parsing themselves
+   * Parse SSE stream into async iterable of OpenAI-like chunks
    */
-  private async *parseSSEStream(response: Response): AsyncIterableIterator<any> {
+  private async *parseSSEStream(response: Response, model: string): AsyncIterableIterator<any> {
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -119,7 +146,23 @@ class ChatCompletions {
             if (dataStr) {
               try {
                 const data = JSON.parse(dataStr);
-                yield data;
+                
+                // Transform to OpenAI-like streaming format
+                if (data.chunk || data.content) {
+                  yield {
+                    id: `chatcmpl-${Date.now()}`,
+                    object: 'chat.completion.chunk',
+                    created: Math.floor(Date.now() / 1000),
+                    model,
+                    choices: [{
+                      index: 0,
+                      delta: {
+                        content: data.chunk || data.content
+                      },
+                      finish_reason: data.done ? 'stop' : null
+                    }]
+                  };
+                }
                 
                 // If we received the done signal, we can stop
                 if (data.done) {
@@ -144,32 +187,51 @@ class Images {
   constructor(private http: HttpClient) {}
 
   /**
-   * Generate images
+   * Generate images - OpenAI-like response format
    * 
    * @example
    * ```typescript
    * const response = await client.ai.images.generate({
    *   model: 'dall-e-3',
    *   prompt: 'A sunset over mountains',
-   *   numImages: 1,
+   *   n: 1,
    *   size: '1024x1024'
    * });
-   * console.log(response.images[0].url);
+   * console.log(response.data[0].url);
    * ```
    */
   async generate(params: {
     model: string;
     prompt: string;
-    negativePrompt?: string;
-    width?: number;
-    height?: number;
-    numImages?: number;
+    n?: number;  // OpenAI uses 'n' for number of images
+    size?: string;
     quality?: 'standard' | 'hd';
     style?: 'vivid' | 'natural';
-    responseFormat?: 'url' | 'b64_json';
-    size?: string;
-  }) {
-    // Backend expects these exact field names
-    return this.http.post('/api/ai/image/generation', params);
+    response_format?: 'url' | 'b64_json';  // OpenAI uses snake_case for this
+  }): Promise<any> {
+    // Transform to backend format
+    const backendParams = {
+      model: params.model,
+      prompt: params.prompt,
+      numImages: params.n || 1,
+      size: params.size,
+      quality: params.quality,
+      style: params.style,
+      responseFormat: params.response_format
+    };
+    
+    const response: any = await this.http.post('/api/ai/image/generation', backendParams);
+    
+    // Transform to OpenAI-like format
+    const images = response.images || response.data || [];
+    
+    return {
+      created: Math.floor(Date.now() / 1000),
+      data: images.map((img: any) => ({
+        url: img.url || img,
+        b64_json: img.b64_json,
+        revised_prompt: img.revised_prompt
+      }))
+    };
   }
 }
