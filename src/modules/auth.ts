@@ -328,10 +328,10 @@ export class Auth {
    * Get the current session (only session data, no API call)
    * Returns the stored JWT token and basic user info from local storage
    */
-  async getCurrentSession(): Promise<{
+  getCurrentSession(): {
     data: { session: AuthSession | null };
     error: InsForgeError | null;
-  }> {
+  } {
     try {
       const session = this.tokenManager.getSession();
       
