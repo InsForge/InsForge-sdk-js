@@ -16,11 +16,6 @@ export class HttpClient {
     this.defaultHeaders = {
       ...config.headers,
     };
-    
-    // Add API key if provided
-    if (config.apiKey) {
-      this.defaultHeaders['Authorization'] = `Bearer ${config.apiKey}`;
-    }
 
     if (!this.fetch) {
       throw new Error(

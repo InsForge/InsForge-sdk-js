@@ -251,6 +251,34 @@ await insforge.database
 .ilike('column', '%pattern%') // Pattern match (case-insensitive)
 .is('column', null)         // IS NULL / IS boolean
 .in('column', [1, 2, 3])    // IN array
+
+// Logical operators (v0.0.22+)
+.or('status.eq.active,status.eq.pending')  // OR condition
+.and('price.gte.100,price.lte.500')        // Explicit AND
+.not('deleted', 'is.true')                 // NOT condition
+```
+
+#### OR Condition Examples
+```javascript
+// Simple OR: status = 'active' OR status = 'pending'
+await insforge.database
+  .from('posts')
+  .select()
+  .or('status.eq.active,status.eq.pending')
+
+// OR with other filters (implicit AND)
+await insforge.database
+  .from('posts')
+  .select()
+  .eq('user_id', '123')  // AND
+  .or('status.eq.draft,status.eq.published')  // OR
+  
+// Complex OR with NOT
+await insforge.database
+  .from('users')
+  .select()
+  .or('age.lt.18,age.gt.65,not.is_active.is.true')
+  // age < 18 OR age > 65 OR NOT is_active
 ```
 
 ### Modifiers
@@ -260,7 +288,7 @@ await insforge.database
 .offset(20)                             // Skip results
 .range(0, 9)                            // Get specific range
 .single()                               // Return single object
-.count('exact')                         // Get total count
+.count('exact')                         // Get total count (adds Prefer header)
 ```
 
 ### Method Chaining
@@ -273,6 +301,15 @@ const { data, error } = await insforge.database
   .gte('likes', 100)
   .order('created_at', { ascending: false })
   .limit(10)
+
+// With count - returns total in response headers
+const { data, error, count } = await insforge.database
+  .from('posts')
+  .select('*')
+  .eq('status', 'published')
+  .range(0, 9)  // Get first 10
+  .count('exact')  // Request total count
+// Backend returns count in Content-Range header: 0-9/total
 ```
 
 ## Storage Methods
