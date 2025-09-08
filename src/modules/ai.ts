@@ -72,7 +72,6 @@ class ChatCompletions {
       content: string;
       images?: Array<{ url: string }>; // URL or data URL (e.g., 'data:image/jpeg;base64,...')
     }>;
-    message?: string; // Legacy simple message format
     temperature?: number;
     maxTokens?: number;  // OpenAI Node SDK uses camelCase
     topP?: number;
