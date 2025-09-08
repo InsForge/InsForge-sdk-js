@@ -10,8 +10,7 @@ npm install @insforge/sdk
 import { createClient } from '@insforge/sdk';
 
 const insforge = createClient({
-  baseUrl: 'http://localhost:7130',
-  apiKey: 'ik_xxx'  // optional
+  baseUrl: 'http://localhost:7130'
 });
 ```
 
@@ -130,7 +129,9 @@ await insforge.auth.setProfile({
 // Updates current user's profile in users table
 ```
 
-## Error Response
+## Error Handling
+
+### Auth/Storage/AI Errors (InsForgeError)
 ```javascript
 {
   error: {
@@ -142,6 +143,18 @@ await insforge.auth.setProfile({
 }
 ```
 
+### Database Errors (PostgrestError)
+```javascript
+{
+  error: {
+    code: 'PGRST116',  // PostgreSQL/PostgREST error code
+    message: 'JSON object requested, multiple (or no) rows returned',
+    details: 'The result contains 5 rows',
+    hint: null
+  }
+}
+```
+
 ## Storage
 - **Browser**: localStorage
 - **Node.js**: In-memory Map
@@ -149,10 +162,13 @@ await insforge.auth.setProfile({
 
 ## Database Methods
 
+**Note:** Database operations use [@supabase/postgrest-js](https://github.com/supabase/postgrest-js) under the hood, providing full PostgREST compatibility including advanced features like OR conditions, complex joins, and aggregations.
+
 ### `from()`
 Create a query builder for a table:
 ```javascript
 const query = insforge.database.from('posts')
+// Returns a PostgREST query builder with all Supabase features
 ```
 
 ### SELECT Operations
@@ -277,18 +293,45 @@ await insforge.database
 await insforge.database
   .from('users')
   .select()
-  .or('age.lt.18,age.gt.65,not.is_active.is.true')
-  // age < 18 OR age > 65 OR NOT is_active
+  .or('age.lt.18,age.gt.65')
+  // age < 18 OR age > 65
+
+// Combining AND and OR
+await insforge.database
+  .from('products')
+  .select()
+  .eq('category', 'electronics')
+  .or('price.lt.100,rating.gte.4.5')
+  // category = 'electronics' AND (price < 100 OR rating >= 4.5)
 ```
 
 ### Modifiers
 ```javascript
 .order('column', { ascending: false })  // Order by
-.limit(10)                              // Limit results
+.limit(10)                              // Limit results  
 .offset(20)                             // Skip results
 .range(0, 9)                            // Get specific range
 .single()                               // Return single object
-.count('exact')                         // Get total count (adds Prefer header)
+.maybeSingle()                          // Return single object or null
+```
+
+### Count Options
+Use with `select()` to get counts:
+```javascript
+// Get exact count with data
+const { data, count, error } = await insforge.database
+  .from('posts')
+  .select('*', { count: 'exact' })
+
+// Get count without data (HEAD request)
+const { count, error } = await insforge.database
+  .from('posts')
+  .select('*', { count: 'exact', head: true })
+
+// Count strategies:
+// 'exact' - Accurate but slower for large tables
+// 'planned' - Fast estimate from query planner  
+// 'estimated' - Very fast but rough estimate
 ```
 
 ### Method Chaining
@@ -302,14 +345,20 @@ const { data, error } = await insforge.database
   .order('created_at', { ascending: false })
   .limit(10)
 
-// With count - returns total in response headers
+// With count (Supabase-style)
 const { data, error, count } = await insforge.database
   .from('posts')
-  .select('*')
+  .select('*', { count: 'exact' })  // Request exact count
   .eq('status', 'published')
   .range(0, 9)  // Get first 10
-  .count('exact')  // Request total count
-// Backend returns count in Content-Range header: 0-9/total
+// Returns: data (array), error (PostgrestError), count (number)
+
+// Count without data (head request)
+const { count, error } = await insforge.database
+  .from('posts')
+  .select('*', { count: 'exact', head: true })
+  .eq('status', 'published')
+// Returns only count, no data
 ```
 
 ## Storage Methods
