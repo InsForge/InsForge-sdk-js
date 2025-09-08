@@ -2,7 +2,7 @@ import { InsForgeConfig } from './types';
 import { HttpClient } from './lib/http-client';
 import { TokenManager } from './lib/token-manager';
 import { Auth } from './modules/auth';
-import { Database } from './modules/database';
+import { Database } from './modules/database-postgrest';
 import { Storage } from './modules/storage';
 import { AI } from './modules/ai';
 
@@ -57,26 +57,9 @@ export class InsForgeClient {
       this.tokenManager
     );
     
-    this.database = new Database(this.http);
+    this.database = new Database(this.http, this.tokenManager);
     this.storage = new Storage(this.http);
     this.ai = new AI(this.http);
-  }
-
-
-  /**
-   * Set a custom API key for authentication
-   * This is useful for server-to-server communication
-   * 
-   * @param apiKey - The API key (should start with 'ik_')
-   * 
-   * @example
-   * ```typescript
-   * client.setApiKey('ik_your_api_key_here');
-   * ```
-   */
-  setApiKey(apiKey: string): void {
-    // API keys can be used as Bearer tokens
-    this.http.setAuthToken(apiKey);
   }
 
   /**

@@ -6,7 +6,7 @@
 import { HttpClient } from '../lib/http-client';
 import { TokenManager } from '../lib/token-manager';
 import { AuthSession, InsForgeError } from '../types';
-import { Database } from './database';
+import { Database } from './database-postgrest';
 
 import type {
   CreateUserRequest,
@@ -24,7 +24,7 @@ export class Auth {
     private http: HttpClient,
     private tokenManager: TokenManager
   ) {
-    this.database = new Database(http);
+    this.database = new Database(http, tokenManager);
     
     // Auto-detect OAuth callback parameters in the URL
     this.detectOAuthCallback();
@@ -247,7 +247,7 @@ export class Auth {
    */
   async getCurrentUser(): Promise<{
     data: { user: any; profile: any } | null;
-    error: InsForgeError | null;
+    error: any | null;
   }> {
     try {
       // Check if we have a token
@@ -267,7 +267,8 @@ export class Auth {
         .eq('id', authResponse.user.id)
         .single();
       
-      if (profileError && profileError.statusCode !== 406) {  // 406 = not found
+      // For database errors, return PostgrestError directly
+      if (profileError && (profileError as any).code !== 'PGRST116') {  // PGRST116 = not found
         return { data: null, error: profileError };
       }
       
@@ -308,7 +309,7 @@ export class Auth {
    */
   async getProfile(userId: string): Promise<{
     data: any | null;
-    error: InsForgeError | null;
+    error: any | null;
   }> {
     const { data, error } = await this.database
       .from('users')
@@ -317,10 +318,11 @@ export class Auth {
       .single();
     
     // Handle not found as null, not error
-    if (error && error.statusCode === 406) {
+    if (error && (error as any).code === 'PGRST116') {
       return { data: null, error: null };
     }
     
+    // Return PostgrestError directly for database operations
     return { data, error };
   }
 
@@ -371,7 +373,7 @@ export class Auth {
     [key: string]: any;
   }): Promise<{
     data: any | null;
-    error: InsForgeError | null;
+    error: any | null;
   }> {
     // Get current session to get user ID
     const session = this.tokenManager.getSession();
@@ -387,12 +389,15 @@ export class Auth {
     }
 
     // Update the profile using query builder
-    return await this.database
+    const { data, error } = await this.database
       .from('users')
       .update(profile)
       .eq('id', session.user.id)
       .select()
       .single();
+    
+    // Return PostgrestError directly for database operations
+    return { data, error };
   }
 
 
