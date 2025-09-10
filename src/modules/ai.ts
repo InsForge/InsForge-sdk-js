@@ -245,7 +245,7 @@ class Images {
         
         return {
           b64_json: b64_json,
-          content: response.text,  // this field is not in open sdk, but is in openrouter
+          content: response.text,  // this field is not in openai sdk, but is in openrouter
         };
       }),
       output_format: "png",
