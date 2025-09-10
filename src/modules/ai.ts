@@ -229,12 +229,33 @@ class Images {
    * });
    * ```
    */
-  async generate(params: ImageGenerationRequest): Promise<ImageGenerationResponse> {
+  async generate(params: ImageGenerationRequest): Promise<any> {
     const response: ImageGenerationResponse = await this.http.post(
       "/api/ai/image/generation",
       params
     );
 
-    return response;
+    // Transform to OpenAI SDK format with b64_json
+    return {
+      created: Math.floor(Date.now() / 1000),
+      data: response.images.map(img => {
+        // OpenRouter returns data URLs (data:image/png;base64,...)
+        // Extract the base64 portion for OpenAI compatibility
+        const b64_json = img.imageUrl.replace(/^data:image\/\w+;base64,/, '');
+        
+        return {
+          b64_json: b64_json,
+          content: response.text,
+        };
+      }),
+      output_format: "png",
+      ...(response.metadata?.usage && {
+        usage: {
+          total_tokens: response.metadata.usage.totalTokens || 0,
+          input_tokens: response.metadata.usage.promptTokens || 0,
+          output_tokens: response.metadata.usage.completionTokens || 0,
+        }
+      })
+    };
   }
 }
