@@ -234,21 +234,25 @@ class Images {
       "/api/ai/image/generation",
       params
     );
-
-    // Transform to OpenAI SDK format with b64_json
+    
+    // Build data array based on response content
+    let data: Array<{ b64_json?: string; content?: string }> = [];
+    
+    if (response.images && response.images.length > 0) {
+      // Has images - extract base64 and include text
+      data = response.images.map(img => ({
+        b64_json: img.imageUrl.replace(/^data:image\/\w+;base64,/, ''),
+        content: response.text
+      }));
+    } else if (response.text) {
+      // Text-only response
+      data = [{ content: response.text }];
+    }
+    
+    // Return OpenAI-compatible format
     return {
       created: Math.floor(Date.now() / 1000),
-      data: response.images.map(img => {
-        // OpenRouter returns data URLs (data:image/png;base64,...)
-        // Extract the base64 portion for OpenAI compatibility
-        const b64_json = img.imageUrl.replace(/^data:image\/\w+;base64,/, '');
-        
-        return {
-          b64_json: b64_json,
-          content: response.text,  // this field is not in openai sdk, but is in openrouter
-        };
-      }),
-      output_format: "png",
+      data,
       ...(response.metadata?.usage && {
         usage: {
           total_tokens: response.metadata.usage.totalTokens || 0,
