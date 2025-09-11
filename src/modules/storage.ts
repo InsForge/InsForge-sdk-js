@@ -15,6 +15,22 @@ export interface StorageResponse<T> {
   error: InsForgeError | null;
 }
 
+interface UploadStrategy {
+  method: 'direct' | 'presigned';
+  uploadUrl: string;
+  fields?: Record<string, string>;
+  key: string;
+  confirmRequired: boolean;
+  confirmUrl?: string;
+  expiresAt?: Date;
+}
+
+interface DownloadStrategy {
+  method: 'direct' | 'presigned';
+  url: string;
+  expiresAt?: Date;
+}
+
 /**
  * Storage bucket operations
  */
@@ -26,6 +42,7 @@ export class StorageBucket {
 
   /**
    * Upload a file with a specific key
+   * Uses the upload strategy from backend (direct or presigned)
    * @param path - The object key/path
    * @param file - File or Blob to upload
    */
@@ -34,22 +51,45 @@ export class StorageBucket {
     file: File | Blob
   ): Promise<StorageResponse<StorageFileSchema>> {
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      // Use PUT for specific path
-      const response = await this.http.request<StorageFileSchema>(
-        'PUT',
-        `/api/storage/buckets/${this.bucketName}/objects/${encodeURIComponent(path)}`,
+      // Get upload strategy from backend - this is required
+      const strategyResponse = await this.http.post<UploadStrategy>(
+        `/api/storage/buckets/${this.bucketName}/upload-strategy`,
         {
-          body: formData as any,
-          headers: {
-            // Don't set Content-Type, let browser set multipart boundary
-          }
+          filename: path,
+          contentType: file.type || 'application/octet-stream',
+          size: file.size
         }
       );
 
-      return { data: response, error: null };
+      // Use presigned URL if available
+      if (strategyResponse.method === 'presigned') {
+        return await this.uploadWithPresignedUrl(strategyResponse, file);
+      }
+
+      // Use direct upload if strategy says so
+      if (strategyResponse.method === 'direct') {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await this.http.request<StorageFileSchema>(
+          'PUT',
+          `/api/storage/buckets/${this.bucketName}/objects/${encodeURIComponent(path)}`,
+          {
+            body: formData as any,
+            headers: {
+              // Don't set Content-Type, let browser set multipart boundary
+            }
+          }
+        );
+
+        return { data: response, error: null };
+      }
+
+      throw new InsForgeError(
+        `Unsupported upload method: ${strategyResponse.method}`,
+        500,
+        'STORAGE_ERROR'
+      );
     } catch (error) {
       return { 
         data: null, 
@@ -64,28 +104,54 @@ export class StorageBucket {
 
   /**
    * Upload a file with auto-generated key
+   * Uses the upload strategy from backend (direct or presigned)
    * @param file - File or Blob to upload
    */
   async uploadAuto(
     file: File | Blob
   ): Promise<StorageResponse<StorageFileSchema>> {
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      // Use POST for auto-generated key
-      const response = await this.http.request<StorageFileSchema>(
-        'POST',
-        `/api/storage/buckets/${this.bucketName}/objects`,
+      const filename = file instanceof File ? file.name : 'file';
+      
+      // Get upload strategy from backend - this is required
+      const strategyResponse = await this.http.post<UploadStrategy>(
+        `/api/storage/buckets/${this.bucketName}/upload-strategy`,
         {
-          body: formData as any,
-          headers: {
-            // Don't set Content-Type, let browser set multipart boundary
-          }
+          filename,
+          contentType: file.type || 'application/octet-stream',
+          size: file.size
         }
       );
 
-      return { data: response, error: null };
+      // Use presigned URL if available
+      if (strategyResponse.method === 'presigned') {
+        return await this.uploadWithPresignedUrl(strategyResponse, file);
+      }
+
+      // Use direct upload if strategy says so
+      if (strategyResponse.method === 'direct') {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await this.http.request<StorageFileSchema>(
+          'POST',
+          `/api/storage/buckets/${this.bucketName}/objects`,
+          {
+            body: formData as any,
+            headers: {
+              // Don't set Content-Type, let browser set multipart boundary
+            }
+          }
+        );
+
+        return { data: response, error: null };
+      }
+
+      throw new InsForgeError(
+        `Unsupported upload method: ${strategyResponse.method}`,
+        500,
+        'STORAGE_ERROR'
+      );
     } catch (error) {
       return { 
         data: null, 
@@ -99,19 +165,101 @@ export class StorageBucket {
   }
 
   /**
+   * Internal method to handle presigned URL uploads
+   */
+  private async uploadWithPresignedUrl(
+    strategy: UploadStrategy,
+    file: File | Blob
+  ): Promise<StorageResponse<StorageFileSchema>> {
+    try {
+      // Upload to presigned URL (e.g., S3)
+      const formData = new FormData();
+      
+      // Add all fields from the presigned URL
+      if (strategy.fields) {
+        Object.entries(strategy.fields).forEach(([key, value]) => {
+          formData.append(key, value);
+        });
+      }
+      
+      // File must be the last field for S3
+      formData.append('file', file);
+
+      const uploadResponse = await fetch(strategy.uploadUrl, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!uploadResponse.ok) {
+        throw new InsForgeError(
+          `Upload to storage failed: ${uploadResponse.statusText}`,
+          uploadResponse.status,
+          'STORAGE_ERROR'
+        );
+      }
+
+      // Confirm upload with backend if required
+      if (strategy.confirmRequired && strategy.confirmUrl) {
+        const confirmResponse = await this.http.post<StorageFileSchema>(
+          strategy.confirmUrl,
+          {
+            size: file.size,
+            contentType: file.type || 'application/octet-stream'
+          }
+        );
+
+        return { data: confirmResponse, error: null };
+      }
+
+      // If no confirmation required, return basic file info
+      return {
+        data: {
+          key: strategy.key,
+          bucket: this.bucketName,
+          size: file.size,
+          mimeType: file.type || 'application/octet-stream',
+          uploadedAt: new Date().toISOString(),
+          url: this.getPublicUrl(strategy.key)
+        } as StorageFileSchema,
+        error: null
+      };
+    } catch (error) {
+      throw error instanceof InsForgeError ? error : new InsForgeError(
+        'Presigned upload failed',
+        500,
+        'STORAGE_ERROR'
+      );
+    }
+  }
+
+  /**
    * Download a file
+   * Uses the download strategy from backend (direct or presigned)
    * @param path - The object key/path
    * Returns the file as a Blob
    */
   async download(path: string): Promise<{ data: Blob | null; error: InsForgeError | null }> {
     try {
-      // For binary data, we need to use fetch directly with proper response handling
-      // The http.request method expects JSON responses, so we can't use it for blobs
-      const url = `${this.http.baseUrl}/api/storage/buckets/${this.bucketName}/objects/${encodeURIComponent(path)}`;
+      // Get download strategy from backend - this is required
+      const strategyResponse = await this.http.post<DownloadStrategy>(
+        `/api/storage/buckets/${this.bucketName}/objects/${encodeURIComponent(path)}/download-strategy`,
+        { expiresIn: 3600 }
+      );
+
+      // Use URL from strategy
+      const downloadUrl = strategyResponse.url;
       
-      const response = await this.http.fetch(url, {
+      // Download from the URL
+      const headers: HeadersInit = {};
+      
+      // Only add auth header for direct downloads (not presigned URLs)
+      if (strategyResponse.method === 'direct') {
+        Object.assign(headers, this.http.getHeaders());
+      }
+      
+      const response = await fetch(downloadUrl, {
         method: 'GET',
-        headers: this.http.getHeaders()
+        headers
       });
 
       if (!response.ok) {
