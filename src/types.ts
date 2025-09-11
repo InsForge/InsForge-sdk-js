@@ -13,10 +13,10 @@ export interface InsForgeConfig {
   baseUrl?: string;
 
   /**
-   * API key (optional)
-   * Can be used for server-side operations or specific use cases
+   * Anonymous API key (optional)
+   * Used for public/unauthenticated requests when no user token is set
    */
-  apiKey?: string;
+  anonKey?: string;
 
   /**
    * Custom fetch implementation (useful for Node.js environments)

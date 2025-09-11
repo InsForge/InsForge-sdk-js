@@ -229,12 +229,37 @@ class Images {
    * });
    * ```
    */
-  async generate(params: ImageGenerationRequest): Promise<ImageGenerationResponse> {
+  async generate(params: ImageGenerationRequest): Promise<any> {
     const response: ImageGenerationResponse = await this.http.post(
       "/api/ai/image/generation",
       params
     );
-
-    return response;
+    
+    // Build data array based on response content
+    let data: Array<{ b64_json?: string; content?: string }> = [];
+    
+    if (response.images && response.images.length > 0) {
+      // Has images - extract base64 and include text
+      data = response.images.map(img => ({
+        b64_json: img.imageUrl.replace(/^data:image\/\w+;base64,/, ''),
+        content: response.text
+      }));
+    } else if (response.text) {
+      // Text-only response
+      data = [{ content: response.text }];
+    }
+    
+    // Return OpenAI-compatible format
+    return {
+      created: Math.floor(Date.now() / 1000),
+      data,
+      ...(response.metadata?.usage && {
+        usage: {
+          total_tokens: response.metadata.usage.totalTokens || 0,
+          input_tokens: response.metadata.usage.promptTokens || 0,
+          output_tokens: response.metadata.usage.completionTokens || 0,
+        }
+      })
+    };
   }
 }

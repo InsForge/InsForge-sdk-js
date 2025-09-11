@@ -8,11 +8,14 @@ export class HttpClient {
   public readonly baseUrl: string;
   public readonly fetch: typeof fetch;
   private defaultHeaders: Record<string, string>;
+  private anonKey: string | undefined;
+  private userToken: string | null = null;
 
   constructor(config: InsForgeConfig) {
     this.baseUrl = config.baseUrl || 'http://localhost:7130';
     // Properly bind fetch to maintain its context
     this.fetch = config.fetch || (globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined as any);
+    this.anonKey = config.anonKey;
     this.defaultHeaders = {
       ...config.headers,
     };
@@ -66,6 +69,12 @@ export class HttpClient {
     const requestHeaders: Record<string, string> = {
       ...this.defaultHeaders,
     };
+    
+    // Set Authorization header: prefer user token, fallback to anon key
+    const authToken = this.userToken || this.anonKey;
+    if (authToken) {
+      requestHeaders['Authorization'] = `Bearer ${authToken}`;
+    }
     
     // Handle body serialization
     let processedBody: any;
@@ -144,11 +153,7 @@ export class HttpClient {
   }
 
   setAuthToken(token: string | null) {
-    if (token) {
-      this.defaultHeaders['Authorization'] = `Bearer ${token}`;
-    } else {
-      delete this.defaultHeaders['Authorization'];
-    }
+    this.userToken = token;
   }
 
   getHeaders(): Record<string, string> {
