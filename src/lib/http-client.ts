@@ -157,6 +157,14 @@ export class HttpClient {
   }
 
   getHeaders(): Record<string, string> {
-    return { ...this.defaultHeaders };
+    const headers = { ...this.defaultHeaders };
+    
+    // Include Authorization header if token is available (same logic as request method)
+    const authToken = this.userToken || this.anonKey;
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    
+    return headers;
   }
 }
