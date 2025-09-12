@@ -41,47 +41,7 @@ function createInsForgePostgrestFetch(
       ...init,
       headers
     });
-    
-    // RESPONSE TRANSFORMATION FOR POSTGREST-JS COMPATIBILITY
-    // 
-    // Backend returns (wrapped):
-    // {
-    //   data: [{id: 1}, {id: 2}],        // The actual rows
-    //   pagination: {                     // Pagination metadata
-    //     offset: 0,
-    //     limit: 10,
-    //     total: 100
-    //   }
-    // }
-    // Headers: Content-Range: 0-9/100
-    //
-    // PostgREST-js expects (unwrapped):
-    // [{id: 1}, {id: 2}]                  // Just the array
-    // Headers: Content-Range: 0-9/100     // Pagination in header
-    //
-    // We unwrap only for GET requests (SELECT queries)
-    if (response.ok && (!init?.method || init.method === 'GET')) {
-      try {
-        // Clone to read body without consuming original
-        const body = await response.clone().json();
-        
-        // Check if backend wrapped the response
-        if (body?.data && body?.pagination) {
-          return new Response(
-            JSON.stringify(body.data),
-            {
-              status: response.status,
-              statusText: response.statusText,
-              headers: response.headers
-            }
-          );
-        }
-      } catch {
-        // Not JSON or parsing failed, return original
-        // This handles non-JSON responses, errors, etc.
-      }
-    }
-    
+  
     return response;
   };
 }
