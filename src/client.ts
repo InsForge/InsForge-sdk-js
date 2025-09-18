@@ -52,6 +52,22 @@ export class InsForgeClient {
     this.http = new HttpClient(config);
     this.tokenManager = new TokenManager(config.storage);
     
+    // Check for edge function token
+    if (config.edgeFunctionToken) {
+      this.http.setAuthToken(config.edgeFunctionToken);
+      // Save to token manager so getCurrentUser() works
+      this.tokenManager.saveSession({
+        accessToken: config.edgeFunctionToken,
+        user: {} as any // Will be populated by getCurrentUser()
+      });
+    }
+    
+    // Check for existing session in storage
+    const existingSession = this.tokenManager.getSession();
+    if (existingSession?.accessToken) {
+      this.http.setAuthToken(existingSession.accessToken);
+    }
+    
     this.auth = new Auth(
       this.http,
       this.tokenManager
