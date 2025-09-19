@@ -27,13 +27,15 @@ function createInsForgePostgrestFetch(
     // Build InsForge URL
     const insforgeUrl = `${httpClient.baseUrl}/api/database/records/${tableName}${urlObj.search}`;
     
-    // Get auth token from TokenManager
+    // Get auth token from TokenManager or HttpClient
     const token = tokenManager.getAccessToken();
+    const httpHeaders = httpClient.getHeaders();
+    const authToken = token || httpHeaders['Authorization']?.replace('Bearer ', '');
     
     // Prepare headers
     const headers = new Headers(init?.headers);
-    if (token && !headers.has('Authorization')) {
-      headers.set('Authorization', `Bearer ${token}`);
+    if (authToken && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${authToken}`);
     }
     
     // Make the actual request using native fetch

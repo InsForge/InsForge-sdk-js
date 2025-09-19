@@ -19,6 +19,13 @@ export interface InsForgeConfig {
   anonKey?: string;
 
   /**
+   * Edge Function Token (optional)
+   * Use this when running in edge functions/serverless with a user's JWT token
+   * This token will be used for all authenticated requests
+   */
+  edgeFunctionToken?: string;
+
+  /**
    * Custom fetch implementation (useful for Node.js environments)
    */
   fetch?: typeof fetch;
