@@ -25,14 +25,14 @@ export class AI {
 }
 
 class Chat {
-  public readonly completions: ChatCompletions;
+  public readonly completion: ChatCompletion;
 
   constructor(http: HttpClient) {
-    this.completions = new ChatCompletions(http);
+    this.completion = new ChatCompletion(http);
   }
 }
 
-class ChatCompletions {
+class ChatCompletion {
   constructor(private http: HttpClient) {}
 
   /**
@@ -41,14 +41,14 @@ class ChatCompletions {
    * @example
    * ```typescript
    * // Non-streaming
-   * const completion = await client.ai.chat.completions.create({
+   * const completion = await client.ai.chat.completion.create({
    *   model: 'gpt-4',
    *   messages: [{ role: 'user', content: 'Hello!' }]
    * });
    * console.log(completion.choices[0].message.content);
    *
    * // With images
-   * const response = await client.ai.chat.completions.create({
+   * const response = await client.ai.chat.completion.create({
    *   model: 'gpt-4-vision',
    *   messages: [{
    *     role: 'user',
@@ -58,7 +58,7 @@ class ChatCompletions {
    * });
    *
    * // Streaming - returns async iterable
-   * const stream = await client.ai.chat.completions.create({
+   * const stream = await client.ai.chat.completion.create({
    *   model: 'gpt-4',
    *   messages: [{ role: 'user', content: 'Tell me a story' }],
    *   stream: true

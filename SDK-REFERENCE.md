@@ -410,12 +410,12 @@ bucket.getPublicUrl('path/file.jpg')
 
 ## AI Methods
 
-### `ai.chat.completions.create()`
-Create AI chat completions with support for both streaming and non-streaming responses.
+### `ai.chat.completion.create()`
+Create AI chat completion with support for both streaming and non-streaming responses.
 
 #### Non-Streaming
 ```javascript
-const { data, error } = await insforge.ai.chat.completions.create({
+const { data, error } = await insforge.ai.chat.completion.create({
   model: 'anthropic/claude-3.5-haiku',
   messages: [
     { role: 'system', content: 'You are a helpful assistant' },
@@ -433,7 +433,7 @@ const { data, error } = await insforge.ai.chat.completions.create({
 #### Streaming
 ```javascript
 // Returns async iterable for real-time streaming
-const stream = await insforge.ai.chat.completions.create({
+const stream = await insforge.ai.chat.completion.create({
   model: 'anthropic/claude-3.5-haiku',
   messages: [
     { role: 'user', content: 'Tell me a story' }
@@ -501,7 +501,7 @@ const insforge = createClient({
 });
 
 // Chat completion
-const { data: chat } = await insforge.ai.chat.completions.create({
+const { data: chat } = await insforge.ai.chat.completion.create({
   model: 'anthropic/claude-3.5-haiku',
   messages: [
     { role: 'user', content: 'What is the capital of France?' }
@@ -510,7 +510,7 @@ const { data: chat } = await insforge.ai.chat.completions.create({
 console.log(chat.response); // "The capital of France is Paris."
 
 // Streaming chat
-const stream = await insforge.ai.chat.completions.create({
+const stream = await insforge.ai.chat.completion.create({
   model: 'anthropic/claude-3.5-haiku',
   messages: [
     { role: 'user', content: 'Write a haiku about coding' }
