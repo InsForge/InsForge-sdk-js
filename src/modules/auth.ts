@@ -377,7 +377,7 @@ export class Auth {
   }> {
     // Get current session to get user ID
     const session = this.tokenManager.getSession();
-    if (!session?.user?.id) {
+    if (!session?.accessToken) {
       return { 
         data: null, 
         error: new InsForgeError(
@@ -386,6 +386,18 @@ export class Auth {
           'UNAUTHENTICATED'
         )
       };
+    }
+    
+    // If no user ID in session (edge function scenario), fetch it
+    if (!session.user?.id) {
+      const { data, error } = await this.getCurrentUser();
+      if (error) {
+        return { data: null, error };
+      }
+      if (data?.user) {
+        session.user = data.user;
+        this.tokenManager.saveSession(session);
+      }
     }
 
     // Update the profile using query builder
