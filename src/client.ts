@@ -5,6 +5,7 @@ import { Auth } from './modules/auth';
 import { Database } from './modules/database-postgrest';
 import { Storage } from './modules/storage';
 import { AI } from './modules/ai';
+import { Functions } from './modules/functions';
 
 /**
  * Main InsForge SDK Client
@@ -37,6 +38,11 @@ import { AI } from './modules/ai';
  *   .from('posts')
  *   .insert({ title: 'Hello', content: 'World' })
  *   .single();
+ * 
+ * // Invoke edge functions
+ * const { data, error } = await client.functions.invoke('my-function', {
+ *   body: { message: 'Hello from SDK' }
+ * });
  * ```
  */
 export class InsForgeClient {
@@ -47,6 +53,7 @@ export class InsForgeClient {
   public readonly database: Database;
   public readonly storage: Storage;
   public readonly ai: AI;
+  public readonly functions: Functions;
 
   constructor(config: InsForgeConfig = {}) {
     this.http = new HttpClient(config);
@@ -76,6 +83,7 @@ export class InsForgeClient {
     this.database = new Database(this.http, this.tokenManager);
     this.storage = new Storage(this.http);
     this.ai = new AI(this.http);
+    this.functions = new Functions(this.http);
   }
 
   /**

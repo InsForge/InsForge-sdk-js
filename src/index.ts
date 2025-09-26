@@ -40,6 +40,10 @@ export type { StorageResponse } from './modules/storage';
 // Re-export AI module
 export { AI } from './modules/ai';
 
+// Re-export Functions module
+export { Functions } from './modules/functions';
+export type { FunctionInvokeOptions } from './modules/functions';
+
 // Re-export utilities for advanced usage
 export { HttpClient } from './lib/http-client';
 export { TokenManager } from './lib/token-manager';
