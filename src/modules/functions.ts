@@ -64,9 +64,12 @@ export class Functions {
       
       return { data, error: null };
     } catch (error: any) {
+      // The HTTP client throws InsForgeError with all properties from the response
+      // including error, message, details, statusCode, etc.
+      // We need to preserve all of that information
       return { 
         data: null, 
-        error: new Error(error.message || 'Failed to invoke function')
+        error: error  // Pass through the full error object with all properties
       };
     }
   }

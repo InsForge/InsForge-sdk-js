@@ -120,7 +120,18 @@ export class HttpClient {
     // Handle errors
     if (!response.ok) {
       if (data && typeof data === 'object' && 'error' in data) {
-        throw InsForgeError.fromApiError(data as ApiError);
+        // Add the HTTP status code if not already in the data
+        if (!data.statusCode && !data.status) {
+          data.statusCode = response.status;
+        }
+        const error = InsForgeError.fromApiError(data as ApiError);
+        // Preserve all additional fields from the error response
+        Object.keys(data).forEach(key => {
+          if (key !== 'error' && key !== 'message' && key !== 'statusCode') {
+            (error as any)[key] = data[key];
+          }
+        });
+        throw error;
       }
       throw new InsForgeError(
         `Request failed: ${response.statusText}`,
