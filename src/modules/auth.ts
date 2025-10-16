@@ -15,6 +15,7 @@ import type {
   CreateSessionResponse,
   GetCurrentSessionResponse,
   GetOauthUrlResponse,
+  OAuthProvidersSchema,
 } from '@insforge/shared-schemas';
 
 export class Auth {
@@ -174,7 +175,7 @@ export class Auth {
    * Sign in with OAuth provider
    */
   async signInWithOAuth(options: {
-    provider: 'google' | 'github';
+    provider: OAuthProvidersSchema;
     redirectTo?: string;
     skipBrowserRedirect?: boolean;
   }): Promise<{
