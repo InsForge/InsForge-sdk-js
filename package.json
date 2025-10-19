@@ -35,7 +35,15 @@
     "typescript"
   ],
   "author": "InsForge",
-  "license": "MIT",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/InsForge/InsForge-sdk.git"
+  },
+  "homepage": "https://github.com/InsForge/InsForge-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/InsForge/InsForge-sdk/issues"
+  },
   "dependencies": {
     "@insforge/shared-schemas": "^1.1.3",
     "@supabase/postgrest-js": "^1.21.3"
