@@ -1,4 +1,4 @@
-# InsForge SDK
+# insforge-sdk-js
 
 [![npm version](https://img.shields.io/npm/v/@insforge/sdk.svg)](https://www.npmjs.com/package/@insforge/sdk)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -213,8 +213,8 @@ We welcome contributions! Please see our [Contributing Guide](./CONTRIBUTING.md)
 
 ```bash
 # Clone the repository
-git clone https://github.com/InsForge/InsForge-sdk.git
-cd InsForge-sdk
+git clone https://github.com/InsForge/insforge-sdk-js.git
+cd insforge-sdk-js
 
 # Install dependencies
 npm install
@@ -235,7 +235,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICE
 
 ## Community & Support
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/InsForge/InsForge-sdk/issues)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/InsForge/insforge-sdk-js/issues)
 - **Documentation**: [https://docs.insforge.com](https://docs.insforge.com)
 - **Main Repository**: [InsForge Backend Platform](https://github.com/InsForge/InsForge)
 

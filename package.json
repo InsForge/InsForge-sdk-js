@@ -1,7 +1,7 @@
 {
   "name": "@insforge/sdk",
   "version": "0.0.56",
-  "description": "TypeScript SDK for InsForge Backend-as-a-Service platform",
+  "description": "Official JavaScript/TypeScript client for InsForge Backend-as-a-Service platform",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -32,17 +32,19 @@
     "baas",
     "backend",
     "sdk",
-    "typescript"
+    "typescript",
+    "javascript",
+    "client"
   ],
   "author": "InsForge",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/InsForge/InsForge-sdk.git"
+    "url": "https://github.com/InsForge/insforge-sdk-js.git"
   },
-  "homepage": "https://github.com/InsForge/InsForge-sdk#readme",
+  "homepage": "https://github.com/InsForge/insforge-sdk-js#readme",
   "bugs": {
-    "url": "https://github.com/InsForge/InsForge-sdk/issues"
+    "url": "https://github.com/InsForge/insforge-sdk-js/issues"
   },
   "dependencies": {
     "@insforge/shared-schemas": "^1.1.3",
