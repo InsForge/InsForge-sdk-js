@@ -15,7 +15,10 @@ import type {
   CreateSessionResponse,
   GetCurrentSessionResponse,
   GetOauthUrlResponse,
+  ListPublicOAuthProvidersResponse,
   OAuthProvidersSchema,
+  PublicOAuthProvider,
+  GetPublicEmailAuthConfigResponse,
 } from '@insforge/shared-schemas';
 
 export class Auth {
@@ -145,11 +148,18 @@ export class Auth {
       
       // Save session internally
       const session: AuthSession = {
-        accessToken: response.accessToken,
-        user: response.user,
+        accessToken: response.accessToken || '',
+        user: response.user || {
+          id: '',
+          email: '',
+          name: '',
+          emailVerified: false,
+          createdAt: '',
+          updatedAt: '',
+        },
       };
       this.tokenManager.saveSession(session);
-      this.http.setAuthToken(response.accessToken);
+      this.http.setAuthToken(response.accessToken || '');
 
       return { 
         data: response,
@@ -239,6 +249,97 @@ export class Auth {
           'Failed to sign out',
           500,
           'SIGNOUT_ERROR'
+        )
+      };
+    }
+  }
+
+  /**
+   * Get list of available OAuth providers
+   * Returns the list of OAuth providers configured on the backend
+   * This is a public endpoint that doesn't require authentication
+   * 
+   * @returns Array of configured OAuth providers with their configuration status
+   * 
+   * @example
+   * ```ts
+   * const { data, error } = await insforge.auth.getOAuthProviders();
+   * if (data) {
+   *   // data is an array of PublicOAuthProvider: [{ provider: 'google', isConfigured: true }, ...]
+   *   data.forEach(p => console.log(`${p.provider}: ${p.isConfigured ? 'configured' : 'not configured'}`));
+   * }
+   * ```
+   */
+  async getOAuthProviders(): Promise<{
+    data: PublicOAuthProvider[] | null;
+    error: InsForgeError | null;
+  }> {
+    try {
+      const response = await this.http.get<ListPublicOAuthProvidersResponse>('/api/auth/oauth/providers');
+      
+      return { 
+        data: response.data,
+        error: null 
+      };
+    } catch (error) {
+      // Pass through API errors unchanged
+      if (error instanceof InsForgeError) {
+        return { data: null, error };
+      }
+      
+      // Generic fallback for unexpected errors
+      return { 
+        data: null, 
+        error: new InsForgeError(
+          'An unexpected error occurred while fetching OAuth providers',
+          500,
+          'UNEXPECTED_ERROR'
+        )
+      };
+    }
+  }
+
+  /**
+   * Get public email authentication configuration
+   * Returns email authentication settings configured on the backend
+   * This is a public endpoint that doesn't require authentication
+   * 
+   * @returns Email authentication configuration including password requirements and email verification settings
+   * 
+   * @example
+   * ```ts
+   * const { data, error } = await insforge.auth.getEmailAuthConfig();
+   * if (data) {
+   *   console.log(`Password min length: ${data.passwordMinLength}`);
+   *   console.log(`Requires email verification: ${data.requireEmailVerification}`);
+   *   console.log(`Requires uppercase: ${data.requireUppercase}`);
+   * }
+   * ```
+   */
+  async getEmailAuthConfig(): Promise<{
+    data: GetPublicEmailAuthConfigResponse | null;
+    error: InsForgeError | null;
+  }> {
+    try {
+      const response = await this.http.get<GetPublicEmailAuthConfigResponse>('/api/auth/email/public-config');
+      
+      return { 
+        data: response,
+        error: null 
+      };
+    } catch (error) {
+      // Pass through API errors unchanged
+      if (error instanceof InsForgeError) {
+        return { data: null, error };
+      }
+      
+      // Generic fallback for unexpected errors
+      return { 
+        data: null, 
+        error: new InsForgeError(
+          'An unexpected error occurred while fetching email authentication configuration',
+          500,
+          'UNEXPECTED_ERROR'
         )
       };
     }
