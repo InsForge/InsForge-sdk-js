@@ -25,7 +25,9 @@
     "test:integration": "node integration-tests/run-all.js",
     "test:run": "vitest run",
     "lint": "eslint src --ext .ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "publish:dev": "npm version prerelease --preid=dev && npm run build && npm publish --tag dev",
+    "publish:stable": "npm run build && npm publish"
   },
   "keywords": [
     "insforge",
@@ -47,7 +49,7 @@
     "url": "https://github.com/InsForge/insforge-sdk-js/issues"
   },
   "dependencies": {
-    "@insforge/shared-schemas": "^1.1.3",
+    "@insforge/shared-schemas": "^1.1.9",
     "@supabase/postgrest-js": "^1.21.3"
   },
   "devDependencies": {

@@ -100,18 +100,20 @@ export class Auth {
   }> {
     try {
       const response = await this.http.post<CreateUserResponse>('/api/auth/users', request);
-      
-      // Save session internally
-      const session: AuthSession = {
-        accessToken: response.accessToken,
-        user: response.user,
-      };
-      this.tokenManager.saveSession(session);
-      this.http.setAuthToken(response.accessToken);
 
-      return { 
+      // Save session internally only if both accessToken and user exist
+      if (response.accessToken && response.user) {
+        const session: AuthSession = {
+          accessToken: response.accessToken,
+          user: response.user,
+        };
+        this.tokenManager.saveSession(session);
+        this.http.setAuthToken(response.accessToken);
+      }
+
+      return {
         data: response,
-        error: null 
+        error: null
       };
     } catch (error) {
       // Pass through API errors unchanged
