@@ -19,6 +19,11 @@ import type {
   OAuthProvidersSchema,
   PublicOAuthProvider,
   GetPublicEmailAuthConfigResponse,
+  UserIdSchema,
+  EmailSchema,
+  RoleSchema,
+  ProfileSchema,
+  UpdateProfileSchema,
 } from '@insforge/shared-schemas';
 
 export class Auth {
@@ -350,7 +355,14 @@ export class Auth {
    * Returns both auth info (id, email, role) and profile data (nickname, avatar_url, bio, etc.)
    */
   async getCurrentUser(): Promise<{
-    data: { user: any; profile: any } | null;
+    data: {
+      user: {
+        id: UserIdSchema;
+        email: EmailSchema;
+        role: RoleSchema;
+      };
+      profile: ProfileSchema | null;
+    } | null;
     error: any | null;
   }> {
     try {
@@ -412,7 +424,7 @@ export class Auth {
    * Returns profile information from the users table (nickname, avatar_url, bio, etc.)
    */
   async getProfile(userId: string): Promise<{
-    data: any | null;
+    data: ProfileSchema | null;
     error: any | null;
   }> {
     const { data, error } = await this.database
@@ -469,14 +481,8 @@ export class Auth {
    * Set/Update the current user's profile
    * Updates profile information in the users table (nickname, avatar_url, bio, etc.)
    */
-  async setProfile(profile: {
-    nickname?: string;
-    avatar_url?: string;
-    bio?: string;
-    birthday?: string;
-    [key: string]: any;
-  }): Promise<{
-    data: any | null;
+  async setProfile(profile: UpdateProfileSchema): Promise<{
+    data: ProfileSchema | null;
     error: any | null;
   }> {
     // Get current session to get user ID
@@ -499,7 +505,15 @@ export class Auth {
         return { data: null, error };
       }
       if (data?.user) {
-        session.user = data.user;
+        // Update session with minimal user info
+        session.user = {
+          id: data.user.id,
+          email: data.user.email,
+          name: data.profile?.nickname || '', // Not available from API, but required by UserSchema
+          emailVerified: false, // Not available from API, but required by UserSchema
+          createdAt: new Date().toISOString(), // Fallback
+          updatedAt: new Date().toISOString(), // Fallback
+        };
         this.tokenManager.saveSession(session);
       }
     }
