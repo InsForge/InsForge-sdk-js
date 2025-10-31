@@ -26,6 +26,35 @@ import type {
   UpdateProfileSchema,
 } from '@insforge/shared-schemas';
 
+/**
+ * Convert database profile (snake_case) to ProfileSchema (camelCase)
+ */
+function convertDbProfileToSchema(dbProfile: any): ProfileSchema {
+  return {
+    id: dbProfile.id,
+    nickname: dbProfile.nickname,
+    avatarUrl: dbProfile.avatar_url,
+    bio: dbProfile.bio,
+    birthday: dbProfile.birthday,
+    createdAt: dbProfile.created_at,
+    updatedAt: dbProfile.updated_at,
+  };
+}
+
+/**
+ * Convert ProfileSchema (camelCase) to database format (snake_case)
+ */
+function convertSchemaToDbProfile(profile: UpdateProfileSchema): any {
+  const dbProfile: any = {};
+  
+  if (profile.nickname !== undefined) dbProfile.nickname = profile.nickname;
+  if (profile.avatarUrl !== undefined) dbProfile.avatar_url = profile.avatarUrl;
+  if (profile.bio !== undefined) dbProfile.bio = profile.bio;
+  if (profile.birthday !== undefined) dbProfile.birthday = profile.birthday;
+  
+  return dbProfile;
+}
+
 export class Auth {
   private database: Database;
   
@@ -391,7 +420,7 @@ export class Auth {
       return {
         data: {
           user: authResponse.user,
-          profile: profile
+          profile: profile ? convertDbProfileToSchema(profile) : null
         },
         error: null
       };
@@ -421,7 +450,7 @@ export class Auth {
 
   /**
    * Get any user's profile by ID
-   * Returns profile information from the users table (nickname, avatar_url, bio, etc.)
+   * Returns profile information from the users table (nickname, avatarUrl, bio, etc.)
    */
   async getProfile(userId: string): Promise<{
     data: ProfileSchema | null;
@@ -438,8 +467,13 @@ export class Auth {
       return { data: null, error: null };
     }
     
+    // Convert database format to schema format
+    if (data) {
+      return { data: convertDbProfileToSchema(data), error: null };
+    }
+    
     // Return PostgrestError directly for database operations
-    return { data, error };
+    return { data: null, error };
   }
 
   /**
@@ -479,7 +513,7 @@ export class Auth {
 
   /**
    * Set/Update the current user's profile
-   * Updates profile information in the users table (nickname, avatar_url, bio, etc.)
+   * Updates profile information in the users table (nickname, avatarUrl, bio, etc.)
    */
   async setProfile(profile: UpdateProfileSchema): Promise<{
     data: ProfileSchema | null;
@@ -518,16 +552,24 @@ export class Auth {
       }
     }
 
+    // Convert schema format to database format
+    const dbProfile = convertSchemaToDbProfile(profile);
+
     // Update the profile using query builder
     const { data, error } = await this.database
       .from('users')
-      .update(profile)
+      .update(dbProfile)
       .eq('id', session.user.id)
       .select()
       .single();
     
+    // Convert database format back to schema format
+    if (data) {
+      return { data: convertDbProfileToSchema(data), error: null };
+    }
+    
     // Return PostgrestError directly for database operations
-    return { data, error };
+    return { data: null, error };
   }
 
 
