@@ -29,6 +29,8 @@ export type {
 // Re-export auth module for advanced usage
 export { Auth } from './modules/auth';
 
+export type { ProfileData, UpdateProfileData } from './modules/auth';
+
 // Re-export database module (using postgrest-js)
 export { Database } from './modules/database-postgrest';
 // Note: QueryBuilder is no longer exported as we use postgrest-js QueryBuilder internally

@@ -15,8 +15,75 @@ import type {
   CreateSessionResponse,
   GetCurrentSessionResponse,
   GetOauthUrlResponse,
+  GetPublicAuthConfigResponse,
   OAuthProvidersSchema,
+  UserIdSchema,
+  EmailSchema,
+  RoleSchema,
 } from '@insforge/shared-schemas';
+
+/**
+ * Dynamic profile type - represents flexible profile data from database
+ * Fields can vary based on database schema configuration.
+ * All fields are converted from snake_case (database) to camelCase (API)
+ */
+export type ProfileData = Record<string, any> & {
+  id: string; // User ID (required)
+  createdAt?: string; // PostgreSQL TIMESTAMPTZ
+  updatedAt?: string; // PostgreSQL TIMESTAMPTZ
+};
+
+/**
+ * Dynamic profile update type - for updating profile fields
+ * Supports any fields that exist in the profile table
+ */
+export type UpdateProfileData = Partial<Record<string, any>>;
+
+/**
+ * Convert database profile (snake_case) to camelCase format
+ * Handles dynamic fields flexibly - automatically converts all snake_case keys to camelCase
+ */
+function convertDbProfileToCamelCase(dbProfile: Record<string, any>): ProfileData {
+  const result: ProfileData = {
+    id: dbProfile.id,
+  };
+  
+  // Convert known timestamp fields
+  if (dbProfile.created_at !== undefined) result.createdAt = dbProfile.created_at;
+  if (dbProfile.updated_at !== undefined) result.updatedAt = dbProfile.updated_at;
+  
+  // Convert all other fields from snake_case to camelCase dynamically
+  Object.keys(dbProfile).forEach(key => {
+    // Skip already processed fields
+    if (key === 'id' || key === 'created_at' || key === 'updated_at') return;
+    
+    // Convert snake_case to camelCase
+    // e.g., avatar_url -> avatarUrl, first_name -> firstName
+    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    result[camelKey] = dbProfile[key];
+  });
+  
+  return result;
+}
+
+/**
+ * Convert camelCase profile data to database format (snake_case)
+ * Handles dynamic fields flexibly - automatically converts all camelCase keys to snake_case
+ */
+function convertCamelCaseToDbProfile(profile: UpdateProfileData): Record<string, any> {
+  const dbProfile: Record<string, any> = {};
+  
+  Object.keys(profile).forEach(key => {
+    if (profile[key] === undefined) return;
+    
+    // Convert camelCase to snake_case
+    // e.g., avatarUrl -> avatar_url, firstName -> first_name
+    const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+    dbProfile[snakeKey] = profile[key];
+  });
+  
+  return dbProfile;
+}
 
 export class Auth {
   private database: Database;
@@ -145,11 +212,18 @@ export class Auth {
       
       // Save session internally
       const session: AuthSession = {
-        accessToken: response.accessToken,
-        user: response.user,
+        accessToken: response.accessToken || '',
+        user: response.user || {
+          id: '',
+          email: '',
+          name: '',
+          emailVerified: false,
+          createdAt: '',
+          updatedAt: '',
+        },
       };
       this.tokenManager.saveSession(session);
-      this.http.setAuthToken(response.accessToken);
+      this.http.setAuthToken(response.accessToken || '');
 
       return { 
         data: response,
@@ -244,12 +318,66 @@ export class Auth {
     }
   }
 
+
+  /**
+   * Get all public authentication configuration (OAuth + Email)
+   * Returns both OAuth providers and email authentication settings in one request
+   * This is a public endpoint that doesn't require authentication
+   * 
+   * @returns Complete public authentication configuration including OAuth providers and email auth settings
+   * 
+   * @example
+   * ```ts
+   * const { data, error } = await insforge.auth.getPublicAuthConfig();
+   * if (data) {
+   *   console.log(`OAuth providers: ${data.oauth.data.length}`);
+   *   console.log(`Password min length: ${data.email.passwordMinLength}`);
+   * }
+   * ```
+   */
+  async getPublicAuthConfig(): Promise<{
+    data: GetPublicAuthConfigResponse | null;
+    error: InsForgeError | null;
+  }> {
+    try {
+      const response = await this.http.get<GetPublicAuthConfigResponse>('/api/auth/public-config');
+      
+      return { 
+        data: response,
+        error: null 
+      };
+    } catch (error) {
+      // Pass through API errors unchanged
+      if (error instanceof InsForgeError) {
+        return { data: null, error };
+      }
+      
+      // Generic fallback for unexpected errors
+      return { 
+        data: null, 
+        error: new InsForgeError(
+          'An unexpected error occurred while fetching public authentication configuration',
+          500,
+          'UNEXPECTED_ERROR'
+        )
+      };
+    }
+  }
+
+
   /**
    * Get the current user with full profile information
-   * Returns both auth info (id, email, role) and profile data (nickname, avatar_url, bio, etc.)
+   * Returns both auth info (id, email, role) and profile data (dynamic fields from users table)
    */
   async getCurrentUser(): Promise<{
-    data: { user: any; profile: any } | null;
+    data: {
+      user: {
+        id: UserIdSchema;
+        email: EmailSchema;
+        role: RoleSchema;
+      };
+      profile: ProfileData | null;
+    } | null;
     error: any | null;
   }> {
     try {
@@ -278,7 +406,7 @@ export class Auth {
       return {
         data: {
           user: authResponse.user,
-          profile: profile
+          profile: profile ? convertDbProfileToCamelCase(profile) : null
         },
         error: null
       };
@@ -308,10 +436,10 @@ export class Auth {
 
   /**
    * Get any user's profile by ID
-   * Returns profile information from the users table (nickname, avatar_url, bio, etc.)
+   * Returns profile information from the users table (dynamic fields)
    */
   async getProfile(userId: string): Promise<{
-    data: any | null;
+    data: ProfileData | null;
     error: any | null;
   }> {
     const { data, error } = await this.database
@@ -325,8 +453,13 @@ export class Auth {
       return { data: null, error: null };
     }
     
+    // Convert database format to camelCase format
+    if (data) {
+      return { data: convertDbProfileToCamelCase(data), error: null };
+    }
+    
     // Return PostgrestError directly for database operations
-    return { data, error };
+    return { data: null, error };
   }
 
   /**
@@ -366,16 +499,10 @@ export class Auth {
 
   /**
    * Set/Update the current user's profile
-   * Updates profile information in the users table (nickname, avatar_url, bio, etc.)
+   * Updates profile information in the users table (supports any dynamic fields)
    */
-  async setProfile(profile: {
-    nickname?: string;
-    avatar_url?: string;
-    bio?: string;
-    birthday?: string;
-    [key: string]: any;
-  }): Promise<{
-    data: any | null;
+  async setProfile(profile: UpdateProfileData): Promise<{
+    data: ProfileData | null;
     error: any | null;
   }> {
     // Get current session to get user ID
@@ -398,22 +525,156 @@ export class Auth {
         return { data: null, error };
       }
       if (data?.user) {
-        session.user = data.user;
+        // Update session with minimal user info
+        session.user = {
+          id: data.user.id,
+          email: data.user.email,
+          name: (data.profile as any)?.nickname || '', // Fallback - profile structure is dynamic
+          emailVerified: false, // Not available from API, but required by UserSchema
+          createdAt: new Date().toISOString(), // Fallback
+          updatedAt: new Date().toISOString(), // Fallback
+        };
         this.tokenManager.saveSession(session);
       }
     }
 
+    // Convert camelCase format to database format (snake_case)
+    const dbProfile = convertCamelCaseToDbProfile(profile);
+
     // Update the profile using query builder
     const { data, error } = await this.database
       .from('users')
-      .update(profile)
+      .update(dbProfile)
       .eq('id', session.user.id)
       .select()
       .single();
     
+    // Convert database format back to camelCase format
+    if (data) {
+      return { data: convertDbProfileToCamelCase(data), error: null };
+    }
+    
     // Return PostgrestError directly for database operations
-    return { data, error };
+    return { data: null, error };
   }
 
+  /**
+   * Send password reset code to user's email
+   * Always returns success to prevent user enumeration
+   */
+  async sendPasswordResetCode(request: { email: string }): Promise<{
+    data: { success: boolean; message: string } | null;
+    error: InsForgeError | null;
+  }> {
+    try {
+      const response = await this.http.post<{ success: boolean; message: string }>(
+        '/api/auth/email/send-reset-password-code',
+        request
+      );
+      
+      return {
+        data: response,
+        error: null
+      };
+    } catch (error) {
+      // Pass through API errors unchanged
+      if (error instanceof InsForgeError) {
+        return { data: null, error };
+      }
+      
+      // Generic fallback for unexpected errors
+      return {
+        data: null,
+        error: new InsForgeError(
+          'An unexpected error occurred while sending password reset code',
+          500,
+          'UNEXPECTED_ERROR'
+        )
+      };
+    }
+  }
+
+  /**
+   * Reset password with OTP token
+   * Token can be from magic link or from code verification
+   */
+  async resetPassword(request: { newPassword: string; otp: string }): Promise<{
+    data: { message: string; redirectTo?: string } | null;
+    error: InsForgeError | null;
+  }> {
+    try {
+      const response = await this.http.post<{ message: string; redirectTo?: string }>(
+        '/api/auth/reset-password',
+        request
+      );
+      
+      return {
+        data: response,
+        error: null
+      };
+    } catch (error) {
+      // Pass through API errors unchanged
+      if (error instanceof InsForgeError) {
+        return { data: null, error };
+      }
+      
+      // Generic fallback for unexpected errors
+      return {
+        data: null,
+        error: new InsForgeError(
+          'An unexpected error occurred while resetting password',
+          500,
+          'UNEXPECTED_ERROR'
+        )
+      };
+    }
+  }
+
+  /**
+   * Verify email with OTP token
+   * If email is provided: uses numeric OTP verification (6-digit code)
+   * If email is NOT provided: uses link OTP verification (64-char token)
+   */
+  async verifyEmail(request: { email?: string; otp: string }): Promise<{
+    data: { accessToken: string; user?: any } | null;
+    error: InsForgeError | null;
+  }> {
+    try {
+      const response = await this.http.post<{ accessToken: string; user?: any }>(
+        '/api/auth/verify-email',
+        request
+      );
+      
+      // Save session if we got a token
+      if (response.accessToken) {
+        const session: AuthSession = {
+          accessToken: response.accessToken,
+          user: response.user || {} as any,
+        };
+        this.tokenManager.saveSession(session);
+        this.http.setAuthToken(response.accessToken);
+      }
+      
+      return {
+        data: response,
+        error: null
+      };
+    } catch (error) {
+      // Pass through API errors unchanged
+      if (error instanceof InsForgeError) {
+        return { data: null, error };
+      }
+      
+      // Generic fallback for unexpected errors
+      return {
+        data: null,
+        error: new InsForgeError(
+          'An unexpected error occurred while verifying email',
+          500,
+          'UNEXPECTED_ERROR'
+        )
+      };
+    }
+  }
 
 }

@@ -129,6 +129,31 @@ await insforge.auth.setProfile({
 // Updates current user's profile in users table
 ```
 
+### `getOAuthProviders()`
+```javascript
+await insforge.auth.getOAuthProviders()
+// Response: { data: PublicOAuthProvider[], error }
+// data: Array of configured OAuth providers
+// Each provider: { provider: ['google','github'] }
+// This is a public endpoint that doesn't require authentication
+```
+
+### `getEmailAuthConfig()`
+```javascript
+await insforge.auth.getEmailAuthConfig()
+// Response: { data: GetPublicEmailAuthConfigResponse, error }
+// data: {
+//   requireEmailVerification: boolean,
+//   passwordMinLength: number,
+//   requireNumber: boolean,
+//   requireLowercase: boolean,
+//   requireUppercase: boolean,
+//   requireSpecialChar: boolean
+// }
+// This is a public endpoint that doesn't require authentication
+// Useful for displaying password requirements and email verification settings in your UI
+```
+
 ## Error Handling
 
 ### Auth/Storage/AI Errors (InsForgeError)
@@ -546,7 +571,9 @@ import type {
   GetCurrentSessionResponse,
   StorageFileSchema,
   StorageBucketSchema,
-  ListObjectsResponseSchema
+  ListObjectsResponseSchema,
+  PublicOAuthProvider,
+  GetPublicEmailAuthConfigResponse
 } from '@insforge/shared-schemas';
 
 // Database response type
