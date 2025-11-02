@@ -677,4 +677,9 @@ export class Auth {
     }
   }
 
+  setSession(session: AuthSession): void {
+    this.tokenManager.saveSession(session);
+    this.http.setAuthToken(session.accessToken);
+  }
+
 }
