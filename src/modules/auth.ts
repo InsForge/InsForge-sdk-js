@@ -559,6 +559,78 @@ export class Auth {
   }
 
   /**
+   * Send email verification code
+   * Creates a 6-digit OTP and sends it via email for manual entry
+   */
+  async sendVerificationCode(request: { email: string }): Promise<{
+    data: { success: boolean; message: string } | null;
+    error: InsForgeError | null;
+  }> {
+    try {
+      const response = await this.http.post<{ success: boolean; message: string }>(
+        '/api/auth/email/send-verification-code',
+        request
+      );
+      
+      return {
+        data: response,
+        error: null
+      };
+    } catch (error) {
+      // Pass through API errors unchanged
+      if (error instanceof InsForgeError) {
+        return { data: null, error };
+      }
+      
+      // Generic fallback for unexpected errors
+      return {
+        data: null,
+        error: new InsForgeError(
+          'An unexpected error occurred while sending verification code',
+          500,
+          'UNEXPECTED_ERROR'
+        )
+      };
+    }
+  }
+
+  /**
+   * Send email verification link
+   * Creates a magic link token and sends it via email
+   */
+  async sendVerificationLink(request: { email: string }): Promise<{
+    data: { success: boolean; message: string } | null;
+    error: InsForgeError | null;
+  }> {
+    try {
+      const response = await this.http.post<{ success: boolean; message: string }>(
+        '/api/auth/email/send-verification-link',
+        request
+      );
+      
+      return {
+        data: response,
+        error: null
+      };
+    } catch (error) {
+      // Pass through API errors unchanged
+      if (error instanceof InsForgeError) {
+        return { data: null, error };
+      }
+      
+      // Generic fallback for unexpected errors
+      return {
+        data: null,
+        error: new InsForgeError(
+          'An unexpected error occurred while sending verification link',
+          500,
+          'UNEXPECTED_ERROR'
+        )
+      };
+    }
+  }
+
+  /**
    * Send password reset code to user's email
    * Always returns success to prevent user enumeration
    */
