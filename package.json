@@ -1,6 +1,6 @@
 {
   "name": "@insforge/sdk",
-  "version": "0.0.58-dev.11",
+  "version": "0.0.58-dev.12",
   "description": "Official JavaScript/TypeScript client for InsForge Backend-as-a-Service platform",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
