@@ -676,22 +676,4 @@ export class Auth {
       };
     }
   }
-
-  /**
-   * Set the current session
-   * This is used to set the session from the OAuth callback
-   */
-  async setSession(session: AuthSession): Promise<void> {
-    try {
-      this.tokenManager.saveSession(session);
-      this.http.setAuthToken(session.accessToken);
-    } catch (error) {
-      throw new InsForgeError(
-        'An unexpected error occurred while setting session',
-        500,
-        'UNEXPECTED_ERROR'
-      );
-    }
-  }
-
 }
