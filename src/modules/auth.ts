@@ -20,6 +20,10 @@ import type {
   UserIdSchema,
   EmailSchema,
   RoleSchema,
+  SendVerificationEmailRequest,
+  SendResetPasswordEmailRequest,
+  ExchangeResetPasswordTokenRequest,
+  VerifyEmailRequest,
 } from '@insforge/shared-schemas';
 
 /**
@@ -95,7 +99,7 @@ export class Auth {
     this.database = new Database(http, tokenManager);
     
     // Auto-detect OAuth callback parameters in the URL
-    this.detectOAuthCallback();
+    this.detectAuthCallback();
   }
 
   /**
@@ -103,7 +107,7 @@ export class Auth {
    * This runs on initialization to seamlessly complete the OAuth flow
    * Matches the backend's OAuth callback response (backend/src/api/routes/auth.ts:540-544)
    */
-  private detectOAuthCallback(): void {
+  private detectAuthCallback(): void {
     // Only run in browser environment
     if (typeof window === 'undefined') return;
     
@@ -559,19 +563,22 @@ export class Auth {
   }
 
   /**
-   * Send email verification code
-   * Creates a 6-digit OTP and sends it via email for manual entry
+   * Send email verification (code or link based on config)
+   *
+   * Send email verification using the method configured in auth settings (verifyEmailMethod).
+   * When method is 'code', sends a 6-digit numeric code. When method is 'link', sends a magic link.
+   * Prevents user enumeration by returning success even if email doesn't exist.
    */
-  async sendVerificationCode(request: { email: string }): Promise<{
+  async sendVerificationEmail(request: SendVerificationEmailRequest): Promise<{
     data: { success: boolean; message: string } | null;
     error: InsForgeError | null;
   }> {
     try {
       const response = await this.http.post<{ success: boolean; message: string }>(
-        '/api/auth/email/send-verification-code',
+        '/api/auth/email/send-verification',
         request
       );
-      
+
       return {
         data: response,
         error: null
@@ -581,7 +588,7 @@ export class Auth {
       if (error instanceof InsForgeError) {
         return { data: null, error };
       }
-      
+
       // Generic fallback for unexpected errors
       return {
         data: null,
@@ -595,55 +602,23 @@ export class Auth {
   }
 
   /**
-   * Send email verification link
-   * Creates a magic link token and sends it via email
+   * Send password reset (code or link based on config)
+   *
+   * Send password reset email using the method configured in auth settings (resetPasswordMethod).
+   * When method is 'code', sends a 6-digit numeric code for two-step flow.
+   * When method is 'link', sends a magic link.
+   * Prevents user enumeration by returning success even if email doesn't exist.
    */
-  async sendVerificationLink(request: { email: string }): Promise<{
+  async sendResetPasswordEmail(request: SendResetPasswordEmailRequest): Promise<{
     data: { success: boolean; message: string } | null;
     error: InsForgeError | null;
   }> {
     try {
       const response = await this.http.post<{ success: boolean; message: string }>(
-        '/api/auth/email/send-verification-link',
+        '/api/auth/email/send-reset-password',
         request
       );
-      
-      return {
-        data: response,
-        error: null
-      };
-    } catch (error) {
-      // Pass through API errors unchanged
-      if (error instanceof InsForgeError) {
-        return { data: null, error };
-      }
-      
-      // Generic fallback for unexpected errors
-      return {
-        data: null,
-        error: new InsForgeError(
-          'An unexpected error occurred while sending verification link',
-          500,
-          'UNEXPECTED_ERROR'
-        )
-      };
-    }
-  }
 
-  /**
-   * Send password reset code to user's email
-   * Always returns success to prevent user enumeration
-   */
-  async sendPasswordResetCode(request: { email: string }): Promise<{
-    data: { success: boolean; message: string } | null;
-    error: InsForgeError | null;
-  }> {
-    try {
-      const response = await this.http.post<{ success: boolean; message: string }>(
-        '/api/auth/email/send-reset-password-code',
-        request
-      );
-      
       return {
         data: response,
         error: null
@@ -653,7 +628,7 @@ export class Auth {
       if (error instanceof InsForgeError) {
         return { data: null, error };
       }
-      
+
       // Generic fallback for unexpected errors
       return {
         data: null,
@@ -667,19 +642,24 @@ export class Auth {
   }
 
   /**
-   * Verify reset password code and get reset token
-   * Step 2 of code-based password reset flow
+   * Exchange reset password code for reset token
+   *
+   * Step 1 of two-step password reset flow (only used when resetPasswordMethod is 'code'):
+   * 1. Verify the 6-digit code sent to user's email
+   * 2. Return a reset token that can be used to actually reset the password
+   *
+   * This endpoint is not used when resetPasswordMethod is 'link' (magic link flow is direct).
    */
-  async verifyResetPasswordCode(request: { email: string; code: string }): Promise<{
-    data: { resetToken: string; expiresAt: string } | null;
+  async exchangeResetPasswordToken(request: ExchangeResetPasswordTokenRequest): Promise<{
+    data: { token: string; expiresAt: string } | null;
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{ resetToken: string; expiresAt: string }>(
-        '/api/auth/verify-reset-password-code',
+      const response = await this.http.post<{ token: string; expiresAt: string }>(
+        '/api/auth/email/exchange-reset-password-token',
         request
       );
-      
+
       return {
         data: response,
         error: null
@@ -689,7 +669,7 @@ export class Auth {
       if (error instanceof InsForgeError) {
         return { data: null, error };
       }
-      
+
       // Generic fallback for unexpected errors
       return {
         data: null,
@@ -703,8 +683,17 @@ export class Auth {
   }
 
   /**
-   * Reset password with OTP token
-   * Token can be from magic link or from code verification
+   * Reset password with token
+   *
+   * Reset user password with a token. The token can be:
+   * - Magic link token (64-character hex token from send-reset-password when method is 'link')
+   * - Reset token (from exchange-reset-password-token after code verification when method is 'code')
+   *
+   * Both token types use RESET_PASSWORD purpose and are verified the same way.
+   *
+   * Flow summary:
+   * - Code method: send-reset-password → exchange-reset-password-token → reset-password (with resetToken)
+   * - Link method: send-reset-password → reset-password (with link token directly)
    */
   async resetPassword(request: { newPassword: string; otp: string }): Promise<{
     data: { message: string; redirectTo?: string } | null;
@@ -712,10 +701,10 @@ export class Auth {
   }> {
     try {
       const response = await this.http.post<{ message: string; redirectTo?: string }>(
-        '/api/auth/reset-password',
+        '/api/auth/email/reset-password',
         request
       );
-      
+
       return {
         data: response,
         error: null
@@ -725,7 +714,7 @@ export class Auth {
       if (error instanceof InsForgeError) {
         return { data: null, error };
       }
-      
+
       // Generic fallback for unexpected errors
       return {
         data: null,
@@ -739,20 +728,28 @@ export class Auth {
   }
 
   /**
-   * Verify email with OTP token
-   * If email is provided: uses numeric OTP verification (6-digit code)
-   * If email is NOT provided: uses link OTP verification (64-char token)
+   * Verify email with code or link
+   *
+   * Verify email address using the method configured in auth settings (verifyEmailMethod):
+   * - Code verification: Provide both `email` and `otp` (6-digit numeric code)
+   * - Link verification: Provide only `otp` (64-character hex token from magic link)
+   *
+   * Successfully verified users will receive a session token.
+   *
+   * The email verification link sent to users always points to the backend API endpoint.
+   * If `verifyEmailRedirectTo` is configured, the backend will redirect to that URL after successful verification.
+   * Otherwise, a default success page is displayed.
    */
-  async verifyEmail(request: { email?: string; otp: string }): Promise<{
-    data: { accessToken: string; user?: any } | null;
+  async verifyEmail(request: VerifyEmailRequest): Promise<{
+    data: { accessToken: string; user?: any; redirectTo?: string } | null;
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{ accessToken: string; user?: any }>(
-        '/api/auth/verify-email',
+      const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string }>(
+        '/api/auth/email/verify',
         request
       );
-      
+
       // Save session if we got a token
       if (response.accessToken) {
         const session: AuthSession = {
@@ -762,7 +759,7 @@ export class Auth {
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
       }
-      
+
       return {
         data: response,
         error: null
@@ -772,7 +769,7 @@ export class Auth {
       if (error instanceof InsForgeError) {
         return { data: null, error };
       }
-      
+
       // Generic fallback for unexpected errors
       return {
         data: null,
