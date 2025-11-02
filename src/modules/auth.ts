@@ -667,6 +667,42 @@ export class Auth {
   }
 
   /**
+   * Verify reset password code and get reset token
+   * Step 2 of code-based password reset flow
+   */
+  async verifyResetPasswordCode(request: { email: string; code: string }): Promise<{
+    data: { resetToken: string; expiresAt: string } | null;
+    error: InsForgeError | null;
+  }> {
+    try {
+      const response = await this.http.post<{ resetToken: string; expiresAt: string }>(
+        '/api/auth/verify-reset-password-code',
+        request
+      );
+      
+      return {
+        data: response,
+        error: null
+      };
+    } catch (error) {
+      // Pass through API errors unchanged
+      if (error instanceof InsForgeError) {
+        return { data: null, error };
+      }
+      
+      // Generic fallback for unexpected errors
+      return {
+        data: null,
+        error: new InsForgeError(
+          'An unexpected error occurred while verifying reset code',
+          500,
+          'UNEXPECTED_ERROR'
+        )
+      };
+    }
+  }
+
+  /**
    * Reset password with OTP token
    * Token can be from magic link or from code verification
    */
