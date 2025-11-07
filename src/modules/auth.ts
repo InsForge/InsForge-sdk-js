@@ -44,29 +44,32 @@ export type ProfileData = Record<string, any> & {
 export type UpdateProfileData = Partial<Record<string, any>>;
 
 /**
- * Convert database profile (snake_case) to camelCase format
+ * Convert database profile to include both snake_case and camelCase formats
  * Handles dynamic fields flexibly - automatically converts all snake_case keys to camelCase
+ * 
+ * NOTE: Backward compatibility for <= v0.0.57
+ * Both formats are returned to maintain compatibility with existing code.
+ * For example: both created_at and createdAt are included in the result.
  */
 function convertDbProfileToCamelCase(dbProfile: Record<string, any>): ProfileData {
   const result: ProfileData = {
     id: dbProfile.id,
   };
-  
-  // Convert known timestamp fields
-  if (dbProfile.created_at !== undefined) result.createdAt = dbProfile.created_at;
-  if (dbProfile.updated_at !== undefined) result.updatedAt = dbProfile.updated_at;
-  
-  // Convert all other fields from snake_case to camelCase dynamically
+
+  // Convert all fields - keep both snake_case and camelCase for backward compatibility (<= v0.0.57)
   Object.keys(dbProfile).forEach(key => {
-    // Skip already processed fields
-    if (key === 'id' || key === 'created_at' || key === 'updated_at') return;
+
+    // Keep original field (snake_case) for backward compatibility (<= v0.0.57)
+    result[key] = dbProfile[key];
     
-    // Convert snake_case to camelCase
-    // e.g., avatar_url -> avatarUrl, first_name -> firstName
-    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-    result[camelKey] = dbProfile[key];
+    // Also add camelCase version if field contains underscore
+    // e.g., created_at -> createdAt, avatar_url -> avatarUrl, etc.
+    if (key.includes('_')) {
+      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      result[camelKey] = dbProfile[key];
+    }
   });
-  
+
   return result;
 }
 
@@ -76,28 +79,28 @@ function convertDbProfileToCamelCase(dbProfile: Record<string, any>): ProfileDat
  */
 function convertCamelCaseToDbProfile(profile: UpdateProfileData): Record<string, any> {
   const dbProfile: Record<string, any> = {};
-  
+
   Object.keys(profile).forEach(key => {
     if (profile[key] === undefined) return;
-    
+
     // Convert camelCase to snake_case
     // e.g., avatarUrl -> avatar_url, firstName -> first_name
     const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
     dbProfile[snakeKey] = profile[key];
   });
-  
+
   return dbProfile;
 }
 
 export class Auth {
   private database: Database;
-  
+
   constructor(
     private http: HttpClient,
     private tokenManager: TokenManager
   ) {
     this.database = new Database(http, tokenManager);
-    
+
     // Auto-detect OAuth callback parameters in the URL
     this.detectAuthCallback();
   }
@@ -110,16 +113,16 @@ export class Auth {
   private detectAuthCallback(): void {
     // Only run in browser environment
     if (typeof window === 'undefined') return;
-    
+
     try {
       const params = new URLSearchParams(window.location.search);
-      
+
       // Backend returns: access_token, user_id, email, name (optional)
       const accessToken = params.get('access_token');
       const userId = params.get('user_id');
       const email = params.get('email');
       const name = params.get('name');
-      
+
       // Check if we have OAuth callback parameters
       if (accessToken && userId && email) {
         // Create session with the data from backend
@@ -136,23 +139,23 @@ export class Auth {
             updatedAt: new Date().toISOString(),
           } as any,
         };
-        
+
         // Save session and set auth token
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(accessToken);
-        
+
         // Clean up the URL to remove sensitive parameters
         const url = new URL(window.location.href);
         url.searchParams.delete('access_token');
         url.searchParams.delete('user_id');
         url.searchParams.delete('email');
         url.searchParams.delete('name');
-        
+
         // Also handle error case from backend (line 581)
         if (params.has('error')) {
           url.searchParams.delete('error');
         }
-        
+
         // Replace URL without adding to browser history
         window.history.replaceState({}, document.title, url.toString());
       }
@@ -191,10 +194,10 @@ export class Auth {
       if (error instanceof InsForgeError) {
         return { data: null, error };
       }
-      
+
       // Generic fallback for unexpected errors
-      return { 
-        data: null, 
+      return {
+        data: null,
         error: new InsForgeError(
           error instanceof Error ? error.message : 'An unexpected error occurred during sign up',
           500,
@@ -213,7 +216,7 @@ export class Auth {
   }> {
     try {
       const response = await this.http.post<CreateSessionResponse>('/api/auth/sessions', request);
-      
+
       // Save session internally
       const session: AuthSession = {
         accessToken: response.accessToken || '',
@@ -229,19 +232,19 @@ export class Auth {
       this.tokenManager.saveSession(session);
       this.http.setAuthToken(response.accessToken || '');
 
-      return { 
+      return {
         data: response,
-        error: null 
+        error: null
       };
     } catch (error) {
       // Pass through API errors unchanged
       if (error instanceof InsForgeError) {
         return { data: null, error };
       }
-      
+
       // Generic fallback for unexpected errors
-      return { 
-        data: null, 
+      return {
+        data: null,
         error: new InsForgeError(
           'An unexpected error occurred during sign in',
           500,
@@ -264,36 +267,36 @@ export class Auth {
   }> {
     try {
       const { provider, redirectTo, skipBrowserRedirect } = options;
-      
-      const params = redirectTo 
-        ? { redirect_uri: redirectTo } 
+
+      const params = redirectTo
+        ? { redirect_uri: redirectTo }
         : undefined;
-      
+
       const endpoint = `/api/auth/oauth/${provider}`;
       const response = await this.http.get<GetOauthUrlResponse>(endpoint, { params });
-      
+
       // Automatically redirect in browser unless told not to
       if (typeof window !== 'undefined' && !skipBrowserRedirect) {
         window.location.href = response.authUrl;
         return { data: {}, error: null };
       }
 
-      return { 
-        data: { 
+      return {
+        data: {
           url: response.authUrl,
-          provider 
-        }, 
-        error: null 
+          provider
+        },
+        error: null
       };
     } catch (error) {
       // Pass through API errors unchanged
       if (error instanceof InsForgeError) {
         return { data: {}, error };
       }
-      
+
       // Generic fallback for unexpected errors
-      return { 
-        data: {}, 
+      return {
+        data: {},
         error: new InsForgeError(
           'An unexpected error occurred during OAuth initialization',
           500,
@@ -312,7 +315,7 @@ export class Auth {
       this.http.setAuthToken(null);
       return { error: null };
     } catch (error) {
-      return { 
+      return {
         error: new InsForgeError(
           'Failed to sign out',
           500,
@@ -345,20 +348,20 @@ export class Auth {
   }> {
     try {
       const response = await this.http.get<GetPublicAuthConfigResponse>('/api/auth/public-config');
-      
-      return { 
+
+      return {
         data: response,
-        error: null 
+        error: null
       };
     } catch (error) {
       // Pass through API errors unchanged
       if (error instanceof InsForgeError) {
         return { data: null, error };
       }
-      
+
       // Generic fallback for unexpected errors
-      return { 
-        data: null, 
+      return {
+        data: null,
         error: new InsForgeError(
           'An unexpected error occurred while fetching public authentication configuration',
           500,
@@ -394,19 +397,19 @@ export class Auth {
       // Call the API for auth info
       this.http.setAuthToken(session.accessToken);
       const authResponse = await this.http.get<GetCurrentSessionResponse>('/api/auth/sessions/current');
-      
+
       // Get the user's profile using query builder
       const { data: profile, error: profileError } = await this.database
         .from('users')
         .select('*')
         .eq('id', authResponse.user.id)
         .single();
-      
+
       // For database errors, return PostgrestError directly
       if (profileError && (profileError as any).code !== 'PGRST116') {  // PGRST116 = not found
         return { data: null, error: profileError };
       }
-      
+
       return {
         data: {
           user: authResponse.user,
@@ -420,15 +423,15 @@ export class Auth {
         await this.signOut();
         return { data: null, error: null };
       }
-      
+
       // Pass through all other errors unchanged
       if (error instanceof InsForgeError) {
         return { data: null, error };
       }
-      
+
       // Generic fallback for unexpected errors
-      return { 
-        data: null, 
+      return {
+        data: null,
         error: new InsForgeError(
           'An unexpected error occurred while fetching user',
           500,
@@ -451,17 +454,17 @@ export class Auth {
       .select('*')
       .eq('id', userId)
       .single();
-    
+
     // Handle not found as null, not error
     if (error && (error as any).code === 'PGRST116') {
       return { data: null, error: null };
     }
-    
+
     // Convert database format to camelCase format
     if (data) {
       return { data: convertDbProfileToCamelCase(data), error: null };
     }
-    
+
     // Return PostgrestError directly for database operations
     return { data: null, error };
   }
@@ -476,7 +479,7 @@ export class Auth {
   } {
     try {
       const session = this.tokenManager.getSession();
-      
+
       if (session?.accessToken) {
         this.http.setAuthToken(session.accessToken);
         return { data: { session }, error: null };
@@ -488,10 +491,10 @@ export class Auth {
       if (error instanceof InsForgeError) {
         return { data: { session: null }, error };
       }
-      
+
       // Generic fallback for unexpected errors
-      return { 
-        data: { session: null }, 
+      return {
+        data: { session: null },
         error: new InsForgeError(
           'An unexpected error occurred while getting session',
           500,
@@ -512,8 +515,8 @@ export class Auth {
     // Get current session to get user ID
     const session = this.tokenManager.getSession();
     if (!session?.accessToken) {
-      return { 
-        data: null, 
+      return {
+        data: null,
         error: new InsForgeError(
           'No authenticated user found',
           401,
@@ -521,7 +524,7 @@ export class Auth {
         )
       };
     }
-    
+
     // If no user ID in session (edge function scenario), fetch it
     if (!session.user?.id) {
       const { data, error } = await this.getCurrentUser();
@@ -533,10 +536,10 @@ export class Auth {
         session.user = {
           id: data.user.id,
           email: data.user.email,
-          name: (data.profile as any)?.nickname || '', // Fallback - profile structure is dynamic
-          emailVerified: false, // Not available from API, but required by UserSchema
-          createdAt: new Date().toISOString(), // Fallback
-          updatedAt: new Date().toISOString(), // Fallback
+          name: '',
+          emailVerified: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         };
         this.tokenManager.saveSession(session);
       }
@@ -552,12 +555,12 @@ export class Auth {
       .eq('id', session.user.id)
       .select()
       .single();
-    
+
     // Convert database format back to camelCase format
     if (data) {
       return { data: convertDbProfileToCamelCase(data), error: null };
     }
-    
+
     // Return PostgrestError directly for database operations
     return { data: null, error };
   }
