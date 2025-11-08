@@ -129,6 +129,14 @@ await insforge.auth.setProfile({
 // Updates current user's profile in users table
 ```
 
+### `getPublicAuthConfig()`
+```javascript
+await insforge.auth.getPublicAuthConfig()
+// Response: { data: GetPublicAuthConfigResponse, error }
+// data: both OAuth providers and email authentication settings in one request
+// This is a public endpoint that doesn't require authentication
+```
+
 ## Error Handling
 
 ### Auth/Storage/AI Errors (InsForgeError)
@@ -546,7 +554,9 @@ import type {
   GetCurrentSessionResponse,
   StorageFileSchema,
   StorageBucketSchema,
-  ListObjectsResponseSchema
+  ListObjectsResponseSchema,
+  PublicOAuthProvider,
+  GetPublicEmailAuthConfigResponse
 } from '@insforge/shared-schemas';
 
 // Database response type
