@@ -61,7 +61,7 @@ function convertDbProfileToCamelCase(dbProfile: Record<string, any>): ProfileDat
 
     // Keep original field (snake_case) for backward compatibility (<= v0.0.57)
     result[key] = dbProfile[key];
-    
+
     // Also add camelCase version if field contains underscore
     // e.g., created_at -> createdAt, avatar_url -> avatarUrl, etc.
     if (key.includes('_')) {
@@ -181,7 +181,7 @@ export class Auth {
           accessToken: response.accessToken,
           user: response.user,
         };
-        this.tokenManager.saveSession(session);
+        if (!request.hostedMode) this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
       }
 
@@ -229,7 +229,7 @@ export class Auth {
           updatedAt: '',
         },
       };
-      this.tokenManager.saveSession(session);
+      if (!request.hostedMode) this.tokenManager.saveSession(session);
       this.http.setAuthToken(response.accessToken || '');
 
       return {
