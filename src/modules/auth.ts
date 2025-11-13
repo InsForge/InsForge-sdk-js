@@ -61,7 +61,7 @@ function convertDbProfileToCamelCase(dbProfile: Record<string, any>): ProfileDat
 
     // Keep original field (snake_case) for backward compatibility (<= v0.0.57)
     result[key] = dbProfile[key];
-    
+
     // Also add camelCase version if field contains underscore
     // e.g., created_at -> createdAt, avatar_url -> avatarUrl, etc.
     if (key.includes('_')) {
@@ -90,6 +90,32 @@ function convertCamelCaseToDbProfile(profile: UpdateProfileData): Record<string,
   });
 
   return dbProfile;
+}
+
+/**
+ * Check if current environment is a hosted auth environment
+ * Returns true for:
+ * - localhost with port 7130 (hosted auth app dev)
+ * - https://*.insforge.app (hosted auth app production)
+ */
+function isHostedAuthEnvironment(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const { hostname, port, protocol } = window.location;
+
+  // Check for localhost:7130
+  if (hostname === 'localhost' && port === '7130') {
+    return true;
+  }
+
+  // Check for https://*.insforge.app
+  if (protocol === 'https:' && hostname.endsWith('.insforge.app')) {
+    return true;
+  }
+
+  return false;
 }
 
 export class Auth {
@@ -181,7 +207,9 @@ export class Auth {
           accessToken: response.accessToken,
           user: response.user,
         };
-        this.tokenManager.saveSession(session);
+        if (!isHostedAuthEnvironment()) {
+          this.tokenManager.saveSession(session);
+        }
         this.http.setAuthToken(response.accessToken);
       }
 
@@ -229,7 +257,9 @@ export class Auth {
           updatedAt: '',
         },
       };
-      this.tokenManager.saveSession(session);
+      if (!isHostedAuthEnvironment()) {
+        this.tokenManager.saveSession(session);
+      }
       this.http.setAuthToken(response.accessToken || '');
 
       return {
