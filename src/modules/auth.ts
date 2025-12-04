@@ -266,9 +266,19 @@ export class Auth {
 
   /**
    * Sign out the current user
+   * In modern mode, also calls backend to clear the refresh token cookie
    */
   async signOut(): Promise<{ error: InsForgeError | null }> {
     try {
+      // If in modern mode, call backend to clear refresh token cookie
+      if (this.tokenManager.getMode() === 'modern') {
+        try {
+          await this.http.post('/api/auth/logout');
+        } catch {
+          // Ignore errors from logout endpoint - still clear local session
+        }
+      }
+      
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
       return { error: null };
@@ -280,6 +290,53 @@ export class Auth {
           'SIGNOUT_ERROR'
         )
       };
+    }
+  }
+
+  /**
+   * Refresh the access token using the httpOnly refresh token cookie
+   * Only works in modern mode - in legacy mode this will fail
+   * 
+   * @returns New access token or throws an error
+   */
+  async refreshToken(): Promise<string> {
+    try {
+      const response = await this.http.post<{ accessToken: string; user?: any }>(
+        '/api/auth/refresh'
+      );
+
+      if (response.accessToken) {
+        // Update token manager with new token
+        this.tokenManager.setAccessToken(response.accessToken);
+        this.http.setAuthToken(response.accessToken);
+        
+        // Update user data if provided
+        if (response.user) {
+          this.tokenManager.setUser(response.user);
+        }
+        
+        return response.accessToken;
+      }
+      
+      throw new InsForgeError(
+        'No access token in refresh response',
+        500,
+        'REFRESH_FAILED'
+      );
+    } catch (error) {
+      // Clear session on refresh failure
+      this.tokenManager.clearSession();
+      this.http.setAuthToken(null);
+      
+      if (error instanceof InsForgeError) {
+        throw error;
+      }
+      
+      throw new InsForgeError(
+        error instanceof Error ? error.message : 'Token refresh failed',
+        401,
+        'REFRESH_FAILED'
+      );
     }
   }
 

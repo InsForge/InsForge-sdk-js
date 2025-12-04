@@ -61,6 +61,8 @@ export type {
 // Re-export utilities for advanced usage
 export { HttpClient } from './lib/http-client';
 export { TokenManager } from './lib/token-manager';
+export { detectBackendCapabilities, getMinRefreshTokenVersion } from './lib/version-detector';
+export type { StorageMode, BackendCapabilities } from './lib/version-detector';
 
 // Factory function for creating clients (Supabase-style)
 import { InsForgeClient } from './client';
