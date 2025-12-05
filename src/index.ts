@@ -53,7 +53,6 @@ export type {
   RealtimeErrorPayload,
   SubscribeResponse,
   SocketMessage,
-  SocketMessageMeta,
   ConnectionState,
   EventCallback,
 } from './modules/realtime';
