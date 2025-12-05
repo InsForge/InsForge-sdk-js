@@ -4,7 +4,7 @@
  */
 
 // Minimum backend version that supports modern auth flow (refresh tokens + httpOnly cookies)
-const MIN_REFRESH_TOKEN_VERSION = '2.0.0';
+const MIN_REFRESH_TOKEN_VERSION = '1.2.7';
 
 export type StorageMode = 'modern' | 'legacy';
 
@@ -45,6 +45,8 @@ export async function detectBackendCapabilities(
   baseUrl: string,
   fetchImpl: typeof fetch = globalThis.fetch
 ): Promise<BackendCapabilities> {
+  console.log(`[InsForge:VersionDetector] Checking backend capabilities at ${baseUrl}/api/health`);
+  
   try {
     const response = await fetchImpl(`${baseUrl}/api/health`, {
       method: 'GET',
@@ -54,22 +56,25 @@ export async function detectBackendCapabilities(
     });
     
     if (!response.ok) {
-      // Health endpoint failed - assume legacy
+      console.warn(`[InsForge:VersionDetector] Health endpoint returned ${response.status}, assuming legacy mode`);
       return { mode: 'legacy', version: 'unknown' };
     }
     
     const health: HealthResponse = await response.json();
     const version = health.version || '1.0.0';
     
+    console.log(`[InsForge:VersionDetector] Backend version: ${version}, minimum required: ${MIN_REFRESH_TOKEN_VERSION}`);
+    
     // Compare against minimum version for refresh token support
     const supportsRefresh = compareVersions(version, MIN_REFRESH_TOKEN_VERSION) >= 0;
+    const mode = supportsRefresh ? 'modern' : 'legacy';
     
-    return {
-      mode: supportsRefresh ? 'modern' : 'legacy',
-      version,
-    };
-  } catch {
+    console.log(`[InsForge:VersionDetector] Version comparison result: ${supportsRefresh ? 'supports refresh' : 'does not support refresh'}, using ${mode} mode`);
+    
+    return { mode, version };
+  } catch (error) {
     // Network error or invalid response - assume legacy for safety
+    console.error('[InsForge:VersionDetector] Failed to detect backend capabilities:', error);
     return { mode: 'legacy', version: 'unknown' };
   }
 }

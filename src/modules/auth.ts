@@ -61,14 +61,17 @@ export class Auth {
 
   /**
    * Automatically detect and handle OAuth callback parameters in the URL
-   * This runs on initialization to seamlessly complete the OAuth flow
+   * This runs after initialization to seamlessly complete the OAuth flow
    * Matches the backend's OAuth callback response (backend/src/api/routes/auth.ts:540-544)
    */
-  private detectAuthCallback(): void {
+  private async detectAuthCallbackAsync(): Promise<void> {
     // Only run in browser environment
     if (typeof window === 'undefined') return;
 
     try {
+      // Wait for initialization to complete first
+      await this.waitForInit();
+      
       const params = new URLSearchParams(window.location.search);
 
       // Backend returns: access_token, user_id, email, name (optional)
@@ -79,6 +82,9 @@ export class Auth {
 
       // Check if we have OAuth callback parameters
       if (accessToken && userId && email) {
+        console.log('[InsForge:Auth] OAuth callback detected, processing...');
+        console.log(`[InsForge:Auth] TokenManager mode for OAuth callback: ${this.tokenManager.getMode()}`);
+        
         // Create session with the data from backend
         const session: AuthSession = {
           accessToken,
@@ -112,6 +118,8 @@ export class Auth {
 
         // Replace URL without adding to browser history
         window.history.replaceState({}, document.title, url.toString());
+        
+        console.log('[InsForge:Auth] OAuth callback processed successfully');
       }
     } catch (error) {
       // Silently continue - don't break initialization
@@ -127,6 +135,9 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
+      // Wait for client initialization to ensure correct storage mode
+      await this.waitForInit();
+      
       const response = await this.http.post<CreateUserResponse>('/api/auth/users', request);
 
       // Save session internally only if both accessToken and user exist
@@ -171,7 +182,20 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
+      console.log('[InsForge:Auth] signInWithPassword called');
+      
+      // Wait for client initialization to ensure correct storage mode
+      await this.waitForInit();
+      
+      console.log(`[InsForge:Auth] After init - TokenManager mode: ${this.tokenManager.getMode()}`);
+
       const response = await this.http.post<CreateSessionResponse>('/api/auth/sessions', request);
+
+      console.log('[InsForge:Auth] Login response received', {
+        hasAccessToken: !!response.accessToken,
+        hasUser: !!response.user,
+        userId: response.user?.id,
+      });
 
       // Save session internally
       const session: AuthSession = {
@@ -185,16 +209,22 @@ export class Auth {
           updatedAt: '',
         },
       };
+
+      console.log(`[InsForge:Auth] About to save session, TokenManager mode: ${this.tokenManager.getMode()}`);
+
       if (!isHostedAuthEnvironment()) {
         this.tokenManager.saveSession(session);
       }
       this.http.setAuthToken(response.accessToken || '');
+
+      console.log('[InsForge:Auth] Session saved and auth token set');
 
       return {
         data: response,
         error: null
       };
     } catch (error) {
+      console.error('[InsForge:Auth] signInWithPassword error:', error);
       // Pass through API errors unchanged
       if (error instanceof InsForgeError) {
         return { data: null, error };
@@ -726,6 +756,9 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
+      // Wait for client initialization to ensure correct storage mode
+      await this.waitForInit();
+      
       const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string }>(
         '/api/auth/email/verify',
         request
