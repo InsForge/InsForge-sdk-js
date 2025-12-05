@@ -106,6 +106,9 @@ export class InsForgeClient {
     // Start async initialization (non-blocking)
     // Users can optionally await client.initialize() for full initialization
     this.initializationPromise = this.initializeAsync();
+    
+    // Set init promise on auth module so auth operations wait for mode detection
+    this.auth.setInitPromise(this.initializationPromise);
   }
 
   /**
@@ -130,26 +133,33 @@ export class InsForgeClient {
   private async initializeAsync(): Promise<void> {
     if (this.initialized) return;
     
+    console.log('[InsForge:Client] Starting async initialization...');
+    
     try {
       const { mode, version } = await detectBackendCapabilities(
         this.http.baseUrl,
         this.http.fetch
       );
       
+      console.log(`[InsForge:Client] Backend detected: version=${version}, mode=${mode}`);
+      
       this.backendVersion = version;
       this.storageMode = mode;
       this.tokenManager.setMode(mode);
       
       if (mode === 'modern') {
+        console.log('[InsForge:Client] Initializing modern session...');
         await this.initializeModernSession();
       } else {
+        console.log('[InsForge:Client] Initializing legacy session...');
         this.initializeLegacySession();
       }
       
       this.initialized = true;
+      console.log('[InsForge:Client] Initialization complete');
     } catch (error) {
       // If detection fails, continue with legacy mode
-      console.warn('[InsForge] Backend detection failed, using legacy mode:', error);
+      console.warn('[InsForge:Client] Backend detection failed, using legacy mode:', error);
       this.storageMode = 'legacy';
       this.tokenManager.setMode('legacy');
       this.initializeLegacySession();

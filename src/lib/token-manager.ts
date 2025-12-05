@@ -50,6 +50,8 @@ export class TokenManager {
     const previousMode = this.mode;
     this.mode = mode;
     
+    console.log(`[InsForge:TokenManager] Storage mode set to: ${mode} (was: ${previousMode})`);
+    
     // If switching to modern mode and we have legacy data, migrate it
     if (mode === 'modern' && previousMode === 'legacy' && this.storage) {
       const legacyToken = this.storage.getItem(TOKEN_KEY);
@@ -64,7 +66,7 @@ export class TokenManager {
           this.storage.removeItem(USER_KEY);
           // Set auth flag cookie for modern mode
           this.setAuthFlag(true);
-          console.info('[InsForge] Migrated session from localStorage to memory.');
+          console.info('[InsForge:TokenManager] Migrated session from localStorage to memory.');
         } catch {
           // Invalid JSON, clear it
           this.storage.removeItem(TOKEN_KEY);
@@ -90,11 +92,16 @@ export class TokenManager {
     this.accessToken = session.accessToken;
     this.user = session.user;
     
+    console.log(`[InsForge:TokenManager] saveSession called, mode: ${this.mode}`);
+    console.log(`[InsForge:TokenManager] accessToken (first 20 chars): ${session.accessToken?.substring(0, 20)}...`);
+    
     if (this.mode === 'modern') {
       // Modern: only store in memory + set flag cookie
+      console.log('[InsForge:TokenManager] MODERN mode: storing in memory only, setting auth flag cookie');
       this.setAuthFlag(true);
     } else {
       // Legacy: store in localStorage
+      console.log('[InsForge:TokenManager] LEGACY mode: storing in localStorage');
       this.storage?.setItem(TOKEN_KEY, session.accessToken);
       this.storage?.setItem(USER_KEY, JSON.stringify(session.user));
     }
