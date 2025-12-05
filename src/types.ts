@@ -4,7 +4,6 @@
  */
 
 import type { UserSchema } from '@insforge/shared-schemas';
-import type { RealtimeConfig } from './modules/realtime';
 
 export interface InsForgeConfig {
   /**
@@ -52,11 +51,6 @@ export interface InsForgeConfig {
    * Custom headers to include with every request
    */
   headers?: Record<string, string>;
-
-  /**
-   * Realtime configuration options
-   */
-  realtime?: RealtimeConfig;
 }
 
 export interface TokenStorage {

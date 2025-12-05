@@ -6,7 +6,7 @@ import { Database } from './modules/database-postgrest';
 import { Storage } from './modules/storage';
 import { AI } from './modules/ai';
 import { Functions } from './modules/functions';
-import { Realtime, RealtimeConfig } from './modules/realtime';
+import { Realtime } from './modules/realtime';
 
 /**
  * Main InsForge SDK Client
@@ -89,7 +89,7 @@ export class InsForgeClient {
 
     // Initialize realtime with the base URL and token manager
     const baseUrl = config.baseUrl || 'http://localhost:7130';
-    this.realtime = new Realtime(baseUrl, this.tokenManager, config.realtime);
+    this.realtime = new Realtime(baseUrl, this.tokenManager);
   }
 
   /**

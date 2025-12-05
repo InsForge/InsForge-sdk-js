@@ -4,20 +4,6 @@ import { TokenManager } from '../lib/token-manager';
 
 export type { SubscribeResponse, RealtimeErrorPayload, SocketMessage };
 
-export interface RealtimeConfig {
-  /**
-   * Custom Socket.IO path
-   * @default '/socket.io'
-   */
-  path?: string;
-
-  /**
-   * Auto-connect when first subscribing
-   * @default false
-   */
-  autoConnect?: boolean;
-}
-
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
 
 export type EventCallback<T = unknown> = (payload: T) => void;
@@ -60,15 +46,13 @@ export type EventCallback<T = unknown> = (payload: T) => void;
 export class Realtime {
   private baseUrl: string;
   private tokenManager: TokenManager;
-  private config: RealtimeConfig;
   private socket: Socket | null = null;
   private subscribedChannels: Set<string> = new Set();
   private eventListeners: Map<string, Set<EventCallback>> = new Map();
 
-  constructor(baseUrl: string, tokenManager: TokenManager, config: RealtimeConfig = {}) {
+  constructor(baseUrl: string, tokenManager: TokenManager) {
     this.baseUrl = baseUrl;
     this.tokenManager = tokenManager;
-    this.config = { autoConnect: false, ...config };
   }
 
   private notifyListeners(event: string, payload?: unknown): void {
@@ -98,7 +82,6 @@ export class Realtime {
       const token = session?.accessToken;
 
       this.socket = io(this.baseUrl, {
-        path: this.config.path,
         transports: ['websocket'],
         auth: token ? { token } : undefined,
       });
@@ -185,11 +168,7 @@ export class Realtime {
    */
   async subscribe(channel: string): Promise<SubscribeResponse> {
     if (!this.socket?.connected) {
-      if (this.config.autoConnect) {
-        await this.connect();
-      } else {
-        return { ok: false, channel, error: { code: 'NOT_CONNECTED', message: 'Not connected to realtime server' } };
-      }
+      return { ok: false, channel, error: { code: 'NOT_CONNECTED', message: 'Not connected to realtime server. Call connect() first.' } };
     }
 
     return new Promise((resolve) => {
@@ -224,11 +203,7 @@ export class Realtime {
    */
   async publish<T = unknown>(channel: string, event: string, payload: T): Promise<void> {
     if (!this.socket?.connected) {
-      if (this.config.autoConnect) {
-        await this.connect();
-      } else {
-        throw new Error('Not connected to realtime server');
-      }
+      throw new Error('Not connected to realtime server. Call connect() first.');
     }
 
     this.socket!.emit('realtime:publish', { channel, event, payload });

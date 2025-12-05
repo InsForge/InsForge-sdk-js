@@ -49,7 +49,6 @@ export type { FunctionInvokeOptions } from './modules/functions';
 // Re-export Realtime module and types
 export { Realtime } from './modules/realtime';
 export type {
-  RealtimeConfig,
   RealtimeErrorPayload,
   SubscribeResponse,
   SocketMessage,
