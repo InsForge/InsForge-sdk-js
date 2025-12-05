@@ -1,8 +1,8 @@
 import { io, Socket } from 'socket.io-client';
-import type { SubscribeResponse, RealtimeErrorPayload, SocketMessage, SocketMessageMeta } from '@insforge/shared-schemas';
+import type { SubscribeResponse, RealtimeErrorPayload, SocketMessage } from '@insforge/shared-schemas';
 import { TokenManager } from '../lib/token-manager';
 
-export type { SubscribeResponse, RealtimeErrorPayload, SocketMessage, SocketMessageMeta };
+export type { SubscribeResponse, RealtimeErrorPayload, SocketMessage };
 
 export interface RealtimeConfig {
   /**
@@ -136,9 +136,9 @@ export class Realtime {
       });
 
       // Route custom events to listeners (onAny doesn't catch socket reserved events)
-      this.socket.onAny((event: string, payload: unknown) => {
+      this.socket.onAny((event: string, message: SocketMessage) => {
         if (event === 'realtime:error') return; // Already handled above
-        this.notifyListeners(event, payload);
+        this.notifyListeners(event, message);
       });
     });
   }
@@ -243,10 +243,12 @@ export class Realtime {
    * - 'disconnect' - Fired when disconnected (payload: reason string)
    * - 'error' - Fired when a realtime error occurs (payload: RealtimeErrorPayload)
    *
+   * All other events receive a `SocketMessage` payload with metadata.
+   *
    * @param event - Event name to listen for
    * @param callback - Callback function when event is received
    */
-  on<T = unknown>(event: string, callback: EventCallback<T>): void {
+  on<T = SocketMessage>(event: string, callback: EventCallback<T>): void {
     if (!this.eventListeners.has(event)) {
       this.eventListeners.set(event, new Set());
     }
@@ -259,7 +261,7 @@ export class Realtime {
    * @param event - Event name
    * @param callback - The callback function to remove
    */
-  off<T = unknown>(event: string, callback: EventCallback<T>): void {
+  off<T = SocketMessage>(event: string, callback: EventCallback<T>): void {
     const listeners = this.eventListeners.get(event);
     if (listeners) {
       listeners.delete(callback as EventCallback);
