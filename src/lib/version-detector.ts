@@ -4,7 +4,7 @@
  */
 
 // Minimum backend version that supports modern auth flow (refresh tokens + httpOnly cookies)
-const MIN_REFRESH_TOKEN_VERSION = '1.2.7';
+const MIN_REFRESH_TOKEN_VERSION = '1.2.9';
 
 export type StorageMode = 'modern' | 'legacy';
 
