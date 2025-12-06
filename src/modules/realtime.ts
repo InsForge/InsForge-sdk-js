@@ -8,6 +8,8 @@ export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
 
 export type EventCallback<T = unknown> = (payload: T) => void;
 
+const CONNECT_TIMEOUT = 10000;
+
 /**
  * Realtime module for subscribing to channels and handling real-time events
  *
@@ -47,6 +49,7 @@ export class Realtime {
   private baseUrl: string;
   private tokenManager: TokenManager;
   private socket: Socket | null = null;
+  private connectPromise: Promise<void> | null = null;
   private subscribedChannels: Set<string> = new Set();
   private eventListeners: Map<string, Set<EventCallback>> = new Map();
 
@@ -72,12 +75,17 @@ export class Realtime {
    * @returns Promise that resolves when connected
    */
   connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (this.socket?.connected) {
-        resolve();
-        return;
-      }
+    // Already connected
+    if (this.socket?.connected) {
+      return Promise.resolve();
+    }
 
+    // Connection already in progress, return existing promise
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
+
+    this.connectPromise = new Promise((resolve, reject) => {
       const session = this.tokenManager.getSession();
       const token = session?.accessToken;
 
@@ -87,8 +95,27 @@ export class Realtime {
       });
 
       let initialConnection = true;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+      const cleanup = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+      };
+
+      timeoutId = setTimeout(() => {
+        if (initialConnection) {
+          initialConnection = false;
+          this.connectPromise = null;
+          this.socket?.disconnect();
+          this.socket = null;
+          reject(new Error(`Connection timeout after ${CONNECT_TIMEOUT}ms`));
+        }
+      }, CONNECT_TIMEOUT);
 
       this.socket.on('connect', () => {
+        cleanup();
         // Re-subscribe to channels on every connect (initial + reconnects)
         for (const channel of this.subscribedChannels) {
           this.socket!.emit('realtime:subscribe', { channel });
@@ -97,15 +124,18 @@ export class Realtime {
 
         if (initialConnection) {
           initialConnection = false;
+          this.connectPromise = null;
           resolve();
         }
       });
 
       this.socket.on('connect_error', (error: Error) => {
+        cleanup();
         this.notifyListeners('connect_error', error);
 
         if (initialConnection) {
           initialConnection = false;
+          this.connectPromise = null;
           reject(error);
         }
       });
@@ -124,6 +154,8 @@ export class Realtime {
         this.notifyListeners(event, message);
       });
     });
+
+    return this.connectPromise;
   }
 
   /**
@@ -163,12 +195,25 @@ export class Realtime {
   /**
    * Subscribe to a channel
    *
+   * Automatically connects if not already connected.
+   *
    * @param channel - Channel name (e.g., 'orders:123', 'broadcast')
    * @returns Promise with the subscription response
    */
   async subscribe(channel: string): Promise<SubscribeResponse> {
+    // Already subscribed, return success
+    if (this.subscribedChannels.has(channel)) {
+      return { ok: true, channel };
+    }
+
+    // Auto-connect if not connected
     if (!this.socket?.connected) {
-      return { ok: false, channel, error: { code: 'NOT_CONNECTED', message: 'Not connected to realtime server. Call connect() first.' } };
+      try {
+        await this.connect();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Connection failed';
+        return { ok: false, channel, error: { code: 'CONNECTION_FAILED', message } };
+      }
     }
 
     return new Promise((resolve) => {
@@ -244,6 +289,20 @@ export class Realtime {
         this.eventListeners.delete(event);
       }
     }
+  }
+
+  /**
+   * Listen for an event only once, then automatically remove the listener
+   *
+   * @param event - Event name to listen for
+   * @param callback - Callback function when event is received
+   */
+  once<T = SocketMessage>(event: string, callback: EventCallback<T>): void {
+    const wrapper: EventCallback<T> = (payload: T) => {
+      this.off(event, wrapper);
+      callback(payload);
+    };
+    this.on(event, wrapper);
   }
 
   /**
