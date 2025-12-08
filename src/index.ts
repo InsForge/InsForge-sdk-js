@@ -29,7 +29,12 @@ export type {
 // Re-export auth module for advanced usage
 export { Auth } from './modules/auth';
 
-export type { ProfileData, UpdateProfileData } from './modules/auth';
+export type {
+  ProfileData,
+  UpdateProfileData,
+  AuthStateChangeEvent,
+  AuthStateChangeCallback,
+} from './modules/auth';
 
 // Re-export database module (using postgrest-js)
 export { Database } from './modules/database-postgrest';
@@ -52,24 +57,20 @@ export { HttpClient } from './lib/http-client';
 // Re-export Token Manager
 export { TokenManager } from './lib/token-manager';
 
-// Re-export capability discovery utilities
-export { discoverCapabilities, createSessionStorage, getDefaultCapabilities } from './lib/capability-discovery';
-export type { BackendCapabilities } from './lib/capability-discovery';
+// Re-export backend config utilities
+export { discoverBackendConfig, createSessionStorage, getDefaultBackendConfig } from './lib/backend-config';
+export type { BackendConfig } from './lib/backend-config';
 
 // Re-export session storage strategies for advanced usage
 export {
   SecureSessionStorage,
-  PersistentSessionStorage,
+  LocalSessionStorage,
 } from './lib/session-storage';
 export type { SessionStorageStrategy } from './lib/session-storage';
 
-// Factory function for creating clients (Supabase-style)
-import { InsForgeClient } from './client';
-import { InsForgeConfig } from './types';
-
-export function createClient(config: InsForgeConfig): InsForgeClient {
-  return new InsForgeClient(config);
-}
+// Factory function for creating clients (synchronous, recommended)
+export { createClient } from './client';
 
 // Default export for convenience
-export default InsForgeClient;
+import { InsForgeClient as DefaultClient } from './client';
+export default DefaultClient;

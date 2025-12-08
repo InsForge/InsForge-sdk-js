@@ -9,14 +9,14 @@ import type { UserSchema } from '@insforge/shared-schemas';
 import type { AuthSession, TokenStorage } from '../types';
 import {
   SessionStorageStrategy,
-  PersistentSessionStorage,
+  LocalSessionStorage,
 } from './session-storage';
 
 /**
  * TokenManager - Manages session storage using the Strategy Pattern
  * 
  * The actual storage implementation is delegated to a SessionStorageStrategy.
- * By default, uses PersistentSessionStorage until a strategy is explicitly set
+ * By default, uses LocalSessionStorage until a strategy is explicitly set
  * via setStrategy() during client initialization.
  */
 export class TokenManager {
@@ -24,11 +24,11 @@ export class TokenManager {
 
   /**
    * Create a new TokenManager
-   * @param storage - Optional custom storage adapter (used for initial PersistentSessionStorage)
+   * @param storage - Optional custom storage adapter (used for initial LocalSessionStorage)
    */
   constructor(storage?: TokenStorage) {
     // Default to persistent storage until capability discovery completes
-    this.strategy = new PersistentSessionStorage(storage);
+    this.strategy = new LocalSessionStorage(storage);
   }
 
   /**
