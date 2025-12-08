@@ -1,21 +1,21 @@
 /**
- * Backend Capability Discovery for InsForge SDK
+ * Backend Configuration for InsForge SDK
  * 
- * Discovers backend capabilities via the /api/health endpoint
- * and creates appropriate storage strategies based on those capabilities.
+ * Fetches backend configuration via the /api/health endpoint
+ * and creates appropriate storage strategies based on that configuration.
  */
 
 import type { TokenStorage } from '../types';
 import {
   SessionStorageStrategy,
   SecureSessionStorage,
-  PersistentSessionStorage,
+  LocalSessionStorage,
 } from './session-storage';
 
 /**
- * Backend capabilities returned from /api/health
+ * Backend configuration returned from /api/health
  */
-export interface BackendCapabilities {
+export interface BackendConfig {
   /** Whether backend supports secure httpOnly cookie storage for refresh tokens */
   secureSessionStorage: boolean;
   /** Whether backend supports token refresh endpoint */
@@ -30,39 +30,39 @@ interface HealthResponse {
   version: string;
   service: string;
   timestamp: string;
-  capabilities?: BackendCapabilities;
+  config?: BackendConfig;
 }
 
 /**
- * Default capabilities for legacy backends that don't return capabilities
+ * Default configuration for legacy backends
  */
-const DEFAULT_CAPABILITIES: BackendCapabilities = {
+const DEFAULT_CONFIG: BackendConfig = {
   secureSessionStorage: false,
   refreshTokens: false,
 };
 
 /**
- * Discover backend capabilities from the /api/health endpoint
+ * Fetch backend configuration from the /api/health endpoint
  * 
  * This is the primary method for determining which features the backend supports.
  * The SDK uses this information to select appropriate storage strategies.
  * 
  * @param baseUrl - The backend base URL
  * @param fetchImpl - Optional custom fetch implementation
- * @returns Backend capabilities object
+ * @returns Backend configuration object
  * 
  * @example
  * ```typescript
- * const capabilities = await discoverCapabilities('https://api.example.com');
- * if (capabilities.secureSessionStorage) {
+ * const config = await discoverBackendConfig('https://api.example.com');
+ * if (config.secureSessionStorage) {
  *   // Use secure storage strategy
  * }
  * ```
  */
-export async function discoverCapabilities(
+export async function discoverBackendConfig(
   baseUrl: string,
   fetchImpl: typeof fetch = globalThis.fetch
-): Promise<BackendCapabilities> {
+): Promise<BackendConfig> {
   try {
     const response = await fetchImpl(`${baseUrl}/api/health`, {
       method: 'GET',
@@ -72,56 +72,56 @@ export async function discoverCapabilities(
     });
 
     if (!response.ok) {
-      return DEFAULT_CAPABILITIES;
+      return DEFAULT_CONFIG;
     }
 
     const health: HealthResponse = await response.json();
 
-    // If backend returns capabilities, use them
-    if (health.capabilities) {
-      return health.capabilities;
+    // If backend returns config, use it
+    if (health.config) {
+      return health.config;
     }
 
-    // Legacy backend without capabilities - use defaults
-    return DEFAULT_CAPABILITIES;
+    // Legacy backend without config - use defaults
+    return DEFAULT_CONFIG;
   } catch {
-    return DEFAULT_CAPABILITIES;
+    return DEFAULT_CONFIG;
   }
 }
 
 /**
- * Create the appropriate session storage strategy based on backend capabilities
+ * Create the appropriate session storage strategy based on backend configuration
  * 
  * This is the factory function that implements the Strategy Pattern.
  * It selects the storage implementation based on what the backend supports.
  * 
- * @param capabilities - Backend capabilities from discoverCapabilities()
- * @param storage - Optional custom storage adapter (for PersistentSessionStorage)
+ * @param config - Backend configuration from discoverBackendConfig()
+ * @param storage - Optional custom storage adapter (for LocalSessionStorage)
  * @returns Appropriate SessionStorageStrategy implementation
  * 
  * @example
  * ```typescript
- * const capabilities = await discoverCapabilities(baseUrl);
- * const storage = createSessionStorage(capabilities);
+ * const config = await discoverBackendConfig(baseUrl);
+ * const storage = createSessionStorage(config);
  * storage.saveSession({ accessToken: '...', user: {...} });
  * ```
  */
 export function createSessionStorage(
-  capabilities: BackendCapabilities,
+  config: BackendConfig,
   storage?: TokenStorage
 ): SessionStorageStrategy {
   // Use secure storage when backend supports both httpOnly cookies and refresh
-  if (capabilities.secureSessionStorage && capabilities.refreshTokens) {
+  if (config.secureSessionStorage && config.refreshTokens) {
     return new SecureSessionStorage();
   }
 
   // Fallback to persistent (localStorage) storage
-  return new PersistentSessionStorage(storage);
+  return new LocalSessionStorage(storage);
 }
 
 /**
- * Get default capabilities (useful for testing or manual override)
+ * Get default backend configuration (useful for testing or manual override)
  */
-export function getDefaultCapabilities(): BackendCapabilities {
-  return { ...DEFAULT_CAPABILITIES };
+export function getDefaultBackendConfig(): BackendConfig {
+  return { ...DEFAULT_CONFIG };
 }

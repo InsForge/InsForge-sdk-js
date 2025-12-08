@@ -118,15 +118,108 @@ function isHostedAuthEnvironment(): boolean {
   return false;
 }
 
+/**
+ * Auth state change event types
+ * Following Supabase pattern for consistency
+ */
+export type AuthStateChangeEvent = 
+  | 'INITIAL_SESSION'  // Sent to each subscriber after initialization (with or without session)
+  | 'SIGNED_IN'        // User signed in (login, OAuth callback, email verification)
+  | 'SIGNED_OUT'       // User signed out
+  | 'TOKEN_REFRESHED'; // Access token was refreshed
+
+/**
+ * Auth state change callback type
+ */
+export type AuthStateChangeCallback = (
+  event: AuthStateChangeEvent,
+  session: AuthSession | null
+) => void;
+
 export class Auth {
   private database: Database;
-  private initPromise: Promise<void> | null = null;
+  private authStateListeners: Set<AuthStateChangeCallback> = new Set();
+  private initializePromise: Promise<void>;
 
   constructor(
     private http: HttpClient,
-    private tokenManager: TokenManager
+    private tokenManager: TokenManager,
+    initializePromise?: Promise<void>
   ) {
     this.database = new Database(http, tokenManager);
+    // Default to resolved promise if not provided (for backward compatibility)
+    this.initializePromise = initializePromise ?? Promise.resolve();
+  }
+
+  /**
+   * Subscribe to auth state changes
+   * 
+   * New subscribers will receive an INITIAL_SESSION event after initialization completes.
+   * This ensures no race condition where subscribers miss the initial state.
+   * 
+   * @param callback - Function called when auth state changes
+   * @returns Unsubscribe function
+   * 
+   * @example
+   * ```typescript
+   * const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
+   *   if (event === 'SIGNED_IN') {
+   *     console.log('User signed in:', session?.user.email);
+   *   } else if (event === 'SIGNED_OUT') {
+   *     console.log('User signed out');
+   *   }
+   * });
+   * 
+   * // Later: unsubscribe
+   * subscription.unsubscribe();
+   * ```
+   */
+  onAuthStateChange(callback: AuthStateChangeCallback): {
+    data: { subscription: { unsubscribe: () => void } };
+  } {
+    this.authStateListeners.add(callback);
+    
+    // After initialization completes, send initial session state to this specific subscriber
+    // This handles the race condition where subscriber registers after initialization
+    // Following Supabase pattern: each subscriber gets their own INITIAL_SESSION
+    ;(async () => {
+      await this.initializePromise;
+      
+      // Check if still subscribed (might have unsubscribed during await)
+      if (this.authStateListeners.has(callback)) {
+        const session = this.tokenManager.getSession();
+        try {
+          // Send INITIAL_SESSION (Supabase always sends this event type for initial state)
+          callback('INITIAL_SESSION', session);
+        } catch (error) {
+          console.error('[Auth] Error in auth state change listener:', error);
+        }
+      }
+    })();
+    
+    return {
+      data: {
+        subscription: {
+          unsubscribe: () => {
+            this.authStateListeners.delete(callback);
+          }
+        }
+      }
+    };
+  }
+
+  /**
+   * Emit auth state change to all listeners
+   * @internal
+   */
+  _emitAuthStateChange(event: AuthStateChangeEvent, session: AuthSession | null): void {
+    this.authStateListeners.forEach(callback => {
+      try {
+        callback(event, session);
+      } catch (error) {
+        console.error('[Auth] Error in auth state change listener:', error);
+      }
+    });
   }
 
   /**
@@ -153,38 +246,14 @@ export class Auth {
   }
 
   /**
-   * Set the initialization promise that auth operations should wait for
-   * This ensures TokenManager mode is set before any auth operations
+   * Detect and handle OAuth callback parameters in the URL.
+   * Called by client after initialization.
    */
-  setInitPromise(promise: Promise<void>): void {
-    this.initPromise = promise;
-
-    // After init is set, trigger OAuth callback detection asynchronously
-    this.detectAuthCallbackAsync();
-  }
-
-  /**
-   * Wait for initialization to complete (if set)
-   */
-  private async waitForInit(): Promise<void> {
-    if (this.initPromise) {
-      await this.initPromise;
-    }
-  }
-
-  /**
-   * Automatically detect and handle OAuth callback parameters in the URL
-   * This runs after initialization to seamlessly complete the OAuth flow
-   * Matches the backend's OAuth callback response (backend/src/api/routes/auth.ts:540-544)
-   */
-  private async detectAuthCallbackAsync(): Promise<void> {
+  detectAuthCallback(): void {
     // Only run in browser environment
     if (typeof window === 'undefined') return;
 
     try {
-      // Wait for initialization to complete first
-      await this.waitForInit();
-
       const params = new URLSearchParams(window.location.search);
 
       // Backend returns: access_token, user_id, email, name (optional)
@@ -228,6 +297,9 @@ export class Auth {
 
         // Replace URL without adding to browser history
         window.history.replaceState({}, document.title, url.toString());
+        
+        // Emit auth state change
+        this._emitAuthStateChange('SIGNED_IN', session);
       }
     } catch {
       // Silently continue - don't break initialization
@@ -242,9 +314,6 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      // Wait for client initialization to ensure correct storage mode
-      await this.waitForInit();
-
       const response = await this.http.post<CreateUserResponse>('/api/auth/users', request);
 
       // Save session internally only if both accessToken and user exist
@@ -257,6 +326,9 @@ export class Auth {
           this.tokenManager.saveSession(session);
         }
         this.http.setAuthToken(response.accessToken);
+        
+        // Emit auth state change
+        this._emitAuthStateChange('SIGNED_IN', session);
       }
 
       return {
@@ -289,9 +361,6 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      // Wait for client initialization to ensure correct storage mode
-      await this.waitForInit();
-
       const response = await this.http.post<CreateSessionResponse>('/api/auth/sessions', request);
 
       // Save session internally
@@ -311,6 +380,9 @@ export class Auth {
         this.tokenManager.saveSession(session);
       }
       this.http.setAuthToken(response.accessToken || '');
+      
+      // Emit auth state change
+      this._emitAuthStateChange('SIGNED_IN', session);
 
       return {
         data: response,
@@ -403,6 +475,10 @@ export class Auth {
 
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
+      
+      // Emit auth state change
+      this._emitAuthStateChange('SIGNED_OUT', null);
+      
       return { error: null };
     } catch (error) {
       return {
@@ -436,6 +512,10 @@ export class Auth {
         if (response.user) {
           this.tokenManager.setUser(response.user);
         }
+
+        // Emit auth state change with updated session
+        const session = this.tokenManager.getSession();
+        this._emitAuthStateChange('TOKEN_REFRESHED', session);
 
         return response.accessToken;
       }
@@ -896,9 +976,6 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      // Wait for client initialization to ensure correct storage mode
-      await this.waitForInit();
-
       const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string }>(
         '/api/auth/email/verify',
         request
@@ -912,6 +989,9 @@ export class Auth {
         };
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
+        
+        // Emit auth state change
+        this._emitAuthStateChange('SIGNED_IN', session);
       }
 
       return {
