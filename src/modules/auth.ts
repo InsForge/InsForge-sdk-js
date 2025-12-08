@@ -130,6 +130,29 @@ export class Auth {
   }
 
   /**
+   * Check if an error represents an authentication failure
+   * Used to determine appropriate HTTP status code (401 vs 500)
+   */
+  private isAuthenticationError(error: unknown): boolean {
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase();
+      const authKeywords = [
+        'unauthorized',
+        'invalid token',
+        'expired token',
+        'token expired',
+        'invalid refresh token',
+        'refresh token',
+        'authentication',
+        'not authenticated',
+        'session expired',
+      ];
+      return authKeywords.some(keyword => message.includes(keyword));
+    }
+    return false;
+  }
+
+  /**
    * Set the initialization promise that auth operations should wait for
    * This ensures TokenManager mode is set before any auth operations
    */
@@ -423,12 +446,8 @@ export class Auth {
         'REFRESH_FAILED'
       );
     } catch (error) {
-      // Clear session on refresh failure
-      this.tokenManager.clearSession();
-      this.http.setAuthToken(null);
-
       if (error instanceof InsForgeError) {
-        // Only clear session on auth-related errors  
+        // Only clear session on auth-related errors
         if (error.statusCode === 401 || error.statusCode === 403) {
           this.tokenManager.clearSession();
           this.http.setAuthToken(null);
@@ -436,9 +455,19 @@ export class Auth {
         throw error;
       }
 
+      // Determine if this is an auth error or network/unknown error
+      const errorMessage = error instanceof Error ? error.message : 'Token refresh failed';
+      const isAuthError = this.isAuthenticationError(error);
+      
+      // Clear session only for auth errors
+      if (isAuthError) {
+        this.tokenManager.clearSession();
+        this.http.setAuthToken(null);
+      }
+
       throw new InsForgeError(
-        error instanceof Error ? error.message : 'Token refresh failed',
-        401,
+        errorMessage,
+        isAuthError ? 401 : 500,
         'REFRESH_FAILED'
       );
     }
