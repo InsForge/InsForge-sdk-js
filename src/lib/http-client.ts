@@ -198,7 +198,7 @@ export class HttpClient {
     this.isRefreshing = true;
 
     try {
-      const newToken = await this.refreshCallback!();
+      const newToken = await this.refreshCallback?.();
       
       // Resolve all queued requests with the new token (or null if refresh failed)
       this.refreshQueue.forEach(({ resolve, reject }) => {
@@ -210,7 +210,7 @@ export class HttpClient {
       });
       this.refreshQueue = [];
       
-      return newToken;
+      return newToken || null;
     } catch (error) {
       // Reject all queued requests
       this.refreshQueue.forEach(({ reject }) => {

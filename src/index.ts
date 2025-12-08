@@ -60,13 +60,7 @@ export type {
 
 // Re-export utilities for advanced usage
 export { HttpClient } from './lib/http-client';
-
-// Re-export Token Manager
 export { TokenManager } from './lib/token-manager';
-
-// Re-export backend config utilities
-export { discoverBackendConfig, createSessionStorage, getDefaultBackendConfig } from './lib/backend-config';
-export type { BackendConfig } from './lib/backend-config';
 
 // Re-export session storage strategies for advanced usage
 export {
@@ -75,9 +69,13 @@ export {
 } from './lib/session-storage';
 export type { SessionStorageStrategy } from './lib/session-storage';
 
-// Factory function for creating clients (synchronous, recommended)
-export { createClient } from './client';
+// Factory function for creating clients (Supabase-style)
+import { InsForgeClient } from './client';
+import { InsForgeConfig } from './types';
+
+export function createClient(config: InsForgeConfig): InsForgeClient {
+  return new InsForgeClient(config);
+}
 
 // Default export for convenience
-import { InsForgeClient as DefaultClient } from './client';
-export default DefaultClient;
+export default InsForgeClient;

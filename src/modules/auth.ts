@@ -5,6 +5,7 @@
 
 import { HttpClient } from '../lib/http-client';
 import { TokenManager } from '../lib/token-manager';
+import { SecureSessionStorage, LocalSessionStorage } from '../lib/session-storage';
 import { AuthSession, InsForgeError } from '../types';
 
 import type {
@@ -50,29 +51,10 @@ function isHostedAuthEnvironment(): boolean {
   return false;
 }
 
-/**
- * Auth state change event types
- * Following Supabase pattern for consistency
- */
-export type AuthStateChangeEvent = 
-  | 'INITIAL_SESSION'  // Sent to each subscriber after initialization (with or without session)
-  | 'SIGNED_IN'        // User signed in (login, OAuth callback, email verification)
-  | 'SIGNED_OUT'       // User signed out
-  | 'TOKEN_REFRESHED'; // Access token was refreshed
-
-/**
- * Auth state change callback type
- */
-export type AuthStateChangeCallback = (
-  event: AuthStateChangeEvent,
-  session: AuthSession | null
-) => void;
-
 export class Auth {
   constructor(
     private http: HttpClient,
-    private tokenManager: TokenManager,
-    initializePromise?: Promise<void>
+    private tokenManager: TokenManager
   ) {
     // Auto-detect OAuth callback parameters in the URL
     this.detectAuthCallback();
@@ -131,12 +113,10 @@ export class Auth {
 
         // Replace URL without adding to browser history
         window.history.replaceState({}, document.title, url.toString());
-        
-        // Emit auth state change
-        this._emitAuthStateChange('SIGNED_IN', session);
       }
-    } catch {
+    } catch (error) {
       // Silently continue - don't break initialization
+      console.debug('OAuth callback detection skipped:', error);
     }
   }
 
@@ -160,9 +140,8 @@ export class Auth {
           this.tokenManager.saveSession(session);
         }
         this.http.setAuthToken(response.accessToken);
-        
-        // Emit auth state change
-        this._emitAuthStateChange('SIGNED_IN', session);
+        // Detect backend storage mode in background (fire and forget)
+        this._detectStorageAfterAuth();
       }
 
       return {
@@ -214,9 +193,10 @@ export class Auth {
         this.tokenManager.saveSession(session);
       }
       this.http.setAuthToken(response.accessToken || '');
-      
-      // Emit auth state change
-      this._emitAuthStateChange('SIGNED_IN', session);
+
+      // Detect backend storage mode in background (fire and forget)
+      // This will switch to SecureSessionStorage if backend supports cookie mode
+      this._detectStorageAfterAuth();
 
       return {
         data: response,
@@ -309,10 +289,7 @@ export class Auth {
 
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
-      
-      // Emit auth state change
-      this._emitAuthStateChange('SIGNED_OUT', null);
-      
+
       return { error: null };
     } catch (error) {
       return {
@@ -347,10 +324,6 @@ export class Auth {
           this.tokenManager.setUser(response.user);
         }
 
-        // Emit auth state change with updated session
-        const session = this.tokenManager.getSession();
-        this._emitAuthStateChange('TOKEN_REFRESHED', session);
-
         return response.accessToken;
       }
 
@@ -369,19 +342,9 @@ export class Auth {
         throw error;
       }
 
-      // Determine if this is an auth error or network/unknown error
-      const errorMessage = error instanceof Error ? error.message : 'Token refresh failed';
-      const isAuthError = this.isAuthenticationError(error);
-      
-      // Clear session only for auth errors
-      if (isAuthError) {
-        this.tokenManager.clearSession();
-        this.http.setAuthToken(null);
-      }
-
       throw new InsForgeError(
-        errorMessage,
-        isAuthError ? 401 : 500,
+        'Token refresh failed',
+        500,
         'REFRESH_FAILED'
       );
     }
@@ -786,9 +749,6 @@ export class Auth {
         };
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
-        
-        // Emit auth state change
-        this._emitAuthStateChange('SIGNED_IN', session);
       }
 
       return {
