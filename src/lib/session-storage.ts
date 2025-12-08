@@ -3,7 +3,7 @@
  * 
  * Implements the Strategy Pattern for token storage:
  * - SecureSessionStorage: In-memory tokens + httpOnly cookie refresh (XSS-resistant)
- * - PersistentSessionStorage: localStorage-based storage (legacy/fallback)
+ * - LocalSessionStorage: localStorage-based storage (legacy/fallback)
  */
 
 import type { UserSchema } from '@insforge/shared-schemas';
@@ -130,7 +130,7 @@ export class SecureSessionStorage implements SessionStorageStrategy {
 }
 
 /**
- * Persistent Session Storage Strategy
+ * Local Session Storage Strategy
  * 
  * Stores tokens in localStorage for persistence across page reloads.
  * Used for legacy backends or environments where httpOnly cookies aren't available.
@@ -138,8 +138,8 @@ export class SecureSessionStorage implements SessionStorageStrategy {
  * Note: This approach exposes tokens to XSS attacks. Use SecureSessionStorage
  * when possible.
  */
-export class PersistentSessionStorage implements SessionStorageStrategy {
-  readonly strategyId = 'persistent';
+export class LocalSessionStorage implements SessionStorageStrategy {
+  readonly strategyId = 'local';
   
   private storage: TokenStorage;
 

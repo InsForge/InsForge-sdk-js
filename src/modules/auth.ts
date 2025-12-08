@@ -50,10 +50,29 @@ function isHostedAuthEnvironment(): boolean {
   return false;
 }
 
+/**
+ * Auth state change event types
+ * Following Supabase pattern for consistency
+ */
+export type AuthStateChangeEvent = 
+  | 'INITIAL_SESSION'  // Sent to each subscriber after initialization (with or without session)
+  | 'SIGNED_IN'        // User signed in (login, OAuth callback, email verification)
+  | 'SIGNED_OUT'       // User signed out
+  | 'TOKEN_REFRESHED'; // Access token was refreshed
+
+/**
+ * Auth state change callback type
+ */
+export type AuthStateChangeCallback = (
+  event: AuthStateChangeEvent,
+  session: AuthSession | null
+) => void;
+
 export class Auth {
   constructor(
     private http: HttpClient,
-    private tokenManager: TokenManager
+    private tokenManager: TokenManager,
+    initializePromise?: Promise<void>
   ) {
     // Auto-detect OAuth callback parameters in the URL
     this.detectAuthCallback();
@@ -69,9 +88,6 @@ export class Auth {
     if (typeof window === 'undefined') return;
 
     try {
-      // Wait for initialization to complete first
-      await this.waitForInit();
-
       const params = new URLSearchParams(window.location.search);
 
       // Backend returns: access_token, user_id, email, name (optional)
@@ -115,6 +131,9 @@ export class Auth {
 
         // Replace URL without adding to browser history
         window.history.replaceState({}, document.title, url.toString());
+        
+        // Emit auth state change
+        this._emitAuthStateChange('SIGNED_IN', session);
       }
     } catch {
       // Silently continue - don't break initialization
@@ -129,9 +148,6 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      // Wait for client initialization to ensure correct storage mode
-      await this.waitForInit();
-
       const response = await this.http.post<CreateUserResponse>('/api/auth/users', request);
 
       // Save session internally only if both accessToken and user exist
@@ -144,6 +160,9 @@ export class Auth {
           this.tokenManager.saveSession(session);
         }
         this.http.setAuthToken(response.accessToken);
+        
+        // Emit auth state change
+        this._emitAuthStateChange('SIGNED_IN', session);
       }
 
       return {
@@ -176,9 +195,6 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      // Wait for client initialization to ensure correct storage mode
-      await this.waitForInit();
-
       const response = await this.http.post<CreateSessionResponse>('/api/auth/sessions', request);
 
       // Save session internally
@@ -198,6 +214,9 @@ export class Auth {
         this.tokenManager.saveSession(session);
       }
       this.http.setAuthToken(response.accessToken || '');
+      
+      // Emit auth state change
+      this._emitAuthStateChange('SIGNED_IN', session);
 
       return {
         data: response,
@@ -290,6 +309,10 @@ export class Auth {
 
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
+      
+      // Emit auth state change
+      this._emitAuthStateChange('SIGNED_OUT', null);
+      
       return { error: null };
     } catch (error) {
       return {
@@ -323,6 +346,10 @@ export class Auth {
         if (response.user) {
           this.tokenManager.setUser(response.user);
         }
+
+        // Emit auth state change with updated session
+        const session = this.tokenManager.getSession();
+        this._emitAuthStateChange('TOKEN_REFRESHED', session);
 
         return response.accessToken;
       }
@@ -746,9 +773,6 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      // Wait for client initialization to ensure correct storage mode
-      await this.waitForInit();
-
       const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string }>(
         '/api/auth/email/verify',
         request
@@ -762,6 +786,9 @@ export class Auth {
         };
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
+        
+        // Emit auth state change
+        this._emitAuthStateChange('SIGNED_IN', session);
       }
 
       return {

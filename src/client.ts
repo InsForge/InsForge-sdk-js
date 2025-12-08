@@ -2,10 +2,10 @@ import { InsForgeConfig } from './types';
 import { HttpClient } from './lib/http-client';
 import { TokenManager } from './lib/token-manager';
 import {
-  discoverCapabilities,
+  discoverBackendConfig,
   createSessionStorage,
-  BackendCapabilities,
-} from './lib/capability-discovery';
+  BackendConfig,
+} from './lib/backend-config';
 import { Auth } from './modules/auth';
 import { Database } from './modules/database-postgrest';
 import { Storage } from './modules/storage';
@@ -17,41 +17,30 @@ import { Emails } from './modules/email';
 /**
  * Main InsForge SDK Client
  * 
+ * The client automatically initializes in the background and emits auth state changes.
+ * Subscribe to `auth.onAuthStateChange` to be notified when initialization completes.
+ * 
  * @example
  * ```typescript
  * import { InsForgeClient } from '@insforge/sdk';
  * 
+ * // Create client - synchronous, immediately usable
  * const client = new InsForgeClient({
  *   baseUrl: 'http://localhost:7130'
  * });
  * 
- * // Wait for initialization (optional but recommended)
- * await client.initialize();
- * 
- * // Authentication
- * const session = await client.auth.signUp({
- *   email: 'user@example.com',
- *   password: 'password123',
- *   name: 'John Doe'
+ * // Subscribe to auth state changes
+ * client.auth.onAuthStateChange((event, session) => {
+ *   console.log('Auth event:', event);
+ *   if (session) {
+ *     console.log('User:', session.user.email);
+ *   }
  * });
  * 
- * // Database operations
- * const { data, error } = await client.database
- *   .from('posts')
- *   .select('*')
- *   .eq('user_id', session.user.id)
- *   .order('created_at', { ascending: false })
- *   .limit(10);
- * 
- * // Insert data
- * const { data: newPost } = await client.database
- *   .from('posts')
- *   .insert({ title: 'Hello', content: 'World' })
- *   .single();
- * 
- * // Invoke edge functions
- * const { data, error } = await client.functions.invoke('my-function', {
- *   body: { message: 'Hello from SDK' }
+ * // Client is immediately usable for auth operations
+ * const { data, error } = await client.auth.signInWithPassword({
+ *   email: 'user@example.com',
+ *   password: 'password123'
  * });
  * ```
  */
@@ -67,20 +56,26 @@ export class InsForgeClient {
   public readonly emails: Emails;
 
   constructor(config: InsForgeConfig = {}) {
+    // Create initialization promise
+    this.initializePromise = new Promise((resolve) => {
+      this.initializeResolve = resolve;
+    });
+
     this.http = new HttpClient(config);
     this.tokenManager = new TokenManager(config.storage);
 
-    // Check for edge function token
+    // Create auth module with initializePromise for proper INITIAL_SESSION handling
+    this.auth = new Auth(this.http, this.tokenManager, this.initializePromise);
+
+    // Check for edge function token (server-side usage)
     if (config.edgeFunctionToken) {
       this.http.setAuthToken(config.edgeFunctionToken);
+      // Save to token manager so getCurrentUser() works
       this.tokenManager.saveSession({
         accessToken: config.edgeFunctionToken,
         user: {} as any, // Will be populated by getCurrentUser()
       });
     }
-
-    // Create auth module
-    this.auth = new Auth(this.http, this.tokenManager);
 
     // Set up refresh callback for auto-refresh on 401
     this.http.setRefreshCallback(async () => {
@@ -107,23 +102,25 @@ export class InsForgeClient {
   }
 
   /**
+   * Wait for client initialization to complete
+   * @returns Promise that resolves when initialization is done
+   */
+  async waitForInitialization(): Promise<void> {
+    return this.initializePromise;
+  }
+
+  /**
    * Get the underlying HTTP client for custom requests
-   * 
-   * @example
-   * ```typescript
-   * const httpClient = client.getHttpClient();
-   * const customData = await httpClient.get('/api/custom-endpoint');
-   * ```
    */
   getHttpClient(): HttpClient {
     return this.http;
   }
 
   /**
-   * Get the discovered backend capabilities
+   * Get the discovered backend configuration
    */
-  getCapabilities(): BackendCapabilities | null {
-    return this.capabilities;
+  getBackendConfig(): BackendConfig | null {
+    return this.backendConfig;
   }
 
   /**
@@ -132,11 +129,32 @@ export class InsForgeClient {
   getStorageStrategy(): string {
     return this.tokenManager.getStrategyId();
   }
+}
 
-  /**
-   * Check if the client has been fully initialized
-   */
-  isInitialized(): boolean {
-    return this.initialized;
-  }
+/**
+ * Create an InsForge client.
+ * This is a convenience alias for `new InsForgeClient(config)`.
+ * 
+ * Note: The client initializes asynchronously in the background.
+ * Subscribe to `auth.onAuthStateChange` to be notified when ready.
+ * 
+ * @example
+ * ```typescript
+ * import { createClient } from '@insforge/sdk';
+ * 
+ * const client = createClient({
+ *   baseUrl: 'http://localhost:7130'
+ * });
+ * 
+ * // Subscribe to auth state changes
+ * client.auth.onAuthStateChange((event, session) => {
+ *   if (event === 'INITIAL_SESSION') {
+ *     // Initialization complete
+ *     console.log('Ready!', session ? 'Logged in' : 'Not logged in');
+ *   }
+ * });
+ * ```
+ */
+export function createClient(config: InsForgeConfig = {}): InsForgeClient {
+  return new InsForgeClient(config);
 }
