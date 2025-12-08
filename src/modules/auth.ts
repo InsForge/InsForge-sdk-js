@@ -5,6 +5,7 @@
 
 import { HttpClient } from '../lib/http-client';
 import { TokenManager } from '../lib/token-manager';
+import { SecureSessionStorage, LocalSessionStorage } from '../lib/session-storage';
 import { AuthSession, InsForgeError } from '../types';
 import { Database } from './database-postgrest';
 
@@ -118,137 +119,86 @@ function isHostedAuthEnvironment(): boolean {
   return false;
 }
 
-/**
- * Auth state change event types
- * Following Supabase pattern for consistency
- */
-export type AuthStateChangeEvent = 
-  | 'INITIAL_SESSION'  // Sent to each subscriber after initialization (with or without session)
-  | 'SIGNED_IN'        // User signed in (login, OAuth callback, email verification)
-  | 'SIGNED_OUT'       // User signed out
-  | 'TOKEN_REFRESHED'; // Access token was refreshed
-
-/**
- * Auth state change callback type
- */
-export type AuthStateChangeCallback = (
-  event: AuthStateChangeEvent,
-  session: AuthSession | null
-) => void;
-
 export class Auth {
   private database: Database;
-  private authStateListeners: Set<AuthStateChangeCallback> = new Set();
-  private initializePromise: Promise<void>;
 
   constructor(
     private http: HttpClient,
-    private tokenManager: TokenManager,
-    initializePromise?: Promise<void>
+    private tokenManager: TokenManager
   ) {
     this.database = new Database(http, tokenManager);
-    // Default to resolved promise if not provided (for backward compatibility)
-    this.initializePromise = initializePromise ?? Promise.resolve();
+    // Auto-detect OAuth callback parameters in the URL
+    this.detectAuthCallback();
   }
 
   /**
-   * Subscribe to auth state changes
-   * 
-   * New subscribers will receive an INITIAL_SESSION event after initialization completes.
-   * This ensures no race condition where subscribers miss the initial state.
-   * 
-   * @param callback - Function called when auth state changes
-   * @returns Unsubscribe function
-   * 
-   * @example
-   * ```typescript
-   * const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
-   *   if (event === 'SIGNED_IN') {
-   *     console.log('User signed in:', session?.user.email);
-   *   } else if (event === 'SIGNED_OUT') {
-   *     console.log('User signed out');
-   *   }
-   * });
-   * 
-   * // Later: unsubscribe
-   * subscription.unsubscribe();
-   * ```
+   * Check if the isAuthenticated cookie flag exists
    */
-  onAuthStateChange(callback: AuthStateChangeCallback): {
-    data: { subscription: { unsubscribe: () => void } };
-  } {
-    this.authStateListeners.add(callback);
-    
-    // After initialization completes, send initial session state to this specific subscriber
-    // This handles the race condition where subscriber registers after initialization
-    // Following Supabase pattern: each subscriber gets their own INITIAL_SESSION
-    ;(async () => {
-      await this.initializePromise;
-      
-      // Check if still subscribed (might have unsubscribed during await)
-      if (this.authStateListeners.has(callback)) {
-        const session = this.tokenManager.getSession();
-        try {
-          // Send INITIAL_SESSION (Supabase always sends this event type for initial state)
-          callback('INITIAL_SESSION', session);
-        } catch (error) {
-          console.error('[Auth] Error in auth state change listener:', error);
-        }
-      }
-    })();
-    
-    return {
-      data: {
-        subscription: {
-          unsubscribe: () => {
-            this.authStateListeners.delete(callback);
-          }
-        }
-      }
-    };
+  private hasAuthenticatedCookie(): boolean {
+    if (typeof document === 'undefined') return false;
+    return document.cookie.split(';').some(c =>
+      c.trim().startsWith('isAuthenticated=')
+    );
   }
 
   /**
-   * Emit auth state change to all listeners
+   * Switch to SecureSessionStorage (cookie-based auth)
+   * Called when we detect backend supports secure cookie mode
    * @internal
    */
-  _emitAuthStateChange(event: AuthStateChangeEvent, session: AuthSession | null): void {
-    this.authStateListeners.forEach(callback => {
-      try {
-        callback(event, session);
-      } catch (error) {
-        console.error('[Auth] Error in auth state change listener:', error);
-      }
-    });
-  }
+  _switchToSecureStorage(): void {
+    if (this.tokenManager.getStrategyId() === 'secure') return;
 
-  /**
-   * Check if an error represents an authentication failure
-   * Used to determine appropriate HTTP status code (401 vs 500)
-   */
-  private isAuthenticationError(error: unknown): boolean {
-    if (error instanceof Error) {
-      const message = error.message.toLowerCase();
-      const authKeywords = [
-        'unauthorized',
-        'invalid token',
-        'expired token',
-        'token expired',
-        'invalid refresh token',
-        'refresh token',
-        'authentication',
-        'not authenticated',
-        'session expired',
-      ];
-      return authKeywords.some(keyword => message.includes(keyword));
+    const currentSession = this.tokenManager.getSession();
+    this.tokenManager.setStrategy(new SecureSessionStorage());
+
+    // Clear localStorage (no longer needed)
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('insforge_access_token');
+      localStorage.removeItem('insforge_user');
     }
-    return false;
+
+    // Migrate session to new strategy
+    if (currentSession) {
+      this.tokenManager.saveSession(currentSession);
+    }
   }
 
   /**
-   * Detect and handle OAuth callback parameters in the URL.
-   * Called by client after initialization.
+   * Switch to LocalSessionStorage (localStorage-based auth)
+   * Called when cookie-based auth fails (fallback)
+   * @internal
    */
+  _switchToLocalStorage(): void {
+    if (this.tokenManager.getStrategyId() === 'local') return;
+
+    const currentSession = this.tokenManager.getSession();
+    this.tokenManager.setStrategy(new LocalSessionStorage());
+
+    // Migrate session to new strategy
+    if (currentSession) {
+      this.tokenManager.saveSession(currentSession);
+    }
+  }
+
+  /**
+   * Detect storage strategy after successful auth
+   * Checks for isAuthenticated cookie to determine backend mode
+   * @internal
+   */
+  private _detectStorageAfterAuth(): void {
+    if (this.hasAuthenticatedCookie()) {
+      // Backend set the cookie flag, use secure storage
+      this._switchToSecureStorage();
+    }
+    // Otherwise keep current strategy (LocalSessionStorage)
+  }
+
+  /**
+ * Automatically detect and handle OAuth callback parameters in the URL
+ * This runs on initialization to seamlessly complete the OAuth flow
+ * Matches the backend's OAuth callback response (backend/src/api/routes/auth.ts:540-544)
+ */
   detectAuthCallback(): void {
     // Only run in browser environment
     if (typeof window === 'undefined') return;
@@ -297,12 +247,10 @@ export class Auth {
 
         // Replace URL without adding to browser history
         window.history.replaceState({}, document.title, url.toString());
-        
-        // Emit auth state change
-        this._emitAuthStateChange('SIGNED_IN', session);
       }
-    } catch {
+    } catch (error) {
       // Silently continue - don't break initialization
+      console.debug('OAuth callback detection skipped:', error);
     }
   }
 
@@ -326,9 +274,8 @@ export class Auth {
           this.tokenManager.saveSession(session);
         }
         this.http.setAuthToken(response.accessToken);
-        
-        // Emit auth state change
-        this._emitAuthStateChange('SIGNED_IN', session);
+        // Detect backend storage mode in background (fire and forget)
+        this._detectStorageAfterAuth();
       }
 
       return {
@@ -380,9 +327,10 @@ export class Auth {
         this.tokenManager.saveSession(session);
       }
       this.http.setAuthToken(response.accessToken || '');
-      
-      // Emit auth state change
-      this._emitAuthStateChange('SIGNED_IN', session);
+
+      // Detect backend storage mode in background (fire and forget)
+      // This will switch to SecureSessionStorage if backend supports cookie mode
+      this._detectStorageAfterAuth();
 
       return {
         data: response,
@@ -475,10 +423,7 @@ export class Auth {
 
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
-      
-      // Emit auth state change
-      this._emitAuthStateChange('SIGNED_OUT', null);
-      
+
       return { error: null };
     } catch (error) {
       return {
@@ -513,10 +458,6 @@ export class Auth {
           this.tokenManager.setUser(response.user);
         }
 
-        // Emit auth state change with updated session
-        const session = this.tokenManager.getSession();
-        this._emitAuthStateChange('TOKEN_REFRESHED', session);
-
         return response.accessToken;
       }
 
@@ -535,19 +476,9 @@ export class Auth {
         throw error;
       }
 
-      // Determine if this is an auth error or network/unknown error
-      const errorMessage = error instanceof Error ? error.message : 'Token refresh failed';
-      const isAuthError = this.isAuthenticationError(error);
-      
-      // Clear session only for auth errors
-      if (isAuthError) {
-        this.tokenManager.clearSession();
-        this.http.setAuthToken(null);
-      }
-
       throw new InsForgeError(
-        errorMessage,
-        isAuthError ? 401 : 500,
+        'Token refresh failed',
+        500,
         'REFRESH_FAILED'
       );
     }
@@ -989,9 +920,6 @@ export class Auth {
         };
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
-        
-        // Emit auth state change
-        this._emitAuthStateChange('SIGNED_IN', session);
       }
 
       return {
