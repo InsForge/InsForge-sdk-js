@@ -1,7 +1,11 @@
 import { InsForgeConfig } from './types';
 import { HttpClient } from './lib/http-client';
 import { TokenManager } from './lib/token-manager';
-import { detectBackendCapabilities, getMinRefreshTokenVersion, StorageMode } from './lib/version-detector';
+import {
+  discoverCapabilities,
+  createSessionStorage,
+  BackendCapabilities,
+} from './lib/capability-discovery';
 import { Auth } from './modules/auth';
 import { Database } from './modules/database-postgrest';
 import { Storage } from './modules/storage';
@@ -65,23 +69,19 @@ export class InsForgeClient {
   constructor(config: InsForgeConfig = {}) {
     this.http = new HttpClient(config);
     this.tokenManager = new TokenManager(config.storage);
-    
+
     // Check for edge function token
     if (config.edgeFunctionToken) {
       this.http.setAuthToken(config.edgeFunctionToken);
-      // Save to token manager so getCurrentUser() works
       this.tokenManager.saveSession({
         accessToken: config.edgeFunctionToken,
-        user: {} as any // Will be populated by getCurrentUser()
+        user: {} as any, // Will be populated by getCurrentUser()
       });
     }
-    
-    // Create auth module first (needed for refresh callback)
-    this.auth = new Auth(
-      this.http,
-      this.tokenManager
-    );
-    
+
+    // Create auth module
+    this.auth = new Auth(this.http, this.tokenManager);
+
     // Set up refresh callback for auto-refresh on 401
     this.http.setRefreshCallback(async () => {
       try {
@@ -90,13 +90,14 @@ export class InsForgeClient {
         return null;
       }
     });
-    
-    // Check for existing session in storage (legacy mode initial load)
+
+    // Check for existing session in storage (for initial load)
     const existingSession = this.tokenManager.getSession();
     if (existingSession?.accessToken) {
       this.http.setAuthToken(existingSession.accessToken);
     }
-    
+
+    // Initialize other modules
     this.database = new Database(this.http, this.tokenManager);
     this.storage = new Storage(this.http);
     this.ai = new AI(this.http);
@@ -119,17 +120,17 @@ export class InsForgeClient {
   }
 
   /**
-   * Get the detected backend version
+   * Get the discovered backend capabilities
    */
-  getBackendVersion(): string {
-    return this.backendVersion;
+  getCapabilities(): BackendCapabilities | null {
+    return this.capabilities;
   }
 
   /**
-   * Get the current storage mode
+   * Get the current storage strategy identifier
    */
-  getStorageMode(): StorageMode {
-    return this.storageMode;
+  getStorageStrategy(): string {
+    return this.tokenManager.getStrategyId();
   }
 
   /**

@@ -82,9 +82,6 @@ export class Auth {
 
       // Check if we have OAuth callback parameters
       if (accessToken && userId && email) {
-        console.log('[InsForge:Auth] OAuth callback detected, processing...');
-        console.log(`[InsForge:Auth] TokenManager mode for OAuth callback: ${this.tokenManager.getMode()}`);
-        
         // Create session with the data from backend
         const session: AuthSession = {
           accessToken,
@@ -118,12 +115,9 @@ export class Auth {
 
         // Replace URL without adding to browser history
         window.history.replaceState({}, document.title, url.toString());
-        
-        console.log('[InsForge:Auth] OAuth callback processed successfully');
       }
-    } catch (error) {
+    } catch {
       // Silently continue - don't break initialization
-      console.debug('OAuth callback detection skipped:', error);
     }
   }
 
@@ -182,20 +176,10 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      console.log('[InsForge:Auth] signInWithPassword called');
-      
       // Wait for client initialization to ensure correct storage mode
       await this.waitForInit();
-      
-      console.log(`[InsForge:Auth] After init - TokenManager mode: ${this.tokenManager.getMode()}`);
 
       const response = await this.http.post<CreateSessionResponse>('/api/auth/sessions', request);
-
-      console.log('[InsForge:Auth] Login response received', {
-        hasAccessToken: !!response.accessToken,
-        hasUser: !!response.user,
-        userId: response.user?.id,
-      });
 
       // Save session internally
       const session: AuthSession = {
@@ -210,21 +194,16 @@ export class Auth {
         },
       };
 
-      console.log(`[InsForge:Auth] About to save session, TokenManager mode: ${this.tokenManager.getMode()}`);
-
       if (!isHostedAuthEnvironment()) {
         this.tokenManager.saveSession(session);
       }
       this.http.setAuthToken(response.accessToken || '');
-
-      console.log('[InsForge:Auth] Session saved and auth token set');
 
       return {
         data: response,
         error: null
       };
     } catch (error) {
-      console.error('[InsForge:Auth] signInWithPassword error:', error);
       // Pass through API errors unchanged
       if (error instanceof InsForgeError) {
         return { data: null, error };
@@ -300,15 +279,15 @@ export class Auth {
    */
   async signOut(): Promise<{ error: InsForgeError | null }> {
     try {
-      // If in modern mode, call backend to clear refresh token cookie
-      if (this.tokenManager.getMode() === 'modern') {
+      // If using secure storage, call backend to clear refresh token cookie
+      if (this.tokenManager.getStrategyId() === 'secure') {
         try {
           await this.http.post('/api/auth/logout');
         } catch {
           // Ignore errors from logout endpoint - still clear local session
         }
       }
-      
+
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
       return { error: null };
@@ -325,7 +304,7 @@ export class Auth {
 
   /**
    * Refresh the access token using the httpOnly refresh token cookie
-   * Only works in modern mode - in legacy mode this will fail
+   * Only works when backend supports secure session storage (httpOnly cookies)
    * 
    * @returns New access token or throws an error
    */

@@ -60,9 +60,20 @@ export type {
 
 // Re-export utilities for advanced usage
 export { HttpClient } from './lib/http-client';
+
+// Re-export Token Manager
 export { TokenManager } from './lib/token-manager';
-export { detectBackendCapabilities, getMinRefreshTokenVersion } from './lib/version-detector';
-export type { StorageMode, BackendCapabilities } from './lib/version-detector';
+
+// Re-export capability discovery utilities
+export { discoverCapabilities, createSessionStorage, getDefaultCapabilities } from './lib/capability-discovery';
+export type { BackendCapabilities } from './lib/capability-discovery';
+
+// Re-export session storage strategies for advanced usage
+export {
+  SecureSessionStorage,
+  PersistentSessionStorage,
+} from './lib/session-storage';
+export type { SessionStorageStrategy } from './lib/session-storage';
 
 // Factory function for creating clients (Supabase-style)
 import { InsForgeClient } from './client';
