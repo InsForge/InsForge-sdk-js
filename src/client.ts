@@ -1,7 +1,11 @@
 import { InsForgeConfig } from './types';
 import { HttpClient } from './lib/http-client';
 import { TokenManager } from './lib/token-manager';
-import { detectBackendCapabilities, getMinRefreshTokenVersion, StorageMode } from './lib/version-detector';
+import {
+  discoverCapabilities,
+  createSessionStorage,
+  BackendCapabilities,
+} from './lib/capability-discovery';
 import { Auth } from './modules/auth';
 import { Database } from './modules/database-postgrest';
 import { Storage } from './modules/storage';
@@ -54,9 +58,8 @@ export class InsForgeClient {
   private tokenManager: TokenManager;
   private initialized = false;
   private initializationPromise: Promise<void> | null = null;
-  private backendVersion = 'unknown';
-  private storageMode: StorageMode = 'legacy';
-  
+  private capabilities: BackendCapabilities | null = null;
+
   public readonly auth: Auth;
   public readonly database: Database;
   public readonly storage: Storage;
@@ -66,23 +69,19 @@ export class InsForgeClient {
   constructor(config: InsForgeConfig = {}) {
     this.http = new HttpClient(config);
     this.tokenManager = new TokenManager(config.storage);
-    
+
     // Check for edge function token
     if (config.edgeFunctionToken) {
       this.http.setAuthToken(config.edgeFunctionToken);
-      // Save to token manager so getCurrentUser() works
       this.tokenManager.saveSession({
         accessToken: config.edgeFunctionToken,
-        user: {} as any // Will be populated by getCurrentUser()
+        user: {} as any, // Will be populated by getCurrentUser()
       });
     }
-    
-    // Create auth module first (needed for refresh callback)
-    this.auth = new Auth(
-      this.http,
-      this.tokenManager
-    );
-    
+
+    // Create auth module
+    this.auth = new Auth(this.http, this.tokenManager);
+
     // Set up refresh callback for auto-refresh on 401
     this.http.setRefreshCallback(async () => {
       try {
@@ -91,34 +90,34 @@ export class InsForgeClient {
         return null;
       }
     });
-    
-    // Check for existing session in storage (legacy mode initial load)
+
+    // Check for existing session in storage (for initial load)
     const existingSession = this.tokenManager.getSession();
     if (existingSession?.accessToken) {
       this.http.setAuthToken(existingSession.accessToken);
     }
-    
+
+    // Initialize other modules
     this.database = new Database(this.http, this.tokenManager);
     this.storage = new Storage(this.http);
     this.ai = new AI(this.http);
     this.functions = new Functions(this.http);
-    
+
     // Start async initialization (non-blocking)
-    // Users can optionally await client.initialize() for full initialization
     this.initializationPromise = this.initializeAsync();
-    
-    // Set init promise on auth module so auth operations wait for mode detection
+
+    // Set init promise on auth module so auth operations wait for initialization
     this.auth.setInitPromise(this.initializationPromise);
   }
 
   /**
-   * Initialize the client by detecting backend capabilities
+   * Initialize the client by discovering backend capabilities
    * This is called automatically on construction but can be awaited for guaranteed initialization
    * 
    * @example
    * ```typescript
    * const client = new InsForgeClient({ baseUrl: 'https://api.example.com' });
-   * await client.initialize(); // Wait for backend detection
+   * await client.initialize(); // Wait for capability discovery
    * ```
    */
   async initialize(): Promise<void> {
@@ -128,71 +127,38 @@ export class InsForgeClient {
   }
 
   /**
-   * Internal async initialization
+   * Internal async initialization - discovers capabilities and configures storage strategy
    */
   private async initializeAsync(): Promise<void> {
     if (this.initialized) return;
-    
-    console.log('[InsForge:Client] Starting async initialization...');
-    
+
     try {
-      const { mode, version } = await detectBackendCapabilities(
+      // Discover backend capabilities
+      this.capabilities = await discoverCapabilities(
         this.http.baseUrl,
         this.http.fetch
       );
-      
-      console.log(`[InsForge:Client] Backend detected: version=${version}, mode=${mode}`);
-      
-      this.backendVersion = version;
-      this.storageMode = mode;
-      this.tokenManager.setMode(mode);
-      
-      if (mode === 'modern') {
-        console.log('[InsForge:Client] Initializing modern session...');
-        await this.initializeModernSession();
-      } else {
-        console.log('[InsForge:Client] Initializing legacy session...');
-        this.initializeLegacySession();
-      }
-      
-      this.initialized = true;
-      console.log('[InsForge:Client] Initialization complete');
-    } catch (error) {
-      // If detection fails, continue with legacy mode
-      console.warn('[InsForge:Client] Backend detection failed, using legacy mode:', error);
-      this.storageMode = 'legacy';
-      this.tokenManager.setMode('legacy');
-      this.initializeLegacySession();
-      this.initialized = true;
-    }
-  }
 
-  /**
-   * Initialize session in modern mode
-   * Attempts to refresh token if isAuthenticated flag exists
-   */
-  private async initializeModernSession(): Promise<void> {
-    // Check isAuthenticated flag and attempt refresh
-    if (this.tokenManager.shouldAttemptRefresh()) {
-      try {
-        const newToken = await this.auth.refreshToken();
-        this.http.setAuthToken(newToken);
-      } catch {
-        // Refresh failed - session expired or invalid
-        this.tokenManager.clearSession();
-        this.http.setAuthToken(null);
-      }
-    }
-  }
+      // Create and set appropriate storage strategy
+      const strategy = createSessionStorage(this.capabilities);
+      this.tokenManager.setStrategy(strategy);
 
-  /**
-   * Initialize session in legacy mode
-   * Loads existing session from localStorage
-   */
-  private initializeLegacySession(): void {
-    const session = this.tokenManager.getSession();
-    if (session?.accessToken) {
-      this.http.setAuthToken(session.accessToken);
+      // If secure storage and should attempt refresh, do so
+      if (this.capabilities.refreshTokens && this.tokenManager.shouldAttemptRefresh()) {
+        try {
+          const newToken = await this.auth.refreshToken();
+          this.http.setAuthToken(newToken);
+        } catch {
+          // Refresh failed - session expired or invalid
+          this.tokenManager.clearSession();
+          this.http.setAuthToken(null);
+        }
+      }
+
+      this.initialized = true;
+    } catch {
+      // If discovery fails, continue with default (persistent) storage
+      this.initialized = true;
     }
   }
 
@@ -210,17 +176,17 @@ export class InsForgeClient {
   }
 
   /**
-   * Get the detected backend version
+   * Get the discovered backend capabilities
    */
-  getBackendVersion(): string {
-    return this.backendVersion;
+  getCapabilities(): BackendCapabilities | null {
+    return this.capabilities;
   }
 
   /**
-   * Get the current storage mode
+   * Get the current storage strategy identifier
    */
-  getStorageMode(): StorageMode {
-    return this.storageMode;
+  getStorageStrategy(): string {
+    return this.tokenManager.getStrategyId();
   }
 
   /**
