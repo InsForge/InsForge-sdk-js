@@ -135,7 +135,7 @@ export class Auth {
    */
   setInitPromise(promise: Promise<void>): void {
     this.initPromise = promise;
-    
+
     // After init is set, trigger OAuth callback detection asynchronously
     this.detectAuthCallbackAsync();
   }
@@ -161,7 +161,7 @@ export class Auth {
     try {
       // Wait for initialization to complete first
       await this.waitForInit();
-      
+
       const params = new URLSearchParams(window.location.search);
 
       // Backend returns: access_token, user_id, email, name (optional)
@@ -221,7 +221,7 @@ export class Auth {
     try {
       // Wait for client initialization to ensure correct storage mode
       await this.waitForInit();
-      
+
       const response = await this.http.post<CreateUserResponse>('/api/auth/users', request);
 
       // Save session internally only if both accessToken and user exist
@@ -408,15 +408,15 @@ export class Auth {
         // Update token manager with new token
         this.tokenManager.setAccessToken(response.accessToken);
         this.http.setAuthToken(response.accessToken);
-        
+
         // Update user data if provided
         if (response.user) {
           this.tokenManager.setUser(response.user);
         }
-        
+
         return response.accessToken;
       }
-      
+
       throw new InsForgeError(
         'No access token in refresh response',
         500,
@@ -426,11 +426,16 @@ export class Auth {
       // Clear session on refresh failure
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
-      
+
       if (error instanceof InsForgeError) {
+        // Only clear session on auth-related errors  
+        if (error.statusCode === 401 || error.statusCode === 403) {
+          this.tokenManager.clearSession();
+          this.http.setAuthToken(null);
+        }
         throw error;
       }
-      
+
       throw new InsForgeError(
         error instanceof Error ? error.message : 'Token refresh failed',
         401,
@@ -864,7 +869,7 @@ export class Auth {
     try {
       // Wait for client initialization to ensure correct storage mode
       await this.waitForInit();
-      
+
       const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string }>(
         '/api/auth/email/verify',
         request
