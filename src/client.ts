@@ -22,15 +22,10 @@ function hasAuthenticatedCookie(): boolean {
 /**
  * Main InsForge SDK Client
  * 
- * The client is synchronously constructed and immediately usable.
- * Storage strategy (localStorage vs secure/cookie-based) is automatically
- * detected based on backend behavior.
- * 
  * @example
  * ```typescript
  * import { InsForgeClient } from '@insforge/sdk';
  * 
- * // Create client - synchronous, immediately usable
  * const client = new InsForgeClient({
  *   baseUrl: 'http://localhost:7130'
  * });
@@ -43,21 +38,28 @@ function hasAuthenticatedCookie(): boolean {
  * });
  * 
  * // Database operations
- * const { data } = await client.database
+ * const { data, error } = await client.database
  *   .from('posts')
  *   .select('*')
+ *   .eq('user_id', session.user.id)
+ *   .order('created_at', { ascending: false })
  *   .limit(10);
  * 
+ * // Insert data
+ * const { data: newPost } = await client.database
+ *   .from('posts')
+ *   .insert({ title: 'Hello', content: 'World' })
+ *   .single();
+ * 
  * // Invoke edge functions
- * const result = await client.functions.invoke('my-function', {
- *   body: { message: 'Hello' }
+ * const { data, error } = await client.functions.invoke('my-function', {
+ *   body: { message: 'Hello from SDK' }
  * });
  * ```
  */
 export class InsForgeClient {
   private http: HttpClient;
   private tokenManager: TokenManager;
-
   public readonly auth: Auth;
   public readonly database: Database;
   public readonly storage: Storage;
@@ -75,16 +77,15 @@ export class InsForgeClient {
     }
     // Otherwise, keep default LocalSessionStorage
 
-    // Check for edge function token (server-side usage)
+    // Check for edge function token
     if (config.edgeFunctionToken) {
       this.http.setAuthToken(config.edgeFunctionToken);
+      // Save to token manager so getCurrentUser() works
       this.tokenManager.saveSession({
         accessToken: config.edgeFunctionToken,
-        user: {} as any,
+        user: {} as any, // Will be populated by getCurrentUser()
       });
     }
-
-    this.auth = new Auth(this.http, this.tokenManager);
 
     // Set up refresh callback for auto-refresh on 401
     // On 401, if refresh fails and we're using SecureSessionStorage, 
@@ -114,7 +115,7 @@ export class InsForgeClient {
       // Will be handled by first API call triggering 401 -> refresh
     }
 
-    // Initialize other modules
+    this.auth = new Auth(this.http, this.tokenManager);
     this.database = new Database(this.http, this.tokenManager);
     this.storage = new Storage(this.http);
     this.ai = new AI(this.http);
