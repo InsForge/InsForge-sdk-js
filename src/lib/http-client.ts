@@ -200,10 +200,12 @@ export class HttpClient {
     try {
       const newToken = await this.refreshCallback!();
       
-      // Resolve all queued requests with the new token
-      this.refreshQueue.forEach(({ resolve }) => {
+      // Resolve all queued requests with the new token (or null if refresh failed)
+      this.refreshQueue.forEach(({ resolve, reject }) => {
         if (newToken) {
           resolve(newToken);
+        } else {
+          reject(new Error('Token refresh failed'));
         }
       });
       this.refreshQueue = [];
