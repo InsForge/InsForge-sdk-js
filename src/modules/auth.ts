@@ -5,7 +5,7 @@
 
 import { HttpClient } from '../lib/http-client';
 import { TokenManager } from '../lib/token-manager';
-import { SecureSessionStorage, LocalSessionStorage } from '../lib/session-storage';
+import { SecureSessionStorage, LocalSessionStorage, AUTH_FLAG_COOKIE, TOKEN_KEY, USER_KEY } from '../lib/session-storage';
 import { AuthSession, InsForgeError } from '../types';
 import { Database } from './database-postgrest';
 
@@ -137,7 +137,7 @@ export class Auth {
   private hasAuthenticatedCookie(): boolean {
     if (typeof document === 'undefined') return false;
     return document.cookie.split(';').some(c =>
-      c.trim().startsWith('isAuthenticated=')
+      c.trim().startsWith(`${AUTH_FLAG_COOKIE}=`)
     );
   }
 
@@ -154,8 +154,8 @@ export class Auth {
 
     // Clear localStorage (no longer needed)
     if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem('insforge_access_token');
-      localStorage.removeItem('insforge_user');
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
     }
 
     // Migrate session to new strategy
@@ -555,26 +555,27 @@ export class Auth {
   }> {
     try {
       // Check if we have a token
-      let session = this.tokenManager.getSession();
-      
+      // Use getAccessToken() instead of getSession() to avoid requiring user data
+      // This decouples token availability from cached user data
+      let accessToken = this.tokenManager.getAccessToken();
+
       // In secure mode, if no token in memory but auth cookie exists, try to refresh
       // This handles page reload scenario where access token was in memory only
-      if (!session?.accessToken && this.tokenManager.shouldAttemptRefresh()) {
+      if (!accessToken && this.tokenManager.shouldAttemptRefresh()) {
         try {
-          await this.refreshToken();
-          session = this.tokenManager.getSession();
+          accessToken = await this.refreshToken();
         } catch {
           // Refresh failed, user is not authenticated
           return { data: null, error: null };
         }
       }
 
-      if (!session?.accessToken) {
+      if (!accessToken) {
         return { data: null, error: null };
       }
 
       // Call the API for auth info
-      this.http.setAuthToken(session.accessToken);
+      this.http.setAuthToken(accessToken);
       const authResponse = await this.http.get<GetCurrentSessionResponse>('/api/auth/sessions/current');
 
       // Get the user's profile using query builder
