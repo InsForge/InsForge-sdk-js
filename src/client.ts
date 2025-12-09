@@ -132,13 +132,6 @@ export class InsForgeClient {
   }
 
   /**
-   * Get the current storage strategy identifier
-   */
-  getStorageStrategy(): string {
-    return this.tokenManager.getStrategyId();
-  }
-
-  /**
    * Future modules will be added here:
    * - database: Database operations
    * - storage: File storage operations
