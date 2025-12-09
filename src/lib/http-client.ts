@@ -4,26 +4,12 @@ export interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
 }
 
-/**
- * Callback type for token refresh
- * Returns new access token or null if refresh failed
- */
-export type RefreshCallback = () => Promise<string | null>;
-
 export class HttpClient {
   public readonly baseUrl: string;
   public readonly fetch: typeof fetch;
   private defaultHeaders: Record<string, string>;
   private anonKey: string | undefined;
   private userToken: string | null = null;
-  
-  // Auto-refresh support
-  private refreshCallback?: RefreshCallback;
-  private isRefreshing = false;
-  private refreshQueue: Array<{
-    resolve: (token: string) => void;
-    reject: (error: Error) => void;
-  }> = [];
 
   constructor(config: InsForgeConfig) {
     this.baseUrl = config.baseUrl || 'http://localhost:7130';
@@ -39,13 +25,6 @@ export class HttpClient {
         'Fetch is not available. Please provide a fetch implementation in the config.'
       );
     }
-  }
-
-  /**
-   * Set the refresh callback for automatic token refresh on 401
-   */
-  setRefreshCallback(callback: RefreshCallback): void {
-    this.refreshCallback = callback;
   }
 
   private buildUrl(path: string, params?: Record<string, string>): string {
@@ -83,15 +62,6 @@ export class HttpClient {
     path: string,
     options: RequestOptions = {}
   ): Promise<T> {
-    return this.performRequest<T>(method, path, options, false);
-  }
-
-  private async performRequest<T>(
-    method: string,
-    path: string,
-    options: RequestOptions = {},
-    isRetry = false
-  ): Promise<T> {
     const { params, headers = {}, body, ...fetchOptions } = options;
     
     const url = this.buildUrl(path, params);
@@ -128,19 +98,9 @@ export class HttpClient {
       method,
       headers: requestHeaders,
       body: processedBody,
-      ...fetchOptions,
       credentials: 'include',
+      ...fetchOptions,
     });
-
-    // Handle 401 with automatic refresh (only if we have a refresh callback and this isn't already a retry)
-    const isRefreshEndpoint = path.includes('/api/auth/refresh') || path.includes('/api/auth/logout');
-    if (response.status === 401 && !isRetry && !isRefreshEndpoint && this.refreshCallback) {
-      const newToken = await this.handleTokenRefresh();
-      if (newToken) {
-        this.setAuthToken(newToken);
-        return this.performRequest<T>(method, path, options, true);
-      }
-    }
 
     // Handle 204 No Content
     if (response.status === 204) {
@@ -182,47 +142,6 @@ export class HttpClient {
     }
 
     return data as T;
-  }
-
-  /**
-   * Handle token refresh with queue to prevent duplicate refreshes
-   * Multiple concurrent 401s will wait for a single refresh to complete
-   */
-  private async handleTokenRefresh(): Promise<string | null> {
-    // If already refreshing, queue this request
-    if (this.isRefreshing) {
-      return new Promise((resolve, reject) => {
-        this.refreshQueue.push({ resolve, reject });
-      });
-    }
-
-    this.isRefreshing = true;
-
-    try {
-      const newToken = await this.refreshCallback?.();
-      
-      // Resolve all queued requests with the new token (or null if refresh failed)
-      this.refreshQueue.forEach(({ resolve, reject }) => {
-        if (newToken) {
-          resolve(newToken);
-        } else {
-          reject(new Error('Token refresh failed'));
-        }
-      });
-      this.refreshQueue = [];
-      
-      return newToken || null;
-    } catch (error) {
-      // Reject all queued requests
-      this.refreshQueue.forEach(({ reject }) => {
-        reject(error instanceof Error ? error : new Error('Token refresh failed'));
-      });
-      this.refreshQueue = [];
-      
-      return null;
-    } finally {
-      this.isRefreshing = false;
-    }
   }
 
   get<T>(path: string, options?: RequestOptions): Promise<T> {

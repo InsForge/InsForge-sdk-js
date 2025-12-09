@@ -4,8 +4,7 @@
  */
 
 import { HttpClient } from '../lib/http-client';
-import { TokenManager } from '../lib/token-manager';
-import { SecureSessionStorage, LocalSessionStorage, AUTH_FLAG_COOKIE, TOKEN_KEY, USER_KEY } from '../lib/session-storage';
+import { TokenManager, hasAuthCookie, clearAuthCookie, setAuthCookie } from '../lib/token-manager';
 import { AuthSession, InsForgeError } from '../types';
 
 import type {
@@ -72,18 +71,14 @@ export class Auth {
     try {
       const params = new URLSearchParams(window.location.search);
 
-      // Backend returns: access_token, user_id, email, name (optional), session_mode
+      // Backend returns: access_token, user_id, email, name (optional)
       const accessToken = params.get('access_token');
       const userId = params.get('user_id');
       const email = params.get('email');
       const name = params.get('name');
-      const sessionMode = params.get('session_mode');
 
       // Check if we have OAuth callback parameters
       if (accessToken && userId && email) {
-        // Detect backend storage mode from URL parameter FIRST (before saving session)
-        this._detectStorageFromResponse(sessionMode || undefined);
-
         // Create session with the data from backend
         const session: AuthSession = {
           accessToken,
@@ -102,6 +97,7 @@ export class Auth {
         // Save session and set auth token
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(accessToken);
+        setAuthCookie(); // Set cookie for refresh on page reload
 
         // Clean up the URL to remove sensitive parameters
         const url = new URL(window.location.href);
@@ -109,7 +105,6 @@ export class Auth {
         url.searchParams.delete('user_id');
         url.searchParams.delete('email');
         url.searchParams.delete('name');
-        url.searchParams.delete('session_mode');
 
         // Also handle error case from backend (line 581)
         if (params.has('error')) {
@@ -135,11 +130,6 @@ export class Auth {
     try {
       const response = await this.http.post<CreateUserResponse>('/api/auth/users', request);
 
-      // Detect storage mode from backend response FIRST (before saving session)
-      // This ensures session is saved to the correct storage strategy
-      const sessionMode = (response as any).sessionMode as string | undefined;
-      this._detectStorageFromResponse(sessionMode);
-
       // Save session internally only if both accessToken and user exist
       if (response.accessToken && response.user) {
         const session: AuthSession = {
@@ -148,6 +138,7 @@ export class Auth {
         };
         if (!isHostedAuthEnvironment()) {
           this.tokenManager.saveSession(session);
+          setAuthCookie(); // Set cookie for refresh on page reload
         }
         this.http.setAuthToken(response.accessToken);
       }
@@ -184,10 +175,6 @@ export class Auth {
     try {
       const response = await this.http.post<CreateSessionResponse>('/api/auth/sessions', request);
 
-      // Detect storage mode from backend response FIRST (before saving session)
-      const sessionMode = (response as any).sessionMode as string | undefined;
-      this._detectStorageFromResponse(sessionMode);
-
       // Save session internally
       const session: AuthSession = {
         accessToken: response.accessToken || '',
@@ -200,9 +187,9 @@ export class Auth {
           updatedAt: '',
         },
       };
-
       if (!isHostedAuthEnvironment()) {
         this.tokenManager.saveSession(session);
+        setAuthCookie(); // Set cookie for refresh on page reload
       }
       this.http.setAuthToken(response.accessToken || '');
 
@@ -282,27 +269,24 @@ export class Auth {
 
   /**
    * Sign out the current user
-   * In modern mode, also calls backend to clear the refresh token cookie
    */
   async signOut(): Promise<{ error: InsForgeError | null }> {
     try {
-      // If using secure storage, call backend to clear refresh token cookie
-      if (this.tokenManager.getStrategyId() === 'secure') {
-        try {
-          await this.http.post('/api/auth/logout');
-        } catch {
-          // Ignore errors from logout endpoint - still clear local session
-        }
+      // Try to call backend logout to clear httpOnly refresh cookie
+      // This may fail for legacy backends, but that's ok
+      try {
+        await this.http.post('/api/auth/logout');
+      } catch {
+        // Ignore errors - legacy backend may not have this endpoint
       }
 
+      // Clear local session and cookies
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
-
-      // Clear SDK-managed isAuthenticated cookie (frontend domain)
-      this.clearAuthenticatedCookie();
+      clearAuthCookie();
 
       return { error: null };
-    } catch {
+    } catch (error) {
       return {
         error: new InsForgeError(
           'Failed to sign out',
@@ -310,68 +294,6 @@ export class Auth {
           'SIGNOUT_ERROR'
         )
       };
-    }
-  }
-
-  /**
-   * Refresh the access token using the httpOnly refresh token cookie
-   * Only works when backend supports secure session storage (httpOnly cookies)
-   * 
-   * @returns New access token or throws an error
-   */
-  async refreshToken(): Promise<string> {
-    try {
-      const response = await this.http.post<{ accessToken: string; user?: any; sessionMode?: string }>(
-        '/api/auth/refresh'
-      );
-
-      if (response.accessToken) {
-        // Detect/confirm storage mode from backend response
-        // This ensures we stay in secure mode after refresh
-        this._detectStorageFromResponse(response.sessionMode);
-
-        // Update token manager with new token
-        this.tokenManager.setAccessToken(response.accessToken);
-        this.http.setAuthToken(response.accessToken);
-
-        // Update user data if provided
-        if (response.user) {
-          this.tokenManager.setUser(response.user);
-        }
-
-        return response.accessToken;
-      }
-
-      throw new InsForgeError(
-        'No access token in refresh response',
-        500,
-        'REFRESH_FAILED'
-      );
-    } catch (error) {
-      if (error instanceof InsForgeError) {
-        // Handle 404 - backend doesn't support refresh endpoint (legacy backend)
-        // Switch to localStorage mode for backward compatibility
-        if (error.statusCode === 404) {
-          this._switchToLocalStorage();
-          // Clear the isAuthenticated cookie since secure mode is not supported
-          this.clearAuthenticatedCookie();
-        }
-        
-        // Clear session on auth-related errors (401/403)
-        if (error.statusCode === 401 || error.statusCode === 403) {
-          this.tokenManager.clearSession();
-          this.http.setAuthToken(null);
-          // Clear SDK-managed cookie on auth failure
-          this.clearAuthenticatedCookie();
-        }
-        throw error;
-      }
-
-      throw new InsForgeError(
-        'Token refresh failed',
-        500,
-        'REFRESH_FAILED'
-      );
     }
   }
 
@@ -425,9 +347,6 @@ export class Auth {
   /**
    * Get the current user with full profile information
    * Returns both auth info (id, email, role) and profile data (dynamic fields from users table)
-   * 
-   * In secure session mode (httpOnly cookie), this method will automatically attempt
-   * to refresh the session if no access token is available (e.g., after page reload).
    */
   async getCurrentUser(): Promise<{
     data: {
@@ -437,29 +356,13 @@ export class Auth {
   }> {
     try {
       // Check if we have a token
-      // Use getAccessToken() instead of getSession() to avoid requiring user data
-      // This decouples token availability from cached user data
-      let accessToken = this.tokenManager.getAccessToken();
-
-      // In secure mode, if no token in memory but auth cookie exists, try to refresh
-      // This handles page reload scenario where access token was in memory only
-      if (!accessToken && this.tokenManager.shouldAttemptRefresh()) {
-        try {
-          accessToken = await this.refreshToken();
-        } catch (error) {
-          if (error instanceof InsForgeError && (error.statusCode === 401 || error.statusCode === 403)) {
-            return { data: null, error: error };
-          }
-          return { data: null, error: error instanceof InsForgeError ? error : new InsForgeError('Token refresh failed', 500, 'REFRESH_FAILED') };
-        }
-      }
-
-      if (!accessToken) {
+      const session = this.tokenManager.getSession();
+      if (!session?.accessToken) {
         return { data: null, error: null };
       }
 
       // Call the API for auth info
-      this.http.setAuthToken(accessToken);
+      this.http.setAuthToken(session.accessToken);
       const authResponse = await this.http.get<GetCurrentSessionResponse>('/api/auth/sessions/current');
 
       return {
@@ -469,12 +372,9 @@ export class Auth {
         error: null
       };
     } catch (error) {
-      // If unauthorized, clear LOCAL session only - DO NOT call signOut() which would clear backend cookie!
-      // This prevents accidentally clearing a valid refresh token due to expired access token
+      // If unauthorized, clear session
       if (error instanceof InsForgeError && error.statusCode === 401) {
-        this.tokenManager.clearSession();
-        this.http.setAuthToken(null);
-        this.clearAuthenticatedCookie();
+        await this.signOut();
         return { data: null, error: null };
       }
 
@@ -783,14 +683,10 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string; sessionMode?: string }>(
+      const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string }>(
         '/api/auth/email/verify',
         request
       );
-
-      // Detect storage mode from backend response FIRST (before saving session)
-      const sessionMode = (response as any).sessionMode as string | undefined;
-      this._detectStorageFromResponse(sessionMode);
 
       // Save session if we got a token
       if (response.accessToken) {
@@ -800,6 +696,7 @@ export class Auth {
         };
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
+        setAuthCookie(); // Set cookie for refresh on page reload
       }
 
       return {

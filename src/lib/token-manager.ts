@@ -1,116 +1,195 @@
 /**
  * Token Manager for InsForge SDK
  * 
- * A thin wrapper that delegates to the underlying SessionStorageStrategy.
- * This class maintains backward compatibility while using the Strategy Pattern internally.
+ * Simple token storage that supports two modes:
+ * - Memory mode (new backend): tokens stored in memory only, more secure
+ * - Storage mode (legacy backend): tokens persisted in localStorage
  */
 
 import type { UserSchema } from '@insforge/shared-schemas';
 import type { AuthSession, TokenStorage } from '../types';
-import {
-  SessionStorageStrategy,
-  LocalSessionStorage,
-} from './session-storage';
+
+// localStorage keys
+export const TOKEN_KEY = 'insforge-auth-token';
+export const USER_KEY = 'insforge-auth-user';
+
+// Cookie flag to indicate user was logged in (for optimistic refresh)
+export const AUTH_FLAG_COOKIE = 'isAuthenticated';
 
 /**
- * TokenManager - Manages session storage using the Strategy Pattern
- * 
- * The actual storage implementation is delegated to a SessionStorageStrategy.
- * By default, uses LocalSessionStorage until a strategy is explicitly set
- * via setStrategy() during client initialization.
+ * Check if isAuthenticated cookie exists
  */
+export function hasAuthCookie(): boolean {
+  if (typeof document === 'undefined') return false;
+  return document.cookie.split(';').some(c =>
+    c.trim().startsWith(`${AUTH_FLAG_COOKIE}=`)
+  );
+}
+
+/**
+ * Set isAuthenticated cookie
+ */
+export function setAuthCookie(): void {
+  if (typeof document === 'undefined') return;
+  const maxAge = 7 * 24 * 60 * 60; // 7 days
+  document.cookie = `${AUTH_FLAG_COOKIE}=true; path=/; max-age=${maxAge}; SameSite=Lax`;
+}
+
+/**
+ * Clear isAuthenticated cookie
+ */
+export function clearAuthCookie(): void {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${AUTH_FLAG_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
+}
+
 export class TokenManager {
-  private strategy: SessionStorageStrategy;
+  // In-memory storage
+  private accessToken: string | null = null;
+  private user: UserSchema | null = null;
+  
+  // Persistent storage (for legacy backend)
+  private storage: TokenStorage;
+  
+  // Mode: 'memory' (new backend) or 'storage' (legacy backend, default)
+  private _mode: 'memory' | 'storage' = 'storage';
 
-  /**
-   * Create a new TokenManager
-   * @param storage - Optional custom storage adapter (used for initial LocalSessionStorage)
-   */
   constructor(storage?: TokenStorage) {
-    // Default to persistent storage until capability discovery completes
-    this.strategy = new LocalSessionStorage(storage);
-  }
-
-  /**
-   * Set the storage strategy
-   * Called after capability discovery to switch to the appropriate strategy
-   */
-  setStrategy(strategy: SessionStorageStrategy): void {
-    // Migrate existing session data if switching strategies
-    const existingSession = this.strategy.getSession();
-    const previousId = this.strategy.strategyId;
-    
-    this.strategy = strategy;
-    
-    // If we had a session and are switching to a different strategy, migrate it
-    if (existingSession && previousId !== strategy.strategyId) {
-      strategy.saveSession(existingSession);
+    if (storage) {
+      // Use provided storage 
+      this.storage = storage;
+    } else if (typeof window !== 'undefined' && window.localStorage) {
+      this.storage = window.localStorage;
+    } else {
+      // Node.js: use in-memory storage
+      const store = new Map<string, string>();
+      this.storage = {
+        getItem: (key: string) => store.get(key) || null,
+        setItem: (key: string, value: string) => { store.set(key, value); },
+        removeItem: (key: string) => { store.delete(key); },
+      };
     }
   }
 
   /**
-   * Get the current strategy identifier
+   * Get current mode
    */
-  getStrategyId(): string {
-    return this.strategy.strategyId;
+  get mode(): 'memory' | 'storage' {
+    return this._mode;
   }
 
-  // --- Delegated Methods ---
+  /**
+   * Set mode to memory (new backend with cookies + memory)
+   */
+  setMemoryMode(): void {
+    if (this._mode === 'storage') {
+      // Clear localStorage when switching from storage to memory mode
+      this.storage.removeItem(TOKEN_KEY);
+      this.storage.removeItem(USER_KEY);
+    }
+    this._mode = 'memory';
+  }
 
   /**
-   * Save session data
+   * Set mode to storage (legacy backend with localStorage)
+   * Also loads existing session from localStorage
+   */
+  setStorageMode(): void {
+    this._mode = 'storage';
+    this.loadFromStorage();
+  }
+
+  /**
+   * Load session from localStorage
+   */
+  private loadFromStorage(): void {
+    const token = this.storage.getItem(TOKEN_KEY) as string | null;
+    const userStr = this.storage.getItem(USER_KEY) as string | null;
+
+    if (token && userStr) {
+      try {
+        this.accessToken = token;
+        this.user = JSON.parse(userStr);
+      } catch {
+        this.clearSession();
+      }
+    }
+  }
+
+  /**
+   * Save session (memory always, localStorage only in storage mode)
    */
   saveSession(session: AuthSession): void {
-    this.strategy.saveSession(session);
+    this.accessToken = session.accessToken;
+    this.user = session.user;
+
+    // Persist to localStorage in storage mode
+    if (this._mode === 'storage') {
+      this.storage.setItem(TOKEN_KEY, session.accessToken);
+      this.storage.setItem(USER_KEY, JSON.stringify(session.user));
+    }
   }
 
   /**
    * Get current session
    */
   getSession(): AuthSession | null {
-    return this.strategy.getSession();
+    if (!this.accessToken || !this.user) return null;
+    return {
+      accessToken: this.accessToken,
+      user: this.user,
+    };
   }
 
   /**
    * Get access token
    */
   getAccessToken(): string | null {
-    return this.strategy.getAccessToken();
+    return this.accessToken;
   }
 
   /**
-   * Update access token (e.g., after refresh)
+   * Set access token
    */
   setAccessToken(token: string): void {
-    this.strategy.setAccessToken(token);
+    this.accessToken = token;
+    if (this._mode === 'storage') {
+      this.storage.setItem(TOKEN_KEY, token);
+    }
   }
 
   /**
-   * Get user data
+   * Get user
    */
   getUser(): UserSchema | null {
-    return this.strategy.getUser();
+    return this.user;
   }
 
   /**
-   * Update user data
+   * Set user
    */
   setUser(user: UserSchema): void {
-    this.strategy.setUser(user);
+    this.user = user;
+    if (this._mode === 'storage') {
+      this.storage.setItem(USER_KEY, JSON.stringify(user));
+    }
   }
 
   /**
-   * Clear all session data
+   * Clear session (both memory and localStorage)
    */
   clearSession(): void {
-    this.strategy.clearSession();
+    this.accessToken = null;
+    this.user = null;
+    this.storage.removeItem(TOKEN_KEY);
+    this.storage.removeItem(USER_KEY);
   }
 
   /**
-   * Check if token refresh should be attempted
-   * (e.g., on page reload in secure mode)
+   * Check if there's a session in localStorage (for legacy detection)
    */
-  shouldAttemptRefresh(): boolean {
-    return this.strategy.shouldAttemptRefresh();
+  hasStoredSession(): boolean {
+    const token = this.storage.getItem(TOKEN_KEY);
+    return !!token;
   }
 }
