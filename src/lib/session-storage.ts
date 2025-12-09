@@ -112,7 +112,9 @@ export class SecureSessionStorage implements SessionStorageStrategy {
 
   private hasAuthFlag(): boolean {
     if (typeof document === 'undefined') return false;
-    return document.cookie.includes(`${AUTH_FLAG_COOKIE}=true`);
+    return document.cookie.split(';').some(c => 
+      c.trim().startsWith(`${AUTH_FLAG_COOKIE}=`)
+    );
   }
 }
 
