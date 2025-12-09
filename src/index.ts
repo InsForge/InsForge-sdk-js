@@ -50,13 +50,6 @@ export type { FunctionInvokeOptions } from './modules/functions';
 export { HttpClient } from './lib/http-client';
 export { TokenManager } from './lib/token-manager';
 
-// Re-export session storage strategies for advanced usage
-export {
-  SecureSessionStorage,
-  LocalSessionStorage,
-} from './lib/session-storage';
-export type { SessionStorageStrategy } from './lib/session-storage';
-
 // Factory function for creating clients (Supabase-style)
 import { InsForgeClient } from './client';
 import { InsForgeConfig } from './types';
