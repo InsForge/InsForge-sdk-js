@@ -214,6 +214,10 @@ export class Auth {
 
       // Check if we have OAuth callback parameters
       if (accessToken && userId && email) {
+        // Detect backend storage mode first (before saving session)
+        // Backend sets isAuthenticated cookie during OAuth redirect
+        this._detectStorageAfterAuth();
+
         // Create session with the data from backend
         const session: AuthSession = {
           accessToken,
@@ -534,6 +538,9 @@ export class Auth {
   /**
    * Get the current user with full profile information
    * Returns both auth info (id, email, role) and profile data (dynamic fields from users table)
+   * 
+   * In secure session mode (httpOnly cookie), this method will automatically attempt
+   * to refresh the session if no access token is available (e.g., after page reload).
    */
   async getCurrentUser(): Promise<{
     data: {
@@ -548,7 +555,20 @@ export class Auth {
   }> {
     try {
       // Check if we have a token
-      const session = this.tokenManager.getSession();
+      let session = this.tokenManager.getSession();
+      
+      // In secure mode, if no token in memory but auth cookie exists, try to refresh
+      // This handles page reload scenario where access token was in memory only
+      if (!session?.accessToken && this.tokenManager.shouldAttemptRefresh()) {
+        try {
+          await this.refreshToken();
+          session = this.tokenManager.getSession();
+        } catch {
+          // Refresh failed, user is not authenticated
+          return { data: null, error: null };
+        }
+      }
+
       if (!session?.accessToken) {
         return { data: null, error: null };
       }

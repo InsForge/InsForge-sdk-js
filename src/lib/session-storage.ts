@@ -14,7 +14,7 @@ const TOKEN_KEY = 'insforge-auth-token';
 const USER_KEY = 'insforge-auth-user';
 
 // Cookie name for optimistic refresh flag
-const AUTH_FLAG_COOKIE = 'isAuthenticated';
+export const AUTH_FLAG_COOKIE = 'isAuthenticated';
 
 /**
  * Strategy interface for session storage
@@ -54,7 +54,7 @@ export interface SessionStorageStrategy {
  * 
  * Stores access token in memory only (cleared on page refresh).
  * Refresh token is stored in httpOnly cookie by the backend.
- * Uses an 'isAuthenticated' flag cookie to detect if refresh should be attempted.
+ * The `isAuthenticated` cookie is set by the backend to signal that a refresh token exists.
  * 
  * Security benefits:
  * - Access token not accessible to XSS attacks (in memory only)
@@ -69,14 +69,13 @@ export class SecureSessionStorage implements SessionStorageStrategy {
   saveSession(session: AuthSession): void {
     this.accessToken = session.accessToken;
     this.user = session.user;
-    this.setAuthFlag(true);
   }
 
   getSession(): AuthSession | null {
-    if (!this.accessToken) return null;
+    if (!this.accessToken || !this.user) return null;
     return {
       accessToken: this.accessToken,
-      user: this.user!,
+      user: this.user,
     };
   }
 
@@ -99,29 +98,17 @@ export class SecureSessionStorage implements SessionStorageStrategy {
   clearSession(): void {
     this.accessToken = null;
     this.user = null;
-    this.setAuthFlag(false);
   }
 
   shouldAttemptRefresh(): boolean {
     // Attempt refresh if:
     // 1. No token in memory (page was refreshed)
-    // 2. Auth flag cookie exists (user was previously authenticated)
+    // 2. Auth flag cookie exists (backend set it, meaning refresh token cookie exists)
     if (this.accessToken) return false;
     return this.hasAuthFlag();
   }
 
-  // --- Private: Auth Flag Cookie Management ---
-
-  private setAuthFlag(authenticated: boolean): void {
-    if (typeof document === 'undefined') return;
-
-    if (authenticated) {
-      const maxAge = 7 * 24 * 60 * 60; // 7 days
-      document.cookie = `${AUTH_FLAG_COOKIE}=true; path=/; max-age=${maxAge}; SameSite=Lax`;
-    } else {
-      document.cookie = `${AUTH_FLAG_COOKIE}=; path=/; max-age=0`;
-    }
-  }
+  // --- Private: Auth Flag Cookie Detection (read-only) ---
 
   private hasAuthFlag(): boolean {
     if (typeof document === 'undefined') return false;
