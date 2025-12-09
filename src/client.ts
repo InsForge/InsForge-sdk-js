@@ -1,7 +1,6 @@
 import { InsForgeConfig } from './types';
 import { HttpClient } from './lib/http-client';
 import { TokenManager } from './lib/token-manager';
-import { SecureSessionStorage, AUTH_FLAG_COOKIE  } from './lib/session-storage';
 import { Auth } from './modules/auth';
 import { Database } from './modules/database-postgrest';
 import { Storage } from './modules/storage';
@@ -9,17 +8,6 @@ import { AI } from './modules/ai';
 import { Functions } from './modules/functions';
 import { Realtime } from './modules/realtime';
 import { Emails } from './modules/email';
-
-/**
- * Check if the isAuthenticated cookie flag exists (SDK-managed on frontend domain)
- * This indicates a previous secure session was established and we should use SecureSessionStorage
- */
-function hasAuthenticatedCookie(): boolean {
-  if (typeof document === 'undefined') return false;
-  return document.cookie.split(';').some(c =>
-    c.trim().startsWith(`${AUTH_FLAG_COOKIE}=`)
-  );
-}
 
 /**
  * Main InsForge SDK Client
@@ -74,13 +62,6 @@ export class InsForgeClient {
     this.http = new HttpClient(config);
     this.tokenManager = new TokenManager(config.storage);
 
-    // Detect storage strategy based on SDK-managed cookie flag (on frontend domain)
-    // If isAuthenticated cookie exists, a previous secure session was established
-    if (hasAuthenticatedCookie()) {
-      this.tokenManager.setStrategy(new SecureSessionStorage());
-    }
-    // Otherwise, keep default LocalSessionStorage (will switch if backend returns sessionMode: 'secure')
-
     // Check for edge function token
     if (config.edgeFunctionToken) {
       this.http.setAuthToken(config.edgeFunctionToken);
@@ -90,22 +71,6 @@ export class InsForgeClient {
         user: {} as any, // Will be populated by getCurrentUser()
       });
     }
-
-    // Set up refresh callback for auto-refresh on 401
-    // On 401, if refresh fails and we're using SecureSessionStorage, 
-    // fall back to LocalSessionStorage
-    this.http.setRefreshCallback(async () => {
-      try {
-        return await this.auth.refreshToken();
-      } catch {
-        // If refresh failed and we're in secure mode, cookie might be invalid
-        // Fall back to localStorage mode
-        if (this.tokenManager.getStrategyId() === 'secure') {
-          this.auth._switchToLocalStorage();
-        }
-        return null;
-      }
-    });
 
     // Check for existing session
     // In secure mode: try to refresh to get access token
