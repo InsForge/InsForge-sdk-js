@@ -302,7 +302,7 @@ export class Auth {
       this.clearAuthenticatedCookie();
 
       return { error: null };
-    } catch (error) {
+    } catch {
       return {
         error: new InsForgeError(
           'Failed to sign out',
@@ -349,7 +349,15 @@ export class Auth {
       );
     } catch (error) {
       if (error instanceof InsForgeError) {
-        // Only clear session on auth-related errors
+        // Handle 404 - backend doesn't support refresh endpoint (legacy backend)
+        // Switch to localStorage mode for backward compatibility
+        if (error.statusCode === 404) {
+          this._switchToLocalStorage();
+          // Clear the isAuthenticated cookie since secure mode is not supported
+          this.clearAuthenticatedCookie();
+        }
+        
+        // Clear session on auth-related errors (401/403)
         if (error.statusCode === 401 || error.statusCode === 403) {
           this.tokenManager.clearSession();
           this.http.setAuthToken(null);
@@ -461,9 +469,12 @@ export class Auth {
         error: null
       };
     } catch (error) {
-      // If unauthorized, clear session
+      // If unauthorized, clear LOCAL session only - DO NOT call signOut() which would clear backend cookie!
+      // This prevents accidentally clearing a valid refresh token due to expired access token
       if (error instanceof InsForgeError && error.statusCode === 401) {
-        await this.signOut();
+        this.tokenManager.clearSession();
+        this.http.setAuthToken(null);
+        this.clearAuthenticatedCookie();
         return { data: null, error: null };
       }
 
