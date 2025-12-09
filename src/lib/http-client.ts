@@ -128,8 +128,8 @@ export class HttpClient {
       method,
       headers: requestHeaders,
       body: processedBody,
-      credentials: 'include', // Essential for httpOnly cookies (refresh token)
       ...fetchOptions,
+      credentials: 'include',
     });
 
     // Handle 401 with automatic refresh (only if we have a refresh callback and this isn't already a retry)
