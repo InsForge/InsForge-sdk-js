@@ -133,7 +133,7 @@ export class HttpClient {
     });
 
     // Handle 401 with automatic refresh (only if we have a refresh callback and this isn't already a retry)
-    const isRefreshEndpoint = path.includes('/api/auth/refresh');
+    const isRefreshEndpoint = path.includes('/api/auth/refresh') || path.includes('/api/auth/logout');
     if (response.status === 401 && !isRetry && !isRefreshEndpoint && this.refreshCallback) {
       const newToken = await this.handleTokenRefresh();
       if (newToken) {

@@ -10,8 +10,8 @@ import type { UserSchema } from '@insforge/shared-schemas';
 import type { AuthSession, TokenStorage } from '../types';
 
 // localStorage keys for persistent storage
-const TOKEN_KEY = 'insforge-auth-token';
-const USER_KEY = 'insforge-auth-user';
+export const TOKEN_KEY = 'insforge-auth-token';
+export const USER_KEY = 'insforge-auth-user';
 
 // Cookie name for optimistic refresh flag
 export const AUTH_FLAG_COOKIE = 'isAuthenticated';
