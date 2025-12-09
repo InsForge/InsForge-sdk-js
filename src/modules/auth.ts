@@ -72,17 +72,17 @@ export class Auth {
     try {
       const params = new URLSearchParams(window.location.search);
 
-      // Backend returns: access_token, user_id, email, name (optional)
+      // Backend returns: access_token, user_id, email, name (optional), session_mode
       const accessToken = params.get('access_token');
       const userId = params.get('user_id');
       const email = params.get('email');
       const name = params.get('name');
+      const sessionMode = params.get('session_mode');
 
       // Check if we have OAuth callback parameters
       if (accessToken && userId && email) {
-        // Detect backend storage mode first (before saving session)
-        // Backend sets isAuthenticated cookie during OAuth redirect
-        this._detectStorageAfterAuth();
+        // Detect backend storage mode from URL parameter FIRST (before saving session)
+        this._detectStorageFromResponse(sessionMode || undefined);
 
         // Create session with the data from backend
         const session: AuthSession = {
@@ -109,6 +109,7 @@ export class Auth {
         url.searchParams.delete('user_id');
         url.searchParams.delete('email');
         url.searchParams.delete('name');
+        url.searchParams.delete('session_mode');
 
         // Also handle error case from backend (line 581)
         if (params.has('error')) {
@@ -134,6 +135,11 @@ export class Auth {
     try {
       const response = await this.http.post<CreateUserResponse>('/api/auth/users', request);
 
+      // Detect storage mode from backend response FIRST (before saving session)
+      // This ensures session is saved to the correct storage strategy
+      const sessionMode = (response as any).sessionMode as string | undefined;
+      this._detectStorageFromResponse(sessionMode);
+
       // Save session internally only if both accessToken and user exist
       if (response.accessToken && response.user) {
         const session: AuthSession = {
@@ -144,8 +150,6 @@ export class Auth {
           this.tokenManager.saveSession(session);
         }
         this.http.setAuthToken(response.accessToken);
-        // Detect backend storage mode in background (fire and forget)
-        this._detectStorageAfterAuth();
       }
 
       return {
@@ -180,6 +184,10 @@ export class Auth {
     try {
       const response = await this.http.post<CreateSessionResponse>('/api/auth/sessions', request);
 
+      // Detect storage mode from backend response FIRST (before saving session)
+      const sessionMode = (response as any).sessionMode as string | undefined;
+      this._detectStorageFromResponse(sessionMode);
+
       // Save session internally
       const session: AuthSession = {
         accessToken: response.accessToken || '',
@@ -197,10 +205,6 @@ export class Auth {
         this.tokenManager.saveSession(session);
       }
       this.http.setAuthToken(response.accessToken || '');
-
-      // Detect backend storage mode in background (fire and forget)
-      // This will switch to SecureSessionStorage if backend supports cookie mode
-      this._detectStorageAfterAuth();
 
       return {
         data: response,
@@ -294,6 +298,9 @@ export class Auth {
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
 
+      // Clear SDK-managed isAuthenticated cookie (frontend domain)
+      this.clearAuthenticatedCookie();
+
       return { error: null };
     } catch (error) {
       return {
@@ -314,11 +321,15 @@ export class Auth {
    */
   async refreshToken(): Promise<string> {
     try {
-      const response = await this.http.post<{ accessToken: string; user?: any }>(
+      const response = await this.http.post<{ accessToken: string; user?: any; sessionMode?: string }>(
         '/api/auth/refresh'
       );
 
       if (response.accessToken) {
+        // Detect/confirm storage mode from backend response
+        // This ensures we stay in secure mode after refresh
+        this._detectStorageFromResponse(response.sessionMode);
+
         // Update token manager with new token
         this.tokenManager.setAccessToken(response.accessToken);
         this.http.setAuthToken(response.accessToken);
@@ -342,6 +353,8 @@ export class Auth {
         if (error.statusCode === 401 || error.statusCode === 403) {
           this.tokenManager.clearSession();
           this.http.setAuthToken(null);
+          // Clear SDK-managed cookie on auth failure
+          this.clearAuthenticatedCookie();
         }
         throw error;
       }
@@ -759,10 +772,14 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string }>(
+      const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string; sessionMode?: string }>(
         '/api/auth/email/verify',
         request
       );
+
+      // Detect storage mode from backend response FIRST (before saving session)
+      const sessionMode = (response as any).sessionMode as string | undefined;
+      this._detectStorageFromResponse(sessionMode);
 
       // Save session if we got a token
       if (response.accessToken) {
