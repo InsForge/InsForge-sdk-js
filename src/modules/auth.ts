@@ -93,11 +93,9 @@ export class Auth {
             updatedAt: new Date().toISOString(),
           } as any,
         };
-
-        // Save session and set auth token
-        this.tokenManager.saveSession(session);
         this.http.setAuthToken(accessToken);
-        setAuthCookie(); // Set cookie for refresh on page reload
+        this.tokenManager.saveSession(session);
+        setAuthCookie();
 
         // Clean up the URL to remove sensitive parameters
         const url = new URL(window.location.href);
@@ -131,15 +129,13 @@ export class Auth {
       const response = await this.http.post<CreateUserResponse>('/api/auth/users', request);
 
       // Save session internally only if both accessToken and user exist
-      if (response.accessToken && response.user) {
+      if (response.accessToken && response.user && !isHostedAuthEnvironment()) {
         const session: AuthSession = {
           accessToken: response.accessToken,
           user: response.user,
         };
-        if (!isHostedAuthEnvironment()) {
-          this.tokenManager.saveSession(session);
-          setAuthCookie(); // Set cookie for refresh on page reload
-        }
+        this.tokenManager.saveSession(session);
+        setAuthCookie();
         this.http.setAuthToken(response.accessToken);
       }
 
@@ -175,23 +171,16 @@ export class Auth {
     try {
       const response = await this.http.post<CreateSessionResponse>('/api/auth/sessions', request);
 
-      // Save session internally
-      const session: AuthSession = {
-        accessToken: response.accessToken || '',
-        user: response.user || {
-          id: '',
-          email: '',
-          name: '',
-          emailVerified: false,
-          createdAt: '',
-          updatedAt: '',
-        },
-      };
-      if (!isHostedAuthEnvironment()) {
+
+      if (response.accessToken && response.user && !isHostedAuthEnvironment()) {
+        const session: AuthSession = {
+          accessToken: response.accessToken,
+          user: response.user,
+        };
         this.tokenManager.saveSession(session);
-        setAuthCookie(); // Set cookie for refresh on page reload
+        setAuthCookie();
+        this.http.setAuthToken(response.accessToken);
       }
-      this.http.setAuthToken(response.accessToken || '');
 
       return {
         data: response,
@@ -689,7 +678,7 @@ export class Auth {
       );
 
       // Save session if we got a token
-      if (response.accessToken) {
+      if (response.accessToken && !isHostedAuthEnvironment()) {
         const session: AuthSession = {
           accessToken: response.accessToken,
           user: response.user || {} as any,
