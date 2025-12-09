@@ -53,8 +53,9 @@ export interface SessionStorageStrategy {
  * Secure Session Storage Strategy
  * 
  * Stores access token in memory only (cleared on page refresh).
- * Refresh token is stored in httpOnly cookie by the backend.
- * The `isAuthenticated` cookie is set by the backend to signal that a refresh token exists.
+ * Refresh token is stored in httpOnly cookie by the backend (on backend domain).
+ * The `isAuthenticated` cookie is set by the SDK on the frontend domain to signal
+ * that a secure session exists and token refresh should be attempted on page reload.
  * 
  * Security benefits:
  * - Access token not accessible to XSS attacks (in memory only)
@@ -103,12 +104,12 @@ export class SecureSessionStorage implements SessionStorageStrategy {
   shouldAttemptRefresh(): boolean {
     // Attempt refresh if:
     // 1. No token in memory (page was refreshed)
-    // 2. Auth flag cookie exists (backend set it, meaning refresh token cookie exists)
+    // 2. Auth flag cookie exists (SDK set it on frontend domain after successful auth)
     if (this.accessToken) return false;
     return this.hasAuthFlag();
   }
 
-  // --- Private: Auth Flag Cookie Detection (read-only) ---
+  // --- Private: Auth Flag Cookie Detection (SDK-managed on frontend domain) ---
 
   private hasAuthFlag(): boolean {
     if (typeof document === 'undefined') return false;
