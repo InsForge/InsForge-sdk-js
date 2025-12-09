@@ -425,9 +425,11 @@ export class Auth {
       if (!accessToken && this.tokenManager.shouldAttemptRefresh()) {
         try {
           accessToken = await this.refreshToken();
-        } catch {
-          // Refresh failed, user is not authenticated
-          return { data: null, error: null };
+        } catch (error) {
+          if (error instanceof InsForgeError && (error.statusCode === 401 || error.statusCode === 403)) {
+            return { data: null, error: error };
+          }
+          return { data: null, error: error instanceof InsForgeError ? error : new InsForgeError('Token refresh failed', 500, 'REFRESH_FAILED') };
         }
       }
 
