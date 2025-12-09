@@ -1,7 +1,7 @@
 import { InsForgeConfig } from './types';
 import { HttpClient } from './lib/http-client';
 import { TokenManager } from './lib/token-manager';
-import { SecureSessionStorage } from './lib/session-storage';
+import { SecureSessionStorage, AUTH_FLAG_COOKIE  } from './lib/session-storage';
 import { Auth } from './modules/auth';
 import { Database } from './modules/database-postgrest';
 import { Storage } from './modules/storage';
@@ -17,7 +17,7 @@ import { Emails } from './modules/email';
 function hasAuthenticatedCookie(): boolean {
   if (typeof document === 'undefined') return false;
   return document.cookie.split(';').some(c =>
-    c.trim().startsWith('isAuthenticated=')
+    c.trim().startsWith(`${AUTH_FLAG_COOKIE}=`)
   );
 }
 
