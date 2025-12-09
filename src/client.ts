@@ -9,8 +9,8 @@ import { AI } from './modules/ai';
 import { Functions } from './modules/functions';
 
 /**
- * Check if the isAuthenticated cookie flag exists
- * This indicates the backend supports secure cookie-based auth
+ * Check if the isAuthenticated cookie flag exists (SDK-managed on frontend domain)
+ * This indicates a previous secure session was established and we should use SecureSessionStorage
  */
 function hasAuthenticatedCookie(): boolean {
   if (typeof document === 'undefined') return false;
@@ -70,12 +70,12 @@ export class InsForgeClient {
     this.http = new HttpClient(config);
     this.tokenManager = new TokenManager(config.storage);
 
-    // Detect storage strategy based on cookie flag
-    // If isAuthenticated cookie exists, backend supports secure cookie mode
+    // Detect storage strategy based on SDK-managed cookie flag (on frontend domain)
+    // If isAuthenticated cookie exists, a previous secure session was established
     if (hasAuthenticatedCookie()) {
       this.tokenManager.setStrategy(new SecureSessionStorage());
     }
-    // Otherwise, keep default LocalSessionStorage
+    // Otherwise, keep default LocalSessionStorage (will switch if backend returns sessionMode: 'secure')
 
     // Check for edge function token
     if (config.edgeFunctionToken) {

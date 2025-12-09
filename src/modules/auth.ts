@@ -132,18 +132,27 @@ export class Auth {
   }
 
   /**
-   * Check if the isAuthenticated cookie flag exists
+   * Set the isAuthenticated cookie flag on the frontend domain
+   * This is managed by SDK, not backend, to work in cross-origin scenarios
    */
-  private hasAuthenticatedCookie(): boolean {
-    if (typeof document === 'undefined') return false;
-    return document.cookie.split(';').some(c =>
-      c.trim().startsWith(`${AUTH_FLAG_COOKIE}=`)
-    );
+  private setAuthenticatedCookie(): void {
+    if (typeof document === 'undefined') return;
+    // Set cookie with 7 days expiry, matching backend's refresh token lifetime
+    const maxAge = 7 * 24 * 60 * 60; // 7 days in seconds
+    document.cookie = `${AUTH_FLAG_COOKIE}=true; path=/; max-age=${maxAge}; SameSite=Lax`;
+  }
+
+  /**
+   * Clear the isAuthenticated cookie flag from the frontend domain
+   */
+  private clearAuthenticatedCookie(): void {
+    if (typeof document === 'undefined') return;
+    document.cookie = `${AUTH_FLAG_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
   }
 
   /**
    * Switch to SecureSessionStorage (cookie-based auth)
-   * Called when we detect backend supports secure cookie mode
+   * Called when backend returns sessionMode: 'secure'
    * @internal
    */
   _switchToSecureStorage(): void {
@@ -158,7 +167,10 @@ export class Auth {
       localStorage.removeItem(USER_KEY);
     }
 
-    // Migrate session to new strategy
+    // Set SDK-managed cookie flag for page reload detection
+    this.setAuthenticatedCookie();
+
+    // Migrate session to new strategy (in-memory)
     if (currentSession) {
       this.tokenManager.saveSession(currentSession);
     }
@@ -175,6 +187,9 @@ export class Auth {
     const currentSession = this.tokenManager.getSession();
     this.tokenManager.setStrategy(new LocalSessionStorage());
 
+    // Clear SDK-managed cookie flag
+    this.clearAuthenticatedCookie();
+
     // Migrate session to new strategy
     if (currentSession) {
       this.tokenManager.saveSession(currentSession);
@@ -182,13 +197,12 @@ export class Auth {
   }
 
   /**
-   * Detect storage strategy after successful auth
-   * Checks for isAuthenticated cookie to determine backend mode
+   * Detect storage strategy based on backend response
+   * @param sessionMode - The sessionMode returned by backend ('secure' or undefined)
    * @internal
    */
-  private _detectStorageAfterAuth(): void {
-    if (this.hasAuthenticatedCookie()) {
-      // Backend set the cookie flag, use secure storage
+  private _detectStorageFromResponse(sessionMode?: string): void {
+    if (sessionMode === 'secure') {
       this._switchToSecureStorage();
     }
     // Otherwise keep current strategy (LocalSessionStorage)
@@ -206,17 +220,17 @@ export class Auth {
     try {
       const params = new URLSearchParams(window.location.search);
 
-      // Backend returns: access_token, user_id, email, name (optional)
+      // Backend returns: access_token, user_id, email, name (optional), session_mode
       const accessToken = params.get('access_token');
       const userId = params.get('user_id');
       const email = params.get('email');
       const name = params.get('name');
+      const sessionMode = params.get('session_mode');
 
       // Check if we have OAuth callback parameters
       if (accessToken && userId && email) {
-        // Detect backend storage mode first (before saving session)
-        // Backend sets isAuthenticated cookie during OAuth redirect
-        this._detectStorageAfterAuth();
+        // Detect backend storage mode from URL parameter FIRST (before saving session)
+        this._detectStorageFromResponse(sessionMode || undefined);
 
         // Create session with the data from backend
         const session: AuthSession = {
@@ -243,6 +257,7 @@ export class Auth {
         url.searchParams.delete('user_id');
         url.searchParams.delete('email');
         url.searchParams.delete('name');
+        url.searchParams.delete('session_mode');
 
         // Also handle error case from backend (line 581)
         if (params.has('error')) {
@@ -268,6 +283,11 @@ export class Auth {
     try {
       const response = await this.http.post<CreateUserResponse>('/api/auth/users', request);
 
+      // Detect storage mode from backend response FIRST (before saving session)
+      // This ensures session is saved to the correct storage strategy
+      const sessionMode = (response as any).sessionMode as string | undefined;
+      this._detectStorageFromResponse(sessionMode);
+
       // Save session internally only if both accessToken and user exist
       if (response.accessToken && response.user) {
         const session: AuthSession = {
@@ -278,8 +298,6 @@ export class Auth {
           this.tokenManager.saveSession(session);
         }
         this.http.setAuthToken(response.accessToken);
-        // Detect backend storage mode in background (fire and forget)
-        this._detectStorageAfterAuth();
       }
 
       return {
@@ -314,6 +332,10 @@ export class Auth {
     try {
       const response = await this.http.post<CreateSessionResponse>('/api/auth/sessions', request);
 
+      // Detect storage mode from backend response FIRST (before saving session)
+      const sessionMode = (response as any).sessionMode as string | undefined;
+      this._detectStorageFromResponse(sessionMode);
+
       // Save session internally
       const session: AuthSession = {
         accessToken: response.accessToken || '',
@@ -331,10 +353,6 @@ export class Auth {
         this.tokenManager.saveSession(session);
       }
       this.http.setAuthToken(response.accessToken || '');
-
-      // Detect backend storage mode in background (fire and forget)
-      // This will switch to SecureSessionStorage if backend supports cookie mode
-      this._detectStorageAfterAuth();
 
       return {
         data: response,
@@ -428,6 +446,9 @@ export class Auth {
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
 
+      // Clear SDK-managed isAuthenticated cookie (frontend domain)
+      this.clearAuthenticatedCookie();
+
       return { error: null };
     } catch (error) {
       return {
@@ -448,11 +469,15 @@ export class Auth {
    */
   async refreshToken(): Promise<string> {
     try {
-      const response = await this.http.post<{ accessToken: string; user?: any }>(
+      const response = await this.http.post<{ accessToken: string; user?: any; sessionMode?: string }>(
         '/api/auth/refresh'
       );
 
       if (response.accessToken) {
+        // Detect/confirm storage mode from backend response
+        // This ensures we stay in secure mode after refresh
+        this._detectStorageFromResponse(response.sessionMode);
+
         // Update token manager with new token
         this.tokenManager.setAccessToken(response.accessToken);
         this.http.setAuthToken(response.accessToken);
@@ -476,6 +501,8 @@ export class Auth {
         if (error.statusCode === 401 || error.statusCode === 403) {
           this.tokenManager.clearSession();
           this.http.setAuthToken(null);
+          // Clear SDK-managed cookie on auth failure
+          this.clearAuthenticatedCookie();
         }
         throw error;
       }
@@ -930,10 +957,14 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string }>(
+      const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string; sessionMode?: string }>(
         '/api/auth/email/verify',
         request
       );
+
+      // Detect storage mode from backend response FIRST (before saving session)
+      const sessionMode = (response as any).sessionMode as string | undefined;
+      this._detectStorageFromResponse(sessionMode);
 
       // Save session if we got a token
       if (response.accessToken) {
