@@ -109,10 +109,6 @@ export class InsForgeClient {
     const existingSession = this.tokenManager.getSession();
     if (existingSession?.accessToken) {
       this.http.setAuthToken(existingSession.accessToken);
-    } else if (this.tokenManager.getStrategyId() === 'secure') {
-      // Secure mode but no session in memory - need to refresh
-      // This happens on page reload with cookie auth
-      // Will be handled by first API call triggering 401 -> refresh
     }
 
     this.auth = new Auth(this.http, this.tokenManager);
