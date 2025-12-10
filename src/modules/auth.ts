@@ -211,17 +211,6 @@ export class Auth {
       return { isLoggedIn: false };
     }
 
-    // Step 3: No auth cookie - check localStorage for existing sessions
-    // This handles the case where user logged in before but cookie expired
-    if (this.tokenManager.hasStoredSession()) {
-      this.tokenManager.setStorageMode();
-      const token = this.tokenManager.getAccessToken();
-      if (token) {
-        this.http.setAuthToken(token);
-        return { isLoggedIn: true };
-      }
-    }
-
     // Default: not logged in
     return { isLoggedIn: false };
   }
@@ -891,10 +880,10 @@ export class Auth {
       );
 
       // Save session if we got a token
-      if (response.accessToken && !isHostedAuthEnvironment()) {
+      if (response.accessToken && response.user && !isHostedAuthEnvironment()) {
         const session: AuthSession = {
           accessToken: response.accessToken,
-          user: response.user || {} as any,
+          user: response.user,
         };
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
