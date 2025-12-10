@@ -687,10 +687,10 @@ export class Auth {
       );
 
       // Save session if we got a token
-      if (response.accessToken && !isHostedAuthEnvironment()) {
+      if (response.accessToken && response.user && !isHostedAuthEnvironment()) {
         const session: AuthSession = {
           accessToken: response.accessToken,
-          user: response.user || {} as any,
+          user: response.user,
         };
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
