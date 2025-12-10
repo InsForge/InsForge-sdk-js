@@ -13,38 +13,8 @@ import type { AuthSession, TokenStorage } from '../types';
 export const TOKEN_KEY = 'insforge-auth-token';
 export const USER_KEY = 'insforge-auth-user';
 
-// Cookie flag to indicate user was logged in (for optimistic refresh)
-export const AUTH_FLAG_COOKIE = 'isAuthenticated';
-
 // CSRF token cookie name
 export const CSRF_TOKEN_COOKIE = 'insforge_csrf_token';
-
-/**
- * Check if isAuthenticated cookie exists
- */
-export function hasAuthCookie(): boolean {
-  if (typeof document === 'undefined') return false;
-  return document.cookie.split(';').some(c =>
-    c.trim().startsWith(`${AUTH_FLAG_COOKIE}=`)
-  );
-}
-
-/**
- * Set isAuthenticated cookie
- */
-export function setAuthCookie(): void {
-  if (typeof document === 'undefined') return;
-  const maxAge = 7 * 24 * 60 * 60; // 7 days
-  document.cookie = `${AUTH_FLAG_COOKIE}=true; path=/; max-age=${maxAge}; SameSite=Lax`;
-}
-
-/**
- * Clear isAuthenticated cookie
- */
-export function clearAuthCookie(): void {
-  if (typeof document === 'undefined') return;
-  document.cookie = `${AUTH_FLAG_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
-}
 
 /**
  * Get CSRF token from cookie
