@@ -70,7 +70,6 @@ export class Auth {
 
     try {
       const params = new URLSearchParams(window.location.search);
-
       // Backend returns: access_token, user_id, email, name (optional), csrf_token
       const accessToken = params.get('access_token');
       const userId = params.get('user_id');
@@ -80,6 +79,10 @@ export class Auth {
 
       // Check if we have OAuth callback parameters
       if (accessToken && userId && email) {
+        if (csrfToken) {
+          this.tokenManager.setMemoryMode();
+          setCsrfToken(csrfToken);
+        }
         // Create session with the data from backend
         const session: AuthSession = {
           accessToken,
@@ -97,10 +100,6 @@ export class Auth {
         this.http.setAuthToken(accessToken);
         this.tokenManager.saveSession(session);
         setAuthCookie();
-        
-        if (csrfToken) {
-          setCsrfToken(csrfToken);
-        }
 
         // Clean up the URL to remove sensitive parameters
         const url = new URL(window.location.href);
@@ -143,7 +142,7 @@ export class Auth {
         this.tokenManager.saveSession(session);
         setAuthCookie();
         this.http.setAuthToken(response.accessToken);
-        
+
         if (response.csrfToken) {
           setCsrfToken(response.csrfToken);
         }
@@ -175,7 +174,7 @@ export class Auth {
    * Sign in with email and password
    */
   async signInWithPassword(request: CreateSessionRequest): Promise<{
-    data: CreateSessionResponse | null;
+    data: CreateSessionResponse & { csrfToken?: string } | null;
     error: InsForgeError | null;
   }> {
     try {
@@ -189,7 +188,7 @@ export class Auth {
         this.tokenManager.saveSession(session);
         setAuthCookie();
         this.http.setAuthToken(response.accessToken);
-        
+
         if (response.csrfToken) {
           setCsrfToken(response.csrfToken);
         }
@@ -700,7 +699,7 @@ export class Auth {
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
         setAuthCookie(); // Set cookie for refresh on page reload
-        
+
         if (response.csrfToken) {
           setCsrfToken(response.csrfToken);
         }
