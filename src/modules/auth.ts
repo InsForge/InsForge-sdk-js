@@ -4,7 +4,7 @@
  */
 
 import { HttpClient } from '../lib/http-client';
-import { TokenManager, hasAuthCookie, clearAuthCookie, setAuthCookie, getCsrfToken, setCsrfToken, clearCsrfToken } from '../lib/token-manager';
+import { TokenManager, getCsrfToken, setCsrfToken, clearCsrfToken } from '../lib/token-manager';
 import { AuthSession, InsForgeError } from '../types';
 import { Database } from './database-postgrest';
 
@@ -203,7 +203,6 @@ export class Auth {
         if (error.statusCode === 401 || error.statusCode === 403) {
           // New backend but session expired or CSRF failed - clear cookies
           this.tokenManager.setMemoryMode();
-          clearAuthCookie();
           clearCsrfToken();
           return { isLoggedIn: false };
         }
@@ -267,7 +266,6 @@ export class Auth {
         };
         this.http.setAuthToken(accessToken);
         this.tokenManager.saveSession(session);
-        setAuthCookie();
 
         // Clean up the URL to remove sensitive parameters
         const url = new URL(window.location.href);
@@ -308,7 +306,6 @@ export class Auth {
           user: response.user,
         };
         this.tokenManager.saveSession(session);
-        setAuthCookie();
         this.http.setAuthToken(response.accessToken);
 
         if (response.csrfToken) {
@@ -354,7 +351,6 @@ export class Auth {
           user: response.user,
         };
         this.tokenManager.saveSession(session);
-        setAuthCookie();
         this.http.setAuthToken(response.accessToken);
 
         if (response.csrfToken) {
@@ -452,7 +448,6 @@ export class Auth {
       // Clear local session and cookies
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
-      clearAuthCookie();
       clearCsrfToken();
 
       return { error: null };
@@ -903,7 +898,6 @@ export class Auth {
         };
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
-        setAuthCookie(); // Set cookie for refresh on page reload
 
         if (response.csrfToken) {
           setCsrfToken(response.csrfToken);
