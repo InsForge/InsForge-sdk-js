@@ -48,7 +48,6 @@ import { Functions } from './modules/functions';
 export class InsForgeClient {
   private http: HttpClient;
   private tokenManager: TokenManager;
-  
   public readonly auth: Auth;
   public readonly database: Database;
   public readonly storage: Storage;
