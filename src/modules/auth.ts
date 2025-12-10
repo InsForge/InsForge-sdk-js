@@ -159,57 +159,57 @@ export class Auth {
       return { isLoggedIn: true };
     }
 
-    // Step 2: If isAuthenticated cookie exists, try to refresh using httpOnly cookie
-    if (hasAuthCookie()) {
-      try {
-        // Include CSRF token in header for CSRF protection
-        const csrfToken = getCsrfToken();
-        const response = await this.http.post<{ accessToken: string; user?: any; csrfToken?: string }>(
-          '/api/auth/refresh',
-          {
-            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
-          }
-        );
-
-        if (response.accessToken) {
-          // Refresh successful - this is new backend, switch to memory mode
-          // This clears localStorage and stores token only in memory (more secure)
-          this.tokenManager.setMemoryMode();
-          this.tokenManager.setAccessToken(response.accessToken);
-          this.http.setAuthToken(response.accessToken);
-          if (response.user) {
-            this.tokenManager.setUser(response.user);
-          }
-          // Update CSRF token for next refresh
-          if (response.csrfToken) {
-            setCsrfToken(response.csrfToken);
-          }
-          return { isLoggedIn: true };
+    // Step 2: Try to refresh using httpOnly cookie
+    try {
+      // Include CSRF token in header for CSRF protection
+      const csrfToken = getCsrfToken();
+      const response = await this.http.post<{ accessToken: string; user?: any; csrfToken?: string }>(
+        '/api/auth/refresh',
+        undefined,
+        {
+          headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
         }
-      } catch (error) {
-        if (error instanceof InsForgeError) {
-          if (error.statusCode === 404) {
-            // Legacy backend (no refresh endpoint) - stay in storage mode
-            // Try to load session from localStorage
-            this.tokenManager.setStorageMode();
-            const token = this.tokenManager.getAccessToken();
-            if (token) {
-              this.http.setAuthToken(token);
-              return { isLoggedIn: true };
-            }
-            return { isLoggedIn: false };
-          }
+      );
 
-          if (error.statusCode === 401 || error.statusCode === 403) {
-            // New backend but session expired or CSRF failed - clear cookies
-            clearAuthCookie();
-            clearCsrfToken();
-            return { isLoggedIn: false };
-          }
+      if (response.accessToken) {
+        // Refresh successful - this is new backend, switch to memory mode
+        // This clears localStorage and stores token only in memory (more secure)
+        this.tokenManager.setMemoryMode();
+        this.tokenManager.setAccessToken(response.accessToken);
+        this.http.setAuthToken(response.accessToken);
+        if (response.user) {
+          this.tokenManager.setUser(response.user);
         }
-        // Other errors - not logged in
-        return { isLoggedIn: false };
+        // Update CSRF token for next refresh
+        if (response.csrfToken) {
+          setCsrfToken(response.csrfToken);
+        }
+        return { isLoggedIn: true };
       }
+    } catch (error) {
+      if (error instanceof InsForgeError) {
+        if (error.statusCode === 404) {
+          // Legacy backend (no refresh endpoint) - stay in storage mode
+          // Try to load session from localStorage
+          this.tokenManager.setStorageMode();
+          const token = this.tokenManager.getAccessToken();
+          if (token) {
+            this.http.setAuthToken(token);
+            return { isLoggedIn: true };
+          }
+          return { isLoggedIn: false };
+        }
+
+        if (error.statusCode === 401 || error.statusCode === 403) {
+          // New backend but session expired or CSRF failed - clear cookies
+          this.tokenManager.setMemoryMode();
+          clearAuthCookie();
+          clearCsrfToken();
+          return { isLoggedIn: false };
+        }
+      }
+      // Other errors - not logged in
+      return { isLoggedIn: false };
     }
 
     // Step 3: No auth cookie - check localStorage for existing sessions
@@ -238,7 +238,6 @@ export class Auth {
 
     try {
       const params = new URLSearchParams(window.location.search);
-
       // Backend returns: access_token, user_id, email, name (optional), csrf_token
       const accessToken = params.get('access_token');
       const userId = params.get('user_id');
@@ -248,6 +247,10 @@ export class Auth {
 
       // Check if we have OAuth callback parameters
       if (accessToken && userId && email) {
+        if (csrfToken) {
+          this.tokenManager.setMemoryMode();
+          setCsrfToken(csrfToken);
+        }
         // Create session with the data from backend
         const session: AuthSession = {
           accessToken,
@@ -265,10 +268,6 @@ export class Auth {
         this.http.setAuthToken(accessToken);
         this.tokenManager.saveSession(session);
         setAuthCookie();
-        
-        if (csrfToken) {
-          setCsrfToken(csrfToken);
-        }
 
         // Clean up the URL to remove sensitive parameters
         const url = new URL(window.location.href);
@@ -311,7 +310,7 @@ export class Auth {
         this.tokenManager.saveSession(session);
         setAuthCookie();
         this.http.setAuthToken(response.accessToken);
-        
+
         if (response.csrfToken) {
           setCsrfToken(response.csrfToken);
         }
@@ -343,7 +342,7 @@ export class Auth {
    * Sign in with email and password
    */
   async signInWithPassword(request: CreateSessionRequest): Promise<{
-    data: CreateSessionResponse | null;
+    data: CreateSessionResponse & { csrfToken?: string } | null;
     error: InsForgeError | null;
   }> {
     try {
@@ -357,7 +356,7 @@ export class Auth {
         this.tokenManager.saveSession(session);
         setAuthCookie();
         this.http.setAuthToken(response.accessToken);
-        
+
         if (response.csrfToken) {
           setCsrfToken(response.csrfToken);
         }
@@ -905,7 +904,7 @@ export class Auth {
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
         setAuthCookie(); // Set cookie for refresh on page reload
-        
+
         if (response.csrfToken) {
           setCsrfToken(response.csrfToken);
         }
