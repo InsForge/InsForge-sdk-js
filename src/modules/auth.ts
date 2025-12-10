@@ -699,7 +699,7 @@ export class Auth {
 
   /**
    * Send email verification (code or link based on config)
-   * 
+   *
    * Send email verification using the method configured in auth settings (verifyEmailMethod).
    * When method is 'code', sends a 6-digit numeric code. When method is 'link', sends a magic link.
    * Prevents user enumeration by returning success even if email doesn't exist.
@@ -738,7 +738,7 @@ export class Auth {
 
   /**
    * Send password reset (code or link based on config)
-   * 
+   *
    * Send password reset email using the method configured in auth settings (resetPasswordMethod).
    * When method is 'code', sends a 6-digit numeric code for two-step flow.
    * When method is 'link', sends a magic link.
@@ -778,7 +778,7 @@ export class Auth {
 
   /**
    * Exchange reset password code for reset token
-   * 
+   *
    * Step 1 of two-step password reset flow (only used when resetPasswordMethod is 'code'):
    * 1. Verify the 6-digit code sent to user's email
    * 2. Return a reset token that can be used to actually reset the password
@@ -819,7 +819,7 @@ export class Auth {
 
   /**
    * Reset password with token
-   * 
+   *
    * Reset user password with a token. The token can be:
    * - Magic link token (64-character hex token from send-reset-password when method is 'link')
    * - Reset token (from exchange-reset-password-token after code verification when method is 'code')
@@ -864,7 +864,7 @@ export class Auth {
 
   /**
    * Verify email with code or link
-   * 
+   *
    * Verify email address using the method configured in auth settings (verifyEmailMethod):
    * - Code verification: Provide both `email` and `otp` (6-digit numeric code)
    * - Link verification: Provide only `otp` (64-character hex token from magic link)
