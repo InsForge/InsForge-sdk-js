@@ -16,6 +16,9 @@ export const USER_KEY = 'insforge-auth-user';
 // Cookie flag to indicate user was logged in (for optimistic refresh)
 export const AUTH_FLAG_COOKIE = 'isAuthenticated';
 
+// CSRF token cookie name
+export const CSRF_TOKEN_COOKIE = 'insforge_csrf_token';
+
 /**
  * Check if isAuthenticated cookie exists
  */
@@ -43,6 +46,38 @@ export function clearAuthCookie(): void {
   document.cookie = `${AUTH_FLAG_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
 }
 
+/**
+ * Get CSRF token from cookie
+ * Used to include in X-CSRF-Token header for refresh requests
+ */
+export function getCsrfToken(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie
+    .split(';')
+    .find(c => c.trim().startsWith(`${CSRF_TOKEN_COOKIE}=`));
+  if (!match) return null;
+  return match.split('=')[1] || null;
+}
+
+/**
+ * Set CSRF token cookie
+ * Called after login/register/refresh to store the CSRF token
+ */
+export function setCsrfToken(token: string): void {
+  if (typeof document === 'undefined') return;
+  const maxAge = 7 * 24 * 60 * 60; // 7 days (same as refresh token)
+  document.cookie = `${CSRF_TOKEN_COOKIE}=${token}; path=/; max-age=${maxAge}; SameSite=Lax`;
+}
+
+/**
+ * Clear CSRF token cookie
+ * Called on logout
+ */
+export function clearCsrfToken(): void {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${CSRF_TOKEN_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
+}
+
 export class TokenManager {
   // In-memory storage
   private accessToken: string | null = null;
@@ -56,9 +91,10 @@ export class TokenManager {
 
   constructor(storage?: TokenStorage) {
     if (storage) {
-      // Use provided storage 
+      // Use provided storage
       this.storage = storage;
     } else if (typeof window !== 'undefined' && window.localStorage) {
+      // Browser: use localStorage
       this.storage = window.localStorage;
     } else {
       // Node.js: use in-memory storage
@@ -66,7 +102,7 @@ export class TokenManager {
       this.storage = {
         getItem: (key: string) => store.get(key) || null,
         setItem: (key: string, value: string) => { store.set(key, value); },
-        removeItem: (key: string) => { store.delete(key); },
+        removeItem: (key: string) => { store.delete(key); }
       };
     }
   }

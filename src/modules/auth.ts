@@ -4,7 +4,7 @@
  */
 
 import { HttpClient } from '../lib/http-client';
-import { TokenManager, hasAuthCookie, clearAuthCookie, setAuthCookie } from '../lib/token-manager';
+import { TokenManager, hasAuthCookie, clearAuthCookie, setAuthCookie, getCsrfToken, setCsrfToken, clearCsrfToken } from '../lib/token-manager';
 import { AuthSession, InsForgeError } from '../types';
 import { Database } from './database-postgrest';
 
@@ -162,8 +162,13 @@ export class Auth {
     // Step 2: If isAuthenticated cookie exists, try to refresh using httpOnly cookie
     if (hasAuthCookie()) {
       try {
-        const response = await this.http.post<{ accessToken: string; user?: any }>(
-          '/api/auth/refresh'
+        // Include CSRF token in header for CSRF protection
+        const csrfToken = getCsrfToken();
+        const response = await this.http.post<{ accessToken: string; user?: any; csrfToken?: string }>(
+          '/api/auth/refresh',
+          {
+            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+          }
         );
 
         if (response.accessToken) {
@@ -174,6 +179,10 @@ export class Auth {
           this.http.setAuthToken(response.accessToken);
           if (response.user) {
             this.tokenManager.setUser(response.user);
+          }
+          // Update CSRF token for next refresh
+          if (response.csrfToken) {
+            setCsrfToken(response.csrfToken);
           }
           return { isLoggedIn: true };
         }
@@ -192,8 +201,9 @@ export class Auth {
           }
 
           if (error.statusCode === 401 || error.statusCode === 403) {
-            // New backend but session expired - clear cookie
+            // New backend but session expired or CSRF failed - clear cookies
             clearAuthCookie();
+            clearCsrfToken();
             return { isLoggedIn: false };
           }
         }
@@ -229,11 +239,12 @@ export class Auth {
     try {
       const params = new URLSearchParams(window.location.search);
 
-      // Backend returns: access_token, user_id, email, name (optional)
+      // Backend returns: access_token, user_id, email, name (optional), csrf_token
       const accessToken = params.get('access_token');
       const userId = params.get('user_id');
       const email = params.get('email');
       const name = params.get('name');
+      const csrfToken = params.get('csrf_token');
 
       // Check if we have OAuth callback parameters
       if (accessToken && userId && email) {
@@ -254,6 +265,10 @@ export class Auth {
         this.http.setAuthToken(accessToken);
         this.tokenManager.saveSession(session);
         setAuthCookie();
+        
+        if (csrfToken) {
+          setCsrfToken(csrfToken);
+        }
 
         // Clean up the URL to remove sensitive parameters
         const url = new URL(window.location.href);
@@ -261,6 +276,7 @@ export class Auth {
         url.searchParams.delete('user_id');
         url.searchParams.delete('email');
         url.searchParams.delete('name');
+        url.searchParams.delete('csrf_token');
 
         // Also handle error case from backend (line 581)
         if (params.has('error')) {
@@ -284,7 +300,7 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<CreateUserResponse>('/api/auth/users', request);
+      const response = await this.http.post<CreateUserResponse & { csrfToken?: string }>('/api/auth/users', request);
 
       // Save session internally only if both accessToken and user exist
       if (response.accessToken && response.user && !isHostedAuthEnvironment()) {
@@ -295,6 +311,10 @@ export class Auth {
         this.tokenManager.saveSession(session);
         setAuthCookie();
         this.http.setAuthToken(response.accessToken);
+        
+        if (response.csrfToken) {
+          setCsrfToken(response.csrfToken);
+        }
       }
 
       return {
@@ -327,8 +347,7 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<CreateSessionResponse>('/api/auth/sessions', request);
-
+      const response = await this.http.post<CreateSessionResponse & { csrfToken?: string }>('/api/auth/sessions', request);
 
       if (response.accessToken && response.user && !isHostedAuthEnvironment()) {
         const session: AuthSession = {
@@ -338,6 +357,10 @@ export class Auth {
         this.tokenManager.saveSession(session);
         setAuthCookie();
         this.http.setAuthToken(response.accessToken);
+        
+        if (response.csrfToken) {
+          setCsrfToken(response.csrfToken);
+        }
       }
 
       return {
@@ -431,6 +454,7 @@ export class Auth {
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
       clearAuthCookie();
+      clearCsrfToken();
 
       return { error: null };
     } catch (error) {
@@ -867,7 +891,7 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string }>(
+      const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string; csrfToken?: string }>(
         '/api/auth/email/verify',
         request
       );
@@ -881,6 +905,10 @@ export class Auth {
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
         setAuthCookie(); // Set cookie for refresh on page reload
+        
+        if (response.csrfToken) {
+          setCsrfToken(response.csrfToken);
+        }
       }
 
       return {
