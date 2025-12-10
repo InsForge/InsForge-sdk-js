@@ -97,8 +97,10 @@ export class Auth {
             updatedAt: new Date().toISOString(),
           } as any,
         };
-        this.http.setAuthToken(accessToken);
+
+        // Save session and set auth token
         this.tokenManager.saveSession(session);
+        this.http.setAuthToken(accessToken);
 
         // Clean up the URL to remove sensitive parameters
         const url = new URL(window.location.href);
