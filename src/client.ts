@@ -6,6 +6,7 @@ import { Database } from './modules/database-postgrest';
 import { Storage } from './modules/storage';
 import { AI } from './modules/ai';
 import { Functions } from './modules/functions';
+import { Realtime } from './modules/realtime';
 
 /**
  * Main InsForge SDK Client
@@ -48,12 +49,13 @@ import { Functions } from './modules/functions';
 export class InsForgeClient {
   private http: HttpClient;
   private tokenManager: TokenManager;
-  
+
   public readonly auth: Auth;
   public readonly database: Database;
   public readonly storage: Storage;
   public readonly ai: AI;
   public readonly functions: Functions;
+  public readonly realtime: Realtime;
 
   constructor(config: InsForgeConfig = {}) {
     this.http = new HttpClient(config);
@@ -84,6 +86,7 @@ export class InsForgeClient {
     this.storage = new Storage(this.http);
     this.ai = new AI(this.http);
     this.functions = new Functions(this.http);
+    this.realtime = new Realtime(this.http.baseUrl, this.tokenManager);
   }
 
   /**

@@ -46,6 +46,16 @@ export { AI } from './modules/ai';
 export { Functions } from './modules/functions';
 export type { FunctionInvokeOptions } from './modules/functions';
 
+// Re-export Realtime module and types
+export { Realtime } from './modules/realtime';
+export type {
+  RealtimeErrorPayload,
+  SubscribeResponse,
+  SocketMessage,
+  ConnectionState,
+  EventCallback,
+} from './modules/realtime';
+
 // Re-export utilities for advanced usage
 export { HttpClient } from './lib/http-client';
 export { TokenManager } from './lib/token-manager';
