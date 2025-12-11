@@ -86,10 +86,7 @@ export class InsForgeClient {
     this.storage = new Storage(this.http);
     this.ai = new AI(this.http);
     this.functions = new Functions(this.http);
-
-    // Initialize realtime with the base URL and token manager
-    const baseUrl = config.baseUrl || 'http://localhost:7130';
-    this.realtime = new Realtime(baseUrl, this.tokenManager);
+    this.realtime = new Realtime(this.http.baseUrl, this.tokenManager);
   }
 
   /**
