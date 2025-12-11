@@ -5,6 +5,7 @@
 
 import { HttpClient } from '../lib/http-client';
 import { TokenManager, getCsrfToken, setCsrfToken, clearCsrfToken } from '../lib/token-manager';
+import { consumePkceVerifier, generateAndStorePkce } from '../lib/pkce';
 import { AuthSession, InsForgeError } from '../types';
 import { Database } from './database-postgrest';
 
@@ -219,9 +220,11 @@ export class Auth {
   }
 
   /**
-   * Automatically detect and handle OAuth callback parameters in the URL
-   * This runs on initialization to seamlessly complete the OAuth flow
-   * Matches the backend's OAuth callback response (backend/src/api/routes/auth.ts:540-544)
+   * Automatically detect and handle auth callback parameters in the URL
+   * 
+   * Handles two scenarios:
+   * 1. code: New PKCE flow - exchange code + code_verifier for tokens
+   * 2. access_token (legacy): Direct token in URL (backward compatibility)
    */
   private detectAuthCallback(): void {
     // Only run in browser environment
@@ -229,7 +232,15 @@ export class Auth {
 
     try {
       const params = new URLSearchParams(window.location.search);
-      // Backend returns: access_token, user_id, email, name (optional), csrf_token
+      
+      // New PKCE flow: authorization code
+      const authCode = params.get('code');
+      if (authCode) {
+        this.exchangeAuthorizationCode(authCode);
+        return;
+      }
+
+      // Legacy flow: access_token directly in URL (backward compatibility)
       const accessToken = params.get('access_token');
       const userId = params.get('user_id');
       const email = params.get('email');
@@ -259,40 +270,98 @@ export class Auth {
         this.http.setAuthToken(accessToken);
         this.tokenManager.saveSession(session);
 
-        // Clean up the URL to remove sensitive parameters
-        const url = new URL(window.location.href);
-        url.searchParams.delete('access_token');
-        url.searchParams.delete('user_id');
-        url.searchParams.delete('email');
-        url.searchParams.delete('name');
-        url.searchParams.delete('csrf_token');
-
-        // Also handle error case from backend (line 581)
-        if (params.has('error')) {
-          url.searchParams.delete('error');
-        }
-
-        // Replace URL without adding to browser history
-        window.history.replaceState({}, document.title, url.toString());
+        // Clean up the URL
+        this.cleanupAuthCallbackUrl();
       }
     } catch (error) {
-      // Silently continue - don't break initialization
-      console.debug('OAuth callback detection skipped:', error);
+      console.debug('Auth callback detection skipped:', error);
     }
   }
 
   /**
-   * Sign up a new user
+   * Exchange authorization code for access token using PKCE
+   * Called when authorization code is detected in URL
    */
-  async signUp(request: CreateUserRequest): Promise<{
-    data: CreateUserResponse | null;
+  private async exchangeAuthorizationCode(authorizationCode: string): Promise<void> {
+    try {
+      // Get code_verifier from sessionStorage (if available)
+      const codeVerifier = consumePkceVerifier();
+
+      // Call exchange endpoint
+      const response = await this.http.post<{
+        accessToken: string;
+        user: any;
+        csrfToken?: string;
+      }>('/api/auth/exchange', {
+        code: authorizationCode,
+        code_verifier: codeVerifier, // May be null for hosted auth scenario
+      });
+
+      if (response.accessToken && response.user) {
+        // Set memory mode if we have CSRF token (new secure mode)
+        if (response.csrfToken) {
+          this.tokenManager.setMemoryMode();
+          setCsrfToken(response.csrfToken);
+        }
+
+        // Save session
+        const session: AuthSession = {
+          accessToken: response.accessToken,
+          user: response.user,
+        };
+        this.http.setAuthToken(response.accessToken);
+        this.tokenManager.saveSession(session);
+      }
+
+      // Clean up the URL
+      this.cleanupAuthCallbackUrl();
+    } catch (error) {
+      console.error('Failed to exchange session code:', error);
+      // Clean up URL even on error
+      this.cleanupAuthCallbackUrl();
+    }
+  }
+
+  /**
+   * Clean up auth callback parameters from URL
+   */
+  private cleanupAuthCallbackUrl(): void {
+    if (typeof window === 'undefined') return;
+
+    const url = new URL(window.location.href);
+    // Remove all auth-related params
+    url.searchParams.delete('code');
+    url.searchParams.delete('access_token');
+    url.searchParams.delete('user_id');
+    url.searchParams.delete('email');
+    url.searchParams.delete('name');
+    url.searchParams.delete('csrf_token');
+    url.searchParams.delete('error');
+
+    window.history.replaceState({}, document.title, url.toString());
+  }
+
+  /**
+   * Sign up a new user
+   * Supports PKCE: if codeChallenge is provided, returns authorization code instead of saving session locally
+   */
+  async signUp(request: CreateUserRequest & { codeChallenge?: string }): Promise<{
+    data: CreateUserResponse & { code?: string } | null;
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<CreateUserResponse & { csrfToken?: string }>('/api/auth/users', request);
+      const { codeChallenge, ...baseRequest } = request;
+      const body = codeChallenge 
+        ? { ...baseRequest, code_challenge: codeChallenge }
+        : baseRequest;
 
-      // Save session internally only if both accessToken and user exist
-      if (response.accessToken && response.user && !isHostedAuthEnvironment()) {
+      const response = await this.http.post<CreateUserResponse & { csrfToken?: string; code?: string }>(
+        '/api/auth/users', 
+        body
+      );
+
+      // For PKCE flow (code returned), don't save session locally
+      if (!response.code && response.accessToken && response.user && !isHostedAuthEnvironment()) {
         const session: AuthSession = {
           accessToken: response.accessToken,
           user: response.user,
@@ -329,15 +398,26 @@ export class Auth {
 
   /**
    * Sign in with email and password
+   * Supports PKCE: if codeChallenge is provided, returns authorization code instead of saving session locally
    */
-  async signInWithPassword(request: CreateSessionRequest): Promise<{
-    data: CreateSessionResponse & { csrfToken?: string } | null;
+  async signInWithPassword(request: CreateSessionRequest & { codeChallenge?: string }): Promise<{
+    data: CreateSessionResponse & { csrfToken?: string; code?: string } | null;
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<CreateSessionResponse & { csrfToken?: string }>('/api/auth/sessions', request);
+      const { codeChallenge, ...baseRequest } = request;
+      const body = codeChallenge 
+        ? { ...baseRequest, code_challenge: codeChallenge }
+        : baseRequest;
 
-      if (response.accessToken && response.user && !isHostedAuthEnvironment()) {
+      const response = await this.http.post<CreateSessionResponse & { csrfToken?: string; code?: string }>(
+        '/api/auth/sessions', 
+        body
+      );
+
+      // For PKCE flow (code returned), don't save session locally
+      // The session will be established after code exchange in user's app
+      if (!response.code && response.accessToken && response.user && !isHostedAuthEnvironment()) {
         const session: AuthSession = {
           accessToken: response.accessToken,
           user: response.user,
@@ -374,23 +454,43 @@ export class Auth {
 
   /**
    * Sign in with OAuth provider
+   * 
+   * For non-hosted environments, PKCE is used for security:
+   * 1. Generate code_verifier and code_challenge
+   * 2. Store code_verifier in sessionStorage
+   * 3. Send code_challenge to backend
+   * 4. After OAuth callback, use code_verifier to exchange authorization code for tokens
    */
   async signInWithOAuth(options: {
     provider: OAuthProvidersSchema;
     redirectTo?: string;
     skipBrowserRedirect?: boolean;
+    codeChallenge?: string; // Pre-generated code_challenge (for hosted auth scenario)
   }): Promise<{
     data: { url?: string; provider?: string };
     error: InsForgeError | null;
   }> {
     try {
-      const { provider, redirectTo, skipBrowserRedirect } = options;
+      const { provider, redirectTo, skipBrowserRedirect, codeChallenge } = options;
 
       const params: Record<string, string> = {
         support_code: 'true',
       };
       if (redirectTo) {
         params.redirect_uri = redirectTo;
+      }
+
+      // Add PKCE code_challenge
+      // If codeChallenge is provided (from hosted auth button), use it
+      // Otherwise generate new PKCE pair for direct SDK usage
+      if (codeChallenge) {
+        params.code_challenge = codeChallenge;
+        params.code_challenge_method = 'S256';
+      } else if (!isHostedAuthEnvironment()) {
+        // Generate PKCE for non-hosted environments
+        const challenge = await generateAndStorePkce();
+        params.code_challenge = challenge;
+        params.code_challenge_method = 'S256';
       }
 
       const endpoint = `/api/auth/oauth/${provider}`;
@@ -870,22 +970,35 @@ export class Auth {
    * - Link verification: Provide only `otp` (64-character hex token from magic link)
    *
    * Successfully verified users will receive a session token.
+   * Supports PKCE: if codeChallenge is provided, returns authorization code instead of saving session locally
    *
    * The email verification link sent to users always points to the backend API endpoint.
    * If `verifyEmailRedirectTo` is configured, the backend will redirect to that URL after successful verification.
    * Otherwise, a default success page is displayed.
    */
-  async verifyEmail(request: VerifyEmailRequest): Promise<{
+  async verifyEmail(request: VerifyEmailRequest & { codeChallenge?: string }): Promise<{
     data: { accessToken?: string; code?: string; user?: any; redirectTo?: string } | null;
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string; csrfToken?: string }>(
-        '/api/auth/email/verify'
+      const { codeChallenge, ...baseRequest } = request;
+      const body = codeChallenge 
+        ? { ...baseRequest, code_challenge: codeChallenge }
+        : baseRequest;
+
+      const response = await this.http.post<{ 
+        accessToken: string; 
+        user?: any; 
+        redirectTo?: string; 
+        csrfToken?: string;
+        code?: string;
+      }>(
+        '/api/auth/email/verify',
+        body
       );
 
-      // Save session if we got a token
-      if (response.accessToken && response.user && !isHostedAuthEnvironment()) {
+      // For PKCE flow (code returned), don't save session locally
+      if (!response.code && response.accessToken && response.user && !isHostedAuthEnvironment()) {
         const session: AuthSession = {
           accessToken: response.accessToken,
           user: response.user,

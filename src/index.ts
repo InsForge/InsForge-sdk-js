@@ -29,6 +29,9 @@ export type {
 // Re-export auth module for advanced usage
 export { Auth } from './modules/auth';
 
+// Re-export PKCE utilities for hosted auth integration
+export { generateAndStorePkce, storePkceVerifier } from './lib/pkce';
+
 export type { ProfileData, UpdateProfileData } from './modules/auth';
 
 // Re-export database module (using postgrest-js)
