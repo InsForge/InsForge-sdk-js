@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InsForge SDK Browser Tests</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #0f0f0f;
+      color: #e0e0e0;
+    }
+    h1 {
+      color: #00ff88;
+      border-bottom: 2px solid #00ff88;
+      padding-bottom: 10px;
+    }
+    h2 {
+      color: #00ccff;
+      margin-top: 30px;
+    }
+    .config {
+      background: #1a1a1a;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border: 1px solid #333;
+    }
+    .config label {
+      display: block;
+      margin-bottom: 5px;
+      color: #888;
+    }
+    .config input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+      border: 1px solid #444;
+      border-radius: 4px;
+      background: #222;
+      color: #fff;
+      font-size: 14px;
+    }
+    button {
+      background: #00ff88;
+      color: #000;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 14px;
+      margin-right: 10px;
+      margin-bottom: 10px;
+      transition: all 0.2s;
+    }
+    button:hover {
+      background: #00cc6a;
+      transform: translateY(-1px);
+    }
+    button:disabled {
+      background: #444;
+      color: #888;
+      cursor: not-allowed;
+      transform: none;
+    }
+    button.danger {
+      background: #ff4444;
+    }
+    button.danger:hover {
+      background: #cc3333;
+    }
+    button.secondary {
+      background: #333;
+      color: #00ff88;
+      border: 1px solid #00ff88;
+    }
+    .log {
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 15px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-entry {
+      margin: 5px 0;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    .log-entry.info {
+      background: #1a2a1a;
+      border-left: 3px solid #00ff88;
+    }
+    .log-entry.error {
+      background: #2a1a1a;
+      border-left: 3px solid #ff4444;
+    }
+    .log-entry.success {
+      background: #1a2a2a;
+      border-left: 3px solid #00ccff;
+    }
+    .log-entry.warning {
+      background: #2a2a1a;
+      border-left: 3px solid #ffcc00;
+    }
+    .status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+      margin-left: 10px;
+    }
+    .status.logged-in {
+      background: #00ff88;
+      color: #000;
+    }
+    .status.logged-out {
+      background: #ff4444;
+      color: #fff;
+    }
+    .status.loading {
+      background: #ffcc00;
+      color: #000;
+    }
+    .session-info {
+      background: #1a1a2a;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 20px;
+      border: 1px solid #333;
+    }
+    .token-display {
+      font-family: monospace;
+      font-size: 11px;
+      background: #000;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+      margin-top: 10px;
+      color: #888;
+    }
+    .test-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 20px 0;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #333;
+      margin: 30px 0;
+    }
+    .sdk-status {
+      padding: 10px 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-weight: bold;
+    }
+    .sdk-status.loaded {
+      background: #1a2a1a;
+      border: 1px solid #00ff88;
+      color: #00ff88;
+    }
+    .sdk-status.error {
+      background: #2a1a1a;
+      border: 1px solid #ff4444;
+      color: #ff4444;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 InsForge SDK Browser Tests</h1>
+  <p>Test the <strong>real SDK</strong> including refresh token and CSRF token mechanisms.</p>
+  
+  <div id="sdkStatus" class="sdk-status">Loading SDK...</div>
+
+  <div class="config">
+    <label for="baseUrl">Backend URL</label>
+    <input type="text" id="baseUrl" value="http://localhost:7130" />
+    
+    <label for="testEmail">Test Email</label>
+    <input type="email" id="testEmail" value="" placeholder="Will be auto-generated" />
+    
+    <label for="testPassword">Test Password</label>
+    <input type="password" id="testPassword" value="TestPassword123!" />
+    
+    <label for="testName">Test Name</label>
+    <input type="text" id="testName" value="Browser Test User" />
+  </div>
+
+  <h2>Auth Status <span id="authStatus" class="status logged-out">Not Logged In</span></h2>
+  
+  <div id="sessionInfo" class="session-info" style="display: none;">
+    <strong>Current Session</strong>
+    <div id="sessionDetails"></div>
+    <div class="token-display" id="tokenDisplay"></div>
+  </div>
+
+  <h2>Auth Tests</h2>
+  <div class="test-buttons">
+    <button onclick="testSignUp()">📝 Sign Up</button>
+    <button onclick="testSignIn()">🔐 Sign In</button>
+    <button onclick="testGetCurrentUser()">👤 Get Current User</button>
+    <button onclick="testRestoreSession()">🔄 Restore Session (Refresh)</button>
+    <button onclick="testSignOut()" class="danger">🚪 Sign Out</button>
+  </div>
+
+  <h2>Session Tests</h2>
+  <div class="test-buttons">
+    <button onclick="testGetCurrentSession()">📋 Get Current Session (Local)</button>
+    <button onclick="testPublicConfig()">⚙️ Get Public Config</button>
+    <button onclick="checkCookies()">🍪 Check Cookies</button>
+    <button onclick="clearAllData()" class="danger">🗑️ Clear All Data</button>
+  </div>
+
+  <h2>Advanced Tests</h2>
+  <div class="test-buttons">
+    <button onclick="testTokenExpiry()" class="secondary">⏱️ Simulate Token Expiry</button>
+    <button onclick="testMultipleRefresh()" class="secondary">🔄 Multiple Refresh Calls</button>
+    <button onclick="runAllTests()">🚀 Run All Tests</button>
+  </div>
+
+  <hr />
+
+  <h2>Test Log</h2>
+  <button onclick="clearLog()" class="secondary">Clear Log</button>
+  <div id="log" class="log"></div>
+
+  <!-- Load the REAL SDK from the dist folder -->
+  <script type="module">
+    // Import the REAL SDK - this requires serving from a local server
+    // Run: npx serve . -p 3001 --cors  (from InsForge-sdk-js directory)
+    // Then open: http://localhost:3001/integration-tests/browser-test.html
+    
+    let InsForgeClient;
+    let client = null;
+    
+    // Try to load the real SDK
+    async function loadSDK() {
+      const sdkStatusEl = document.getElementById('sdkStatus');
+      
+      // Try multiple paths - prefer browser bundle which has all dependencies bundled
+      const paths = [
+        '../dist/browser.mjs',         // Browser bundle (all deps included)
+        '/dist/browser.mjs',           // Absolute path
+        '../dist/index.mjs',           // Fallback to regular ESM
+        '/dist/index.mjs',             // Absolute fallback
+      ];
+      
+      for (const path of paths) {
+        try {
+          log(`Trying to load SDK from: ${path}`, 'info');
+          const module = await import(path);
+          
+          log(`Module loaded! Keys: ${Object.keys(module).join(', ')}`, 'info');
+          log(`InsForgeClient type: ${typeof module.InsForgeClient}`, 'info');
+          log(`default type: ${typeof module.default}`, 'info');
+          
+          // Try InsForgeClient or default export
+          const ClientClass = module.InsForgeClient || module.default;
+          
+          if (ClientClass && typeof ClientClass === 'function') {
+            InsForgeClient = ClientClass;
+            sdkStatusEl.textContent = `✅ Real SDK loaded from ${path}`;
+            sdkStatusEl.className = 'sdk-status loaded';
+            log(`SDK loaded successfully!`, 'success');
+            
+            initializeClient();
+            return true;
+          } else {
+            log(`InsForgeClient not found in module or not a constructor`, 'warning');
+          }
+        } catch (e) {
+          log(`Failed to load from ${path}: ${e.message}`, 'warning');
+          console.error('Full error:', e);
+        }
+      }
+      
+      // All paths failed
+      sdkStatusEl.innerHTML = `❌ Failed to load SDK. <br><small>Make sure you're serving from the SDK root directory.</small>`;
+      sdkStatusEl.className = 'sdk-status error';
+      log('═══════════════════════════════════', 'error');
+      log('SDK LOADING FAILED', 'error');
+      log('═══════════════════════════════════', 'error');
+      log('To fix this:', 'warning');
+      log('1. cd D:\\Insforge\\InsForge-sdk-js', 'warning');
+      log('2. npm run build', 'warning');
+      log('3. npx serve . --cors', 'warning');
+      log('4. Open the URL shown (e.g., http://localhost:3000/integration-tests/browser-test.html)', 'warning');
+      return false;
+    }
+    
+    // Initialize SDK client
+    function initializeClient() {
+      if (!InsForgeClient) {
+        log('Cannot initialize: SDK not loaded', 'error');
+        return false;
+      }
+      const baseUrl = document.getElementById('baseUrl').value;
+      client = new InsForgeClient({ baseUrl });
+      log(`Client initialized with baseUrl: ${baseUrl}`, 'info');
+      return true;
+    }
+    
+    // Auto-generate test email
+    if (!document.getElementById('testEmail').value) {
+      document.getElementById('testEmail').value = `browser-test-${Date.now()}@example.com`;
+    }
+    
+    // Logging
+    function log(message, type = 'info') {
+      const logEl = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    
+    window.clearLog = function() {
+      document.getElementById('log').innerHTML = '';
+    };
+    
+    // Update auth status display
+    function updateAuthStatus(isLoggedIn, session = null) {
+      const statusEl = document.getElementById('authStatus');
+      const sessionInfoEl = document.getElementById('sessionInfo');
+      const sessionDetailsEl = document.getElementById('sessionDetails');
+      const tokenDisplayEl = document.getElementById('tokenDisplay');
+      
+      if (isLoggedIn && session) {
+        statusEl.textContent = 'Logged In';
+        statusEl.className = 'status logged-in';
+        sessionInfoEl.style.display = 'block';
+        
+        sessionDetailsEl.innerHTML = `
+          <p><strong>User ID:</strong> ${session.user?.id || 'N/A'}</p>
+          <p><strong>Email:</strong> ${session.user?.email || 'N/A'}</p>
+        `;
+        
+        tokenDisplayEl.textContent = session.accessToken 
+          ? `Access Token: ${session.accessToken.substring(0, 50)}...` 
+          : 'No access token';
+      } else {
+        statusEl.textContent = 'Not Logged In';
+        statusEl.className = 'status logged-out';
+        sessionInfoEl.style.display = 'none';
+      }
+    }
+    
+    // Check if SDK is loaded
+    function checkSDK() {
+      if (!InsForgeClient) {
+        log('SDK not loaded! Please check the instructions above.', 'error');
+        return false;
+      }
+      if (!client) {
+        initializeClient();
+      }
+      return true;
+    }
+    
+    // Test functions
+    window.testSignUp = async function() {
+      if (!checkSDK()) return;
+      
+      initializeClient(); // Fresh client
+      const email = document.getElementById('testEmail').value;
+      const password = document.getElementById('testPassword').value;
+      const name = document.getElementById('testName').value;
+      
+      log(`Signing up with email: ${email}`, 'info');
+      
+      const { data, error } = await client.auth.signUp({ email, password, name });
+      
+      if (error) {
+        log(`Sign up failed: ${error.message} (${error.code || error.error || 'unknown'})`, 'error');
+        return;
+      }
+      
+      log('Sign up successful!', 'success');
+      log(`User ID: ${data.user?.id}`, 'info');
+      log(`Access Token: ${data.accessToken ? 'Yes ✓' : 'No ✗'}`, data.accessToken ? 'success' : 'warning');
+      log(`CSRF Token in response: ${data.csrfToken ? 'Yes ✓' : 'No ✗'}`, data.csrfToken ? 'success' : 'warning');
+      
+      updateAuthStatus(!!data.accessToken, { accessToken: data.accessToken, user: data.user });
+    };
+    
+    window.testSignIn = async function() {
+      if (!checkSDK()) return;
+      
+      initializeClient(); // Fresh client
+      const email = document.getElementById('testEmail').value;
+      const password = document.getElementById('testPassword').value;
+      
+      log(`Signing in with email: ${email}`, 'info');
+      
+      const { data, error } = await client.auth.signInWithPassword({ email, password });
+      
+      if (error) {
+        log(`Sign in failed: ${error.message} (${error.code || error.error || 'unknown'})`, 'error');
+        return;
+      }
+      
+      log('Sign in successful!', 'success');
+      log(`User ID: ${data.user?.id}`, 'info');
+      log(`Access Token: ${data.accessToken ? 'Yes ✓' : 'No ✗'}`, data.accessToken ? 'success' : 'warning');
+      log(`CSRF Token in response: ${data.csrfToken ? 'Yes ✓' : 'No ✗'}`, data.csrfToken ? 'success' : 'warning');
+      
+      updateAuthStatus(true, { accessToken: data.accessToken, user: data.user });
+    };
+    
+    window.testSignOut = async function() {
+      if (!checkSDK()) return;
+      
+      log('Signing out...', 'info');
+      
+      const { error } = await client.auth.signOut();
+      
+      if (error) {
+        log(`Sign out failed: ${error.message}`, 'error');
+        return;
+      }
+      
+      log('Sign out successful!', 'success');
+      log('Checking if cookies were cleared...', 'info');
+      checkCookies();
+      
+      updateAuthStatus(false);
+    };
+    
+    window.testGetCurrentUser = async function() {
+      if (!checkSDK()) return;
+      
+      log('Getting current user...', 'info');
+      
+      const { data, error } = await client.auth.getCurrentUser();
+      
+      if (error) {
+        log(`Get current user failed: ${error.message}`, 'error');
+        return;
+      }
+      
+      if (!data) {
+        log('No user logged in (data is null)', 'warning');
+        return;
+      }
+      
+      log('Current user retrieved!', 'success');
+      log(`User ID: ${data.user?.id}`, 'info');
+      log(`Email: ${data.user?.email}`, 'info');
+      log(`Role: ${data.user?.role || 'N/A'}`, 'info');
+      
+      if (data.profile) {
+        log(`Profile loaded: ${JSON.stringify(data.profile).substring(0, 100)}...`, 'info');
+      }
+    };
+    
+    window.testGetCurrentSession = function() {
+      if (!checkSDK()) return;
+      
+      log('Getting current session (local)...', 'info');
+      
+      const { data, error } = client.auth.getCurrentSession();
+      
+      if (error) {
+        log(`Get session failed: ${error.message}`, 'error');
+        return;
+      }
+      
+      if (!data.session) {
+        log('No session in local storage/memory', 'warning');
+        return;
+      }
+      
+      log('Session retrieved!', 'success');
+      log(`Has access token: ${!!data.session.accessToken}`, 'info');
+      log(`User email: ${data.session.user?.email || 'N/A'}`, 'info');
+    };
+    
+    window.testRestoreSession = async function() {
+      if (!checkSDK()) return;
+      
+      initializeClient(); // Fresh client - important for testing restore!
+      log('Attempting to restore session via refresh token...', 'info');
+      log('This uses httpOnly cookie + CSRF token', 'info');
+      
+      const { isLoggedIn } = await client.auth.restoreSession();
+      
+      if (isLoggedIn) {
+        log('Session restored successfully! ✅', 'success');
+        log('Refresh token mechanism is working!', 'success');
+        
+        const { data } = client.auth.getCurrentSession();
+        updateAuthStatus(true, data?.session);
+        
+        // Also get user details
+        const { data: userData } = await client.auth.getCurrentUser();
+        if (userData) {
+          log(`Restored user: ${userData.user?.email}`, 'info');
+        }
+      } else {
+        log('No valid refresh token found', 'warning');
+        log('This is expected if you signed out or never logged in', 'info');
+        updateAuthStatus(false);
+      }
+    };
+    
+    window.testPublicConfig = async function() {
+      if (!checkSDK()) return;
+      
+      initializeClient();
+      log('Getting public auth config...', 'info');
+      
+      const { data, error } = await client.auth.getPublicAuthConfig();
+      
+      if (error) {
+        log(`Get public config failed: ${error.message}`, 'error');
+        return;
+      }
+      
+      log('Public config retrieved!', 'success');
+      
+      if (data.oauth?.data?.length > 0) {
+        log(`OAuth providers: ${data.oauth.data.map(p => p.provider).join(', ')}`, 'info');
+      } else {
+        log('No OAuth providers configured', 'info');
+      }
+      
+      if (data.email) {
+        log(`Email auth: Password min length = ${data.email.passwordMinLength}`, 'info');
+        log(`Email verification required: ${data.email.requireEmailVerification}`, 'info');
+      }
+    };
+    
+    window.checkCookies = function() {
+      log('Checking cookies...', 'info');
+      
+      const cookies = document.cookie.split(';').map(c => c.trim()).filter(c => c);
+      
+      if (cookies.length === 0) {
+        log('No cookies found (document.cookie is empty)', 'info');
+      } else {
+        cookies.forEach(cookie => {
+          const [name, value] = cookie.split('=');
+          if (name.includes('csrf') || name.includes('insforge')) {
+            log(`Cookie: ${name} = ${value ? value.substring(0, 20) + '...' : '(empty)'}`, 'info');
+          }
+        });
+      }
+      
+      log('Note: httpOnly cookies (refresh_token) cannot be read by JavaScript', 'info');
+      log('They are only visible in browser DevTools → Application → Cookies', 'info');
+    };
+    
+    window.clearAllData = function() {
+      log('Clearing all data...', 'info');
+      
+      // Clear localStorage
+      localStorage.removeItem('insforge-auth-token');
+      localStorage.removeItem('insforge-auth-user');
+      log('localStorage cleared', 'info');
+      
+      // Clear visible cookies
+      document.cookie.split(';').forEach(cookie => {
+        const name = cookie.split('=')[0].trim();
+        if (name) {
+          document.cookie = `${name}=; path=/; max-age=0`;
+          document.cookie = `${name}=; path=/api/auth; max-age=0`;
+        }
+      });
+      log('Visible cookies cleared', 'info');
+      
+      // Re-initialize client (if SDK loaded)
+      if (InsForgeClient) {
+        initializeClient();
+      }
+      
+      log('All local data cleared!', 'success');
+      log('Note: httpOnly cookies can only be cleared by calling signOut()', 'warning');
+      updateAuthStatus(false);
+    };
+    
+    window.testTokenExpiry = async function() {
+      if (!checkSDK()) return;
+      
+      log('═══════════════════════════════════', 'info');
+      log('Testing token expiry recovery...', 'info');
+      log('═══════════════════════════════════', 'info');
+      
+      // Re-create client to clear in-memory token
+      initializeClient();
+      log('In-memory token cleared (new client created)', 'info');
+      
+      log('Now trying to restore session from refresh token cookie...', 'info');
+      
+      const { isLoggedIn } = await client.auth.restoreSession();
+      
+      if (isLoggedIn) {
+        log('Session restored after token "expiry"! ✅', 'success');
+        log('Token refresh mechanism works correctly', 'success');
+      } else {
+        log('Could not restore session', 'warning');
+        log('This is expected if no valid refresh token exists', 'info');
+      }
+    };
+    
+    window.testMultipleRefresh = async function() {
+      if (!checkSDK()) return;
+      
+      log('═══════════════════════════════════', 'info');
+      log('Testing multiple refresh calls...', 'info');
+      log('═══════════════════════════════════', 'info');
+      
+      const results = [];
+      
+      for (let i = 0; i < 3; i++) {
+        initializeClient();
+        const { isLoggedIn } = await client.auth.restoreSession();
+        results.push(isLoggedIn);
+        log(`Refresh attempt ${i + 1}: ${isLoggedIn ? 'Success ✓' : 'Failed ✗'}`, isLoggedIn ? 'success' : 'warning');
+        await new Promise(r => setTimeout(r, 200)); // Small delay between calls
+      }
+      
+      const allSame = results.every(r => r === results[0]);
+      if (allSame) {
+        log('Multiple refresh calls handled consistently ✅', 'success');
+      } else {
+        log('Inconsistent refresh results - possible issue ⚠️', 'warning');
+      }
+    };
+    
+    window.runAllTests = async function() {
+      if (!checkSDK()) return;
+      
+      log('═══════════════════════════════════', 'info');
+      log('Running all tests...', 'info');
+      log('═══════════════════════════════════', 'info');
+      
+      // Generate fresh email
+      document.getElementById('testEmail').value = `browser-test-${Date.now()}@example.com`;
+      
+      await testPublicConfig();
+      await new Promise(r => setTimeout(r, 500));
+      
+      await testSignUp();
+      await new Promise(r => setTimeout(r, 500));
+      
+      await testGetCurrentUser();
+      await new Promise(r => setTimeout(r, 500));
+      
+      testGetCurrentSession();
+      checkCookies();
+      await new Promise(r => setTimeout(r, 500));
+      
+      // Test sign out and verify cookies are cleared
+      await testSignOut();
+      await new Promise(r => setTimeout(r, 500));
+      
+      // Try to restore - should FAIL after logout
+      log('Attempting restore after logout (should fail)...', 'info');
+      await testRestoreSession();
+      await new Promise(r => setTimeout(r, 500));
+      
+      // Sign in again
+      await testSignIn();
+      await new Promise(r => setTimeout(r, 500));
+      
+      // Test token expiry recovery
+      await testTokenExpiry();
+      
+      log('═══════════════════════════════════', 'info');
+      log('All tests completed!', 'success');
+      log('═══════════════════════════════════', 'info');
+    };
+    
+    // Initialize on load
+    loadSDK();
+  </script>
+</body>
+</html>
