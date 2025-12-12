@@ -95,7 +95,7 @@ export class Auth {
             emailVerified: false,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-          } as any,
+          },
         };
 
         // Save session and set auth token
@@ -440,6 +440,7 @@ export class Auth {
       // Step 1: Check if we already have session in memory
       const session = this.tokenManager.getSession();
       if (session) {
+        this.http.setAuthToken(session.accessToken);
         return { data: { session }, error: null };
       }
 
@@ -730,11 +731,11 @@ export class Auth {
    * Otherwise, a default success page is displayed.
    */
   async verifyEmail(request: VerifyEmailRequest): Promise<{
-    data: { accessToken: string; user?: any; redirectTo?: string } | null;
+    data: { accessToken: string; user?: UserSchema; redirectTo?: string } | null;
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string; csrfToken?: string }>(
+      const response = await this.http.post<{ accessToken: string; user?: UserSchema; redirectTo?: string; csrfToken?: string }>(
         '/api/auth/email/verify',
         request
       );
