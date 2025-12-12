@@ -9,7 +9,7 @@ export type { SendRawEmailRequest as SendEmailOptions, SendEmailResponse } from 
  * @example
  * ```typescript
  * // Send a simple email
- * const { error } = await client.emails.send({
+ * const { data, error } = await client.emails.send({
  *   to: 'user@example.com',
  *   subject: 'Welcome!',
  *   html: '<h1>Welcome to our platform</h1>'
@@ -19,10 +19,10 @@ export type { SendRawEmailRequest as SendEmailOptions, SendEmailResponse } from 
  *   console.error('Failed to send:', error.message);
  *   return;
  * }
- * // Email sent successfully
+ * // Email sent successfully - data is {} (empty object)
  *
  * // Send to multiple recipients with CC
- * const { error: err } = await client.emails.send({
+ * const { data, error } = await client.emails.send({
  *   to: ['user1@example.com', 'user2@example.com'],
  *   cc: 'manager@example.com',
  *   subject: 'Team Update',
