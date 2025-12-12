@@ -36,7 +36,8 @@ export function getCsrfToken(): string | null {
 export function setCsrfToken(token: string): void {
   if (typeof document === 'undefined') return;
   const maxAge = 7 * 24 * 60 * 60; // 7 days (same as refresh token)
-  document.cookie = `${CSRF_TOKEN_COOKIE}=${token}; path=/; max-age=${maxAge}; SameSite=Lax`;
+  const secure = (typeof window !== 'undefined' && window.location.protocol === 'https:') ? '; Secure' : '';
+  document.cookie = `${CSRF_TOKEN_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=${maxAge}; SameSite=Lax${secure}`;
 }
 
 /**
@@ -45,7 +46,8 @@ export function setCsrfToken(token: string): void {
  */
 export function clearCsrfToken(): void {
   if (typeof document === 'undefined') return;
-  document.cookie = `${CSRF_TOKEN_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
+  const secure = (typeof window !== 'undefined' && window.location.protocol === 'https:') ? '; Secure' : '';
+  document.cookie = `${CSRF_TOKEN_COOKIE}=; path=/; max-age=0; SameSite=Lax${secure}`;
 }
 
 export class TokenManager {
@@ -152,6 +154,7 @@ export class TokenManager {
    * Get access token
    */
   getAccessToken(): string | null {
+    this.loadFromStorage();
     return this.accessToken;
   }
 
