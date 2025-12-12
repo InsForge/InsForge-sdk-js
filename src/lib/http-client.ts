@@ -98,7 +98,6 @@ export class HttpClient {
       method,
       headers: requestHeaders,
       body: processedBody,
-      credentials: url.includes('/api/auth/refresh') || url.includes('/api/auth/logout') ? 'include' : undefined,
       ...fetchOptions,
     });
 

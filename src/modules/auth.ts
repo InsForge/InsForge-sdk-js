@@ -275,7 +275,7 @@ export class Auth {
       // Try to call backend logout to clear httpOnly refresh cookie
       // This may fail for legacy backends, but that's ok
       try {
-        await this.http.post('/api/auth/logout');
+        await this.http.post('/api/auth/logout', undefined, { credentials: 'include' });
       } catch {
         // Ignore errors - legacy backend may not have this endpoint
       }
