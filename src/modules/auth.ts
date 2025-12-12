@@ -432,18 +432,69 @@ export class Auth {
    * Get the current session (only session data, no API call)
    * Returns the stored JWT token and basic user info from local storage
    */
-  getCurrentSession(): {
+  async getCurrentSession(): Promise<{
     data: { session: AuthSession | null };
     error: InsForgeError | null;
-  } {
+  }> {
     try {
+      // Step 1: Check if we already have session in memory
       const session = this.tokenManager.getSession();
-
-      if (session?.accessToken) {
-        this.http.setAuthToken(session.accessToken);
+      if (session) {
         return { data: { session }, error: null };
       }
 
+      // Step 2: In browser, try to refresh using httpOnly cookie
+      if (typeof window !== 'undefined') {
+        try {
+          const csrfToken = getCsrfToken();
+          const response = await this.http.post<{
+            accessToken: string;
+            user?: UserSchema;
+            csrfToken?: string
+          }>(
+            '/api/auth/refresh',
+            undefined,
+            {
+              headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+              credentials: 'include',
+            }
+          );
+
+          if (response.accessToken) {
+            this.tokenManager.setMemoryMode();
+            this.tokenManager.setAccessToken(response.accessToken);
+            this.http.setAuthToken(response.accessToken);
+
+            if (response.user) {
+              this.tokenManager.setUser(response.user);
+            }
+            if (response.csrfToken) {
+              setCsrfToken(response.csrfToken);
+            }
+
+            return {
+              data: { session: this.tokenManager.getSession() },
+              error: null
+            };
+          }
+        } catch (error) {
+          if (error instanceof InsForgeError) {
+            if (error.statusCode === 404) {
+              // Legacy backend - try localStorage
+              this.tokenManager.setStorageMode();
+              const session = this.tokenManager.getSession();
+              if (session) {
+                return { data: { session }, error: null };
+              }
+              return { data: { session: null }, error: null };
+            }
+            // 401/403 or other errors - not logged in
+            return { data: { session: null }, error: error };
+          }
+        }
+      }
+
+      // Not logged in
       return { data: { session: null }, error: null };
     } catch (error) {
       // Pass through API errors unchanged

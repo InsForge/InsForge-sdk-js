@@ -140,6 +140,7 @@ export class TokenManager {
    * Get current session
    */
   getSession(): AuthSession | null {
+    this.loadFromStorage();
     if (!this.accessToken || !this.user) return null;
     return {
       accessToken: this.accessToken,
