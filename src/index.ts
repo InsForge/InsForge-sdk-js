@@ -46,6 +46,10 @@ export { AI } from './modules/ai';
 export { Functions } from './modules/functions';
 export type { FunctionInvokeOptions } from './modules/functions';
 
+// Re-export Emails module (Resend-compatible API)
+export { Emails } from './modules/email';
+export type { SendEmailOptions, SendEmailResponse } from './modules/email';
+
 // Re-export Realtime module and types
 export { Realtime } from './modules/realtime';
 export type {
