@@ -24,6 +24,7 @@ import type {
   SendResetPasswordEmailRequest,
   ExchangeResetPasswordTokenRequest,
   VerifyEmailRequest,
+  UserSchema,
 } from '@insforge/shared-schemas';
 
 /**
@@ -129,91 +130,6 @@ export class Auth {
 
     // Auto-detect OAuth callback parameters in the URL
     this.detectAuthCallback();
-  }
-
-  /**
- * Restore session on app initialization
- * 
- * @returns Object with isLoggedIn status
- * 
- * @example
- * ```typescript
- * const client = new InsForgeClient({ baseUrl: '...' });
- * const { isLoggedIn } = await client.auth.restoreSession();
- * 
- * if (isLoggedIn) {
- *   const { data } = await client.auth.getCurrentUser();
- * }
- * ```
- */
-  async restoreSession(): Promise<{
-    isLoggedIn: boolean;
-  }> {
-    // Skip in non-browser environment
-    if (typeof window === 'undefined') {
-      return { isLoggedIn: false };
-    }
-
-    // Step 1: If we already have a token in memory (e.g., from OAuth callback), we're done
-    if (this.tokenManager.getAccessToken()) {
-      return { isLoggedIn: true };
-    }
-
-    // Step 2: Try to refresh using httpOnly cookie
-    try {
-      // Include CSRF token in header for CSRF protection
-      const csrfToken = getCsrfToken();
-      const response = await this.http.post<{ accessToken: string; user?: any; csrfToken?: string }>(
-        '/api/auth/refresh',
-        undefined,
-        {
-          headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
-          credentials: 'include',
-        }
-      );
-
-      if (response.accessToken) {
-        // Refresh successful - this is new backend, switch to memory mode
-        // This clears localStorage and stores token only in memory (more secure)
-        this.tokenManager.setMemoryMode();
-        this.tokenManager.setAccessToken(response.accessToken);
-        this.http.setAuthToken(response.accessToken);
-        if (response.user) {
-          this.tokenManager.setUser(response.user);
-        }
-        // Update CSRF token for next refresh
-        if (response.csrfToken) {
-          setCsrfToken(response.csrfToken);
-        }
-        return { isLoggedIn: true };
-      }
-    } catch (error) {
-      if (error instanceof InsForgeError) {
-        if (error.statusCode === 404) {
-          // Legacy backend (no refresh endpoint) - stay in storage mode
-          // Try to load session from localStorage
-          this.tokenManager.setStorageMode();
-          const token = this.tokenManager.getAccessToken();
-          if (token) {
-            this.http.setAuthToken(token);
-            return { isLoggedIn: true };
-          }
-          return { isLoggedIn: false };
-        }
-
-        if (error.statusCode === 401 || error.statusCode === 403) {
-          // New backend but session expired or CSRF failed - clear cookies
-          this.tokenManager.setMemoryMode();
-          clearCsrfToken();
-          return { isLoggedIn: false };
-        }
-      }
-      // Other errors - not logged in
-      return { isLoggedIn: false };
-    }
-
-    // Default: not logged in
-    return { isLoggedIn: false };
   }
 
   /**
@@ -602,18 +518,69 @@ export class Auth {
    * Get the current session (only session data, no API call)
    * Returns the stored JWT token and basic user info from local storage
    */
-  getCurrentSession(): {
+  async getCurrentSession(): Promise<{
     data: { session: AuthSession | null };
     error: InsForgeError | null;
-  } {
+  }> {
     try {
+      // Step 1: Check if we already have session in memory
       const session = this.tokenManager.getSession();
-
-      if (session?.accessToken) {
-        this.http.setAuthToken(session.accessToken);
+      if (session) {
         return { data: { session }, error: null };
       }
 
+      // Step 2: In browser, try to refresh using httpOnly cookie
+      if (typeof window !== 'undefined') {
+        try {
+          const csrfToken = getCsrfToken();
+          const response = await this.http.post<{
+            accessToken: string;
+            user?: UserSchema;
+            csrfToken?: string
+          }>(
+            '/api/auth/refresh',
+            undefined,
+            {
+              headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+              credentials: 'include',
+            }
+          );
+
+          if (response.accessToken) {
+            this.tokenManager.setMemoryMode();
+            this.tokenManager.setAccessToken(response.accessToken);
+            this.http.setAuthToken(response.accessToken);
+
+            if (response.user) {
+              this.tokenManager.setUser(response.user);
+            }
+            if (response.csrfToken) {
+              setCsrfToken(response.csrfToken);
+            }
+
+            return {
+              data: { session: this.tokenManager.getSession() },
+              error: null
+            };
+          }
+        } catch (error) {
+          if (error instanceof InsForgeError) {
+            if (error.statusCode === 404) {
+              // Legacy backend - try localStorage
+              this.tokenManager.setStorageMode();
+              const session = this.tokenManager.getSession();
+              if (session) {
+                return { data: { session }, error: null };
+              }
+              return { data: { session: null }, error: null };
+            }
+            // 401/403 or other errors - not logged in
+            return { data: { session: null }, error: error };
+          }
+        }
+      }
+
+      // Not logged in
       return { data: { session: null }, error: null };
     } catch (error) {
       // Pass through API errors unchanged
