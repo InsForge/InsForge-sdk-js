@@ -7,6 +7,7 @@ import { Storage } from './modules/storage';
 import { AI } from './modules/ai';
 import { Functions } from './modules/functions';
 import { Realtime } from './modules/realtime';
+import { Emails } from './modules/email';
 
 /**
  * Main InsForge SDK Client
@@ -56,6 +57,7 @@ export class InsForgeClient {
   public readonly ai: AI;
   public readonly functions: Functions;
   public readonly realtime: Realtime;
+  public readonly emails: Emails;
 
   constructor(config: InsForgeConfig = {}) {
     this.http = new HttpClient(config);
@@ -87,6 +89,7 @@ export class InsForgeClient {
     this.ai = new AI(this.http);
     this.functions = new Functions(this.http);
     this.realtime = new Realtime(this.http.baseUrl, this.tokenManager);
+    this.emails = new Emails(this.http);
   }
 
   /**
