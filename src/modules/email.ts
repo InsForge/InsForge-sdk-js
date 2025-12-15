@@ -52,8 +52,9 @@ export class Emails {
       );
 
       return { data, error: null };
-    } catch (error: any) {
-      return { data: null, error };
+    } catch (error: unknown) {
+      const normalizedError = error instanceof Error ? error : new Error(String(error));
+      return { data: null, error: normalizedError };
     }
   }
 }
