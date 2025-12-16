@@ -64,6 +64,16 @@ await insforge.auth.signInWithOAuth({
 // Get current user
 const { data: user } = await insforge.auth.getCurrentUser();
 
+// Get any user's profile by ID (public endpoint)
+const { data: profile, error } = await insforge.auth.getProfile('user-id-here');
+
+// Update current user's profile (requires authentication)
+const { data: updatedProfile, error } = await insforge.auth.setProfile({
+  displayName: 'John Doe',
+  bio: 'Software developer',
+  avatarUrl: 'https://example.com/avatar.jpg'
+});
+
 // Sign out
 await insforge.auth.signOut();
 ```

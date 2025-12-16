@@ -6,7 +6,6 @@
 import { HttpClient } from '../lib/http-client';
 import { TokenManager } from '../lib/token-manager';
 import { AuthSession, InsForgeError } from '../types';
-import { Database } from './database-postgrest';
 
 import type {
   CreateUserRequest,
@@ -17,80 +16,13 @@ import type {
   GetOauthUrlResponse,
   GetPublicAuthConfigResponse,
   OAuthProvidersSchema,
-  UserIdSchema,
-  EmailSchema,
-  RoleSchema,
   SendVerificationEmailRequest,
   SendResetPasswordEmailRequest,
   ExchangeResetPasswordTokenRequest,
   VerifyEmailRequest,
+  UserSchema,
+  GetProfileResponse,
 } from '@insforge/shared-schemas';
-
-/**
- * Dynamic profile type - represents flexible profile data from database
- * Fields can vary based on database schema configuration.
- * All fields are converted from snake_case (database) to camelCase (API)
- */
-export type ProfileData = Record<string, any> & {
-  id: string; // User ID (required)
-  createdAt?: string; // PostgreSQL TIMESTAMPTZ
-  updatedAt?: string; // PostgreSQL TIMESTAMPTZ
-};
-
-/**
- * Dynamic profile update type - for updating profile fields
- * Supports any fields that exist in the profile table
- */
-export type UpdateProfileData = Partial<Record<string, any>>;
-
-/**
- * Convert database profile to include both snake_case and camelCase formats
- * Handles dynamic fields flexibly - automatically converts all snake_case keys to camelCase
- * 
- * NOTE: Backward compatibility for <= v0.0.57
- * Both formats are returned to maintain compatibility with existing code.
- * For example: both created_at and createdAt are included in the result.
- */
-function convertDbProfileToCamelCase(dbProfile: Record<string, any>): ProfileData {
-  const result: ProfileData = {
-    id: dbProfile.id,
-  };
-
-  // Convert all fields - keep both snake_case and camelCase for backward compatibility (<= v0.0.57)
-  Object.keys(dbProfile).forEach(key => {
-
-    // Keep original field (snake_case) for backward compatibility (<= v0.0.57)
-    result[key] = dbProfile[key];
-
-    // Also add camelCase version if field contains underscore
-    // e.g., created_at -> createdAt, avatar_url -> avatarUrl, etc.
-    if (key.includes('_')) {
-      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-      result[camelKey] = dbProfile[key];
-    }
-  });
-
-  return result;
-}
-
-/**
- * Convert camelCase profile data to database format (snake_case)
- * Handles dynamic fields flexibly - automatically converts all camelCase keys to snake_case
- */
-function convertCamelCaseToDbProfile(profile: UpdateProfileData): Record<string, any> {
-  const dbProfile: Record<string, any> = {};
-
-  Object.keys(profile).forEach(key => {
-    if (profile[key] === undefined) return;
-
-    // Convert camelCase to snake_case
-    // e.g., avatarUrl -> avatar_url, firstName -> first_name
-    const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-    dbProfile[snakeKey] = profile[key];
-  });
-
-  return dbProfile;
-}
 
 /**
  * Check if current environment is a hosted auth environment
@@ -119,14 +51,10 @@ function isHostedAuthEnvironment(): boolean {
 }
 
 export class Auth {
-  private database: Database;
-
   constructor(
     private http: HttpClient,
     private tokenManager: TokenManager
   ) {
-    this.database = new Database(http, tokenManager);
-
     // Auto-detect OAuth callback parameters in the URL
     this.detectAuthCallback();
   }
@@ -408,12 +336,7 @@ export class Auth {
    */
   async getCurrentUser(): Promise<{
     data: {
-      user: {
-        id: UserIdSchema;
-        email: EmailSchema;
-        role: RoleSchema;
-      };
-      profile: ProfileData | null;
+      user: UserSchema;
     } | null;
     error: any | null;
   }> {
@@ -428,22 +351,9 @@ export class Auth {
       this.http.setAuthToken(session.accessToken);
       const authResponse = await this.http.get<GetCurrentSessionResponse>('/api/auth/sessions/current');
 
-      // Get the user's profile using query builder
-      const { data: profile, error: profileError } = await this.database
-        .from('users')
-        .select('*')
-        .eq('id', authResponse.user.id)
-        .single();
-
-      // For database errors, return PostgrestError directly
-      if (profileError && (profileError as any).code !== 'PGRST116') {  // PGRST116 = not found
-        return { data: null, error: profileError };
-      }
-
       return {
         data: {
           user: authResponse.user,
-          profile: profile ? convertDbProfileToCamelCase(profile) : null
         },
         error: null
       };
@@ -473,30 +383,35 @@ export class Auth {
 
   /**
    * Get any user's profile by ID
-   * Returns profile information from the users table (dynamic fields)
+   * Returns profile information from the users table
    */
   async getProfile(userId: string): Promise<{
-    data: ProfileData | null;
-    error: any | null;
+    data: GetProfileResponse | null;
+    error: InsForgeError | null;
   }> {
-    const { data, error } = await this.database
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .single();
+    try {
+      const response = await this.http.get<GetProfileResponse>(`/api/auth/profiles/${userId}`);
 
-    // Handle not found as null, not error
-    if (error && (error as any).code === 'PGRST116') {
-      return { data: null, error: null };
+      return {
+        data: response,
+        error: null
+      };
+    } catch (error) {
+      // Pass through API errors unchanged (includes 404 NOT_FOUND, 400 INVALID_INPUT)
+      if (error instanceof InsForgeError) {
+        return { data: null, error };
+      }
+
+      // Generic fallback for unexpected errors
+      return {
+        data: null,
+        error: new InsForgeError(
+          'An unexpected error occurred while fetching user profile',
+          500,
+          'UNEXPECTED_ERROR'
+        )
+      };
     }
-
-    // Convert database format to camelCase format
-    if (data) {
-      return { data: convertDbProfileToCamelCase(data), error: null };
-    }
-
-    // Return PostgrestError directly for database operations
-    return { data: null, error };
   }
 
   /**
@@ -537,62 +452,38 @@ export class Auth {
   /**
    * Set/Update the current user's profile
    * Updates profile information in the users table (supports any dynamic fields)
+   * Requires authentication
    */
-  async setProfile(profile: UpdateProfileData): Promise<{
-    data: ProfileData | null;
-    error: any | null;
+  async setProfile(profile: Record<string, unknown>): Promise<{
+    data: GetProfileResponse | null;
+    error: InsForgeError | null;
   }> {
-    // Get current session to get user ID
-    const session = this.tokenManager.getSession();
-    if (!session?.accessToken) {
+    try {
+      const response = await this.http.patch<GetProfileResponse>(
+        '/api/auth/profiles/current',
+        { profile }
+      );
+
+      return {
+        data: response,
+        error: null
+      };
+    } catch (error) {
+      // Pass through API errors unchanged (includes 401 AUTH_INVALID_CREDENTIALS, 400 INVALID_INPUT)
+      if (error instanceof InsForgeError) {
+        return { data: null, error };
+      }
+
+      // Generic fallback for unexpected errors
       return {
         data: null,
         error: new InsForgeError(
-          'No authenticated user found',
-          401,
-          'UNAUTHENTICATED'
+          'An unexpected error occurred while updating user profile',
+          500,
+          'UNEXPECTED_ERROR'
         )
       };
     }
-
-    // If no user ID in session (edge function scenario), fetch it
-    if (!session.user?.id) {
-      const { data, error } = await this.getCurrentUser();
-      if (error) {
-        return { data: null, error };
-      }
-      if (data?.user) {
-        // Update session with minimal user info
-        session.user = {
-          id: data.user.id,
-          email: data.user.email,
-          name: '',
-          emailVerified: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        this.tokenManager.saveSession(session);
-      }
-    }
-
-    // Convert camelCase format to database format (snake_case)
-    const dbProfile = convertCamelCaseToDbProfile(profile);
-
-    // Update the profile using query builder
-    const { data, error } = await this.database
-      .from('users')
-      .update(dbProfile)
-      .eq('id', session.user.id)
-      .select()
-      .single();
-
-    // Convert database format back to camelCase format
-    if (data) {
-      return { data: convertDbProfileToCamelCase(data), error: null };
-    }
-
-    // Return PostgrestError directly for database operations
-    return { data: null, error };
   }
 
   /**
