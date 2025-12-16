@@ -20,6 +20,7 @@ import type {
   SendResetPasswordEmailRequest,
   ExchangeResetPasswordTokenRequest,
   VerifyEmailRequest,
+  VerifyEmailResponse,
   UserSchema,
   GetProfileResponse,
 } from '@insforge/shared-schemas';
@@ -132,7 +133,7 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<CreateUserResponse & { csrfToken?: string }>('/api/auth/users', request);
+      const response = await this.http.post<CreateUserResponse>('/api/auth/users', request);
 
       // Save session internally only if both accessToken and user exist
       if (response.accessToken && response.user && !isHostedAuthEnvironment()) {
@@ -174,13 +175,13 @@ export class Auth {
    * Sign in with email and password
    */
   async signInWithPassword(request: CreateSessionRequest): Promise<{
-    data: CreateSessionResponse & { csrfToken?: string } | null;
+    data: CreateSessionResponse | null;
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<CreateSessionResponse & { csrfToken?: string }>('/api/auth/sessions', request);
+      const response = await this.http.post<CreateSessionResponse>('/api/auth/sessions', request);
 
-      if (response.accessToken && response.user && !isHostedAuthEnvironment()) {
+      if (!isHostedAuthEnvironment()) {
         const session: AuthSession = {
           accessToken: response.accessToken,
           user: response.user,
@@ -731,17 +732,17 @@ export class Auth {
    * Otherwise, a default success page is displayed.
    */
   async verifyEmail(request: VerifyEmailRequest): Promise<{
-    data: { accessToken: string; user?: UserSchema; redirectTo?: string } | null;
+    data: VerifyEmailResponse | null;
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{ accessToken: string; user?: UserSchema; redirectTo?: string; csrfToken?: string }>(
+      const response = await this.http.post<VerifyEmailResponse>(
         '/api/auth/email/verify',
         request
       );
 
       // Save session if we got a token
-      if (response.accessToken && response.user && !isHostedAuthEnvironment()) {
+      if (!isHostedAuthEnvironment()) {
         const session: AuthSession = {
           accessToken: response.accessToken,
           user: response.user,
