@@ -40,7 +40,7 @@ export class Emails {
 
   /**
    * Send a custom HTML email
-   * @param options Email options ilncluding recipients, subject, and HTML content
+   * @param options Email options including recipients, subject, and HTML content
    */
   async send(
     options: SendRawEmailRequest
