@@ -65,7 +65,7 @@ export class Auth {
    * This runs after initialization to seamlessly complete the OAuth flow
    * Matches the backend's OAuth callback response (backend/src/api/routes/auth.ts:540-544)
    */
-  private async detectAuthCallbackAsync(): Promise<void> {
+  private async detectAuthCallback(): Promise<void> {
     // Only run in browser environment
     if (typeof window === 'undefined') return;
 
@@ -84,13 +84,16 @@ export class Auth {
           this.tokenManager.setMemoryMode();
           setCsrfToken(csrfToken);
         }
+        // TODO: Use PKCE in future
+        const { data: profileData } = await this.getProfile(userId);
         // Create session with the data from backend
         const session: AuthSession = {
           accessToken,
           user: {
             id: userId,
             email: email,
-            name: name || '',
+            profile: profileData?.profile || { name: name || '' },
+            metadata: null,
             // These fields are not provided by backend OAuth callback
             // They'll be populated when calling getCurrentUser()
             emailVerified: false,
