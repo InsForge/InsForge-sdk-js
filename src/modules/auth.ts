@@ -4,7 +4,7 @@
  */
 
 import { HttpClient } from '../lib/http-client';
-import { TokenManager } from '../lib/token-manager';
+import { TokenManager, getCsrfToken, setCsrfToken, clearCsrfToken } from '../lib/token-manager';
 import { AuthSession, InsForgeError } from '../types';
 
 import type {
@@ -20,6 +20,7 @@ import type {
   SendResetPasswordEmailRequest,
   ExchangeResetPasswordTokenRequest,
   VerifyEmailRequest,
+  VerifyEmailResponse,
   UserSchema,
   GetProfileResponse,
 } from '@insforge/shared-schemas';
@@ -61,37 +62,44 @@ export class Auth {
 
   /**
    * Automatically detect and handle OAuth callback parameters in the URL
-   * This runs on initialization to seamlessly complete the OAuth flow
+   * This runs after initialization to seamlessly complete the OAuth flow
    * Matches the backend's OAuth callback response (backend/src/api/routes/auth.ts:540-544)
    */
-  private detectAuthCallback(): void {
+  private async detectAuthCallback(): Promise<void> {
     // Only run in browser environment
     if (typeof window === 'undefined') return;
 
     try {
       const params = new URLSearchParams(window.location.search);
-
-      // Backend returns: access_token, user_id, email, name (optional)
+      // Backend returns: access_token, user_id, email, name (optional), csrf_token
       const accessToken = params.get('access_token');
       const userId = params.get('user_id');
       const email = params.get('email');
       const name = params.get('name');
+      const csrfToken = params.get('csrf_token');
 
       // Check if we have OAuth callback parameters
       if (accessToken && userId && email) {
+        if (csrfToken) {
+          this.tokenManager.setMemoryMode();
+          setCsrfToken(csrfToken);
+        }
+        // TODO: Use PKCE in future
+        const { data: profileData } = await this.getProfile(userId);
         // Create session with the data from backend
         const session: AuthSession = {
           accessToken,
           user: {
             id: userId,
             email: email,
-            name: name || '',
+            profile: profileData?.profile || { name: name || '' },
+            metadata: null,
             // These fields are not provided by backend OAuth callback
             // They'll be populated when calling getCurrentUser()
             emailVerified: false,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-          } as any,
+          },
         };
 
         // Save session and set auth token
@@ -104,6 +112,7 @@ export class Auth {
         url.searchParams.delete('user_id');
         url.searchParams.delete('email');
         url.searchParams.delete('name');
+        url.searchParams.delete('csrf_token');
 
         // Also handle error case from backend (line 581)
         if (params.has('error')) {
@@ -130,15 +139,17 @@ export class Auth {
       const response = await this.http.post<CreateUserResponse>('/api/auth/users', request);
 
       // Save session internally only if both accessToken and user exist
-      if (response.accessToken && response.user) {
+      if (response.accessToken && response.user && !isHostedAuthEnvironment()) {
         const session: AuthSession = {
           accessToken: response.accessToken,
           user: response.user,
         };
-        if (!isHostedAuthEnvironment()) {
-          this.tokenManager.saveSession(session);
-        }
+        this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
+
+        if (response.csrfToken) {
+          setCsrfToken(response.csrfToken);
+        }
       }
 
       return {
@@ -173,22 +184,18 @@ export class Auth {
     try {
       const response = await this.http.post<CreateSessionResponse>('/api/auth/sessions', request);
 
-      // Save session internally
-      const session: AuthSession = {
-        accessToken: response.accessToken || '',
-        user: response.user || {
-          id: '',
-          email: '',
-          name: '',
-          emailVerified: false,
-          createdAt: '',
-          updatedAt: '',
-        },
-      };
       if (!isHostedAuthEnvironment()) {
+        const session: AuthSession = {
+          accessToken: response.accessToken,
+          user: response.user,
+        };
         this.tokenManager.saveSession(session);
+        this.http.setAuthToken(response.accessToken);
+
+        if (response.csrfToken) {
+          setCsrfToken(response.csrfToken);
+        }
       }
-      this.http.setAuthToken(response.accessToken || '');
 
       return {
         data: response,
@@ -269,8 +276,19 @@ export class Auth {
    */
   async signOut(): Promise<{ error: InsForgeError | null }> {
     try {
+      // Try to call backend logout to clear httpOnly refresh cookie
+      // This may fail for legacy backends, but that's ok
+      try {
+        await this.http.post('/api/auth/logout', undefined, { credentials: 'include' });
+      } catch {
+        // Ignore errors - legacy backend may not have this endpoint
+      }
+
+      // Clear local session and cookies
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
+      clearCsrfToken();
+
       return { error: null };
     } catch (error) {
       return {
@@ -418,18 +436,70 @@ export class Auth {
    * Get the current session (only session data, no API call)
    * Returns the stored JWT token and basic user info from local storage
    */
-  getCurrentSession(): {
+  async getCurrentSession(): Promise<{
     data: { session: AuthSession | null };
     error: InsForgeError | null;
-  } {
+  }> {
     try {
+      // Step 1: Check if we already have session in memory
       const session = this.tokenManager.getSession();
-
-      if (session?.accessToken) {
+      if (session) {
         this.http.setAuthToken(session.accessToken);
         return { data: { session }, error: null };
       }
 
+      // Step 2: In browser, try to refresh using httpOnly cookie
+      if (typeof window !== 'undefined') {
+        try {
+          const csrfToken = getCsrfToken();
+          const response = await this.http.post<{
+            accessToken: string;
+            user?: UserSchema;
+            csrfToken?: string
+          }>(
+            '/api/auth/refresh',
+            undefined,
+            {
+              headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+              credentials: 'include',
+            }
+          );
+
+          if (response.accessToken) {
+            this.tokenManager.setMemoryMode();
+            this.tokenManager.setAccessToken(response.accessToken);
+            this.http.setAuthToken(response.accessToken);
+
+            if (response.user) {
+              this.tokenManager.setUser(response.user);
+            }
+            if (response.csrfToken) {
+              setCsrfToken(response.csrfToken);
+            }
+
+            return {
+              data: { session: this.tokenManager.getSession() },
+              error: null
+            };
+          }
+        } catch (error) {
+          if (error instanceof InsForgeError) {
+            if (error.statusCode === 404) {
+              // Legacy backend - try localStorage
+              this.tokenManager.setStorageMode();
+              const session = this.tokenManager.getSession();
+              if (session) {
+                return { data: { session }, error: null };
+              }
+              return { data: { session: null }, error: null };
+            }
+            // 401/403 or other errors - not logged in
+            return { data: { session: null }, error: error };
+          }
+        }
+      }
+
+      // Not logged in
       return { data: { session: null }, error: null };
     } catch (error) {
       // Pass through API errors unchanged
@@ -665,23 +735,27 @@ export class Auth {
    * Otherwise, a default success page is displayed.
    */
   async verifyEmail(request: VerifyEmailRequest): Promise<{
-    data: { accessToken: string; user?: any; redirectTo?: string } | null;
+    data: VerifyEmailResponse | null;
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{ accessToken: string; user?: any; redirectTo?: string }>(
+      const response = await this.http.post<VerifyEmailResponse>(
         '/api/auth/email/verify',
         request
       );
 
       // Save session if we got a token
-      if (response.accessToken) {
+      if (!isHostedAuthEnvironment()) {
         const session: AuthSession = {
           accessToken: response.accessToken,
-          user: response.user || {} as any,
+          user: response.user,
         };
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(response.accessToken);
+
+        if (response.csrfToken) {
+          setCsrfToken(response.csrfToken);
+        }
       }
 
       return {

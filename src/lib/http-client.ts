@@ -39,7 +39,7 @@ export class HttpClient {
           // 2. Remove spaces inside parentheses for proper PostgREST syntax
           // 3. Keep spaces after commas at the top level for readability
           let normalizedValue = value.replace(/\s+/g, ' ').trim();
-          
+
           // Fix spaces around parentheses and inside them
           normalizedValue = normalizedValue
             .replace(/\s*\(\s*/g, '(')  // Remove spaces around opening parens

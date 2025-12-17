@@ -21,7 +21,7 @@ import { Emails } from './modules/email';
  * });
  * 
  * // Authentication
- * const session = await client.auth.register({
+ * const { data, error } = await client.auth.signUp({
  *   email: 'user@example.com',
  *   password: 'password123',
  *   name: 'John Doe'
@@ -50,7 +50,6 @@ import { Emails } from './modules/email';
 export class InsForgeClient {
   private http: HttpClient;
   private tokenManager: TokenManager;
-
   public readonly auth: Auth;
   public readonly database: Database;
   public readonly storage: Storage;
@@ -62,28 +61,26 @@ export class InsForgeClient {
   constructor(config: InsForgeConfig = {}) {
     this.http = new HttpClient(config);
     this.tokenManager = new TokenManager(config.storage);
-    
+
     // Check for edge function token
     if (config.edgeFunctionToken) {
       this.http.setAuthToken(config.edgeFunctionToken);
       // Save to token manager so getCurrentUser() works
       this.tokenManager.saveSession({
         accessToken: config.edgeFunctionToken,
-        user: {} as any // Will be populated by getCurrentUser()
+        user: {} as any, // Will be populated by getCurrentUser()
       });
     }
-    
-    // Check for existing session in storage
+
+    // Check for existing session
+    // In secure mode: try to refresh to get access token
+    // In local mode: check localStorage
     const existingSession = this.tokenManager.getSession();
     if (existingSession?.accessToken) {
       this.http.setAuthToken(existingSession.accessToken);
     }
-    
-    this.auth = new Auth(
-      this.http,
-      this.tokenManager
-    );
-    
+
+    this.auth = new Auth(this.http, this.tokenManager);
     this.database = new Database(this.http, this.tokenManager);
     this.storage = new Storage(this.http);
     this.ai = new AI(this.http);
