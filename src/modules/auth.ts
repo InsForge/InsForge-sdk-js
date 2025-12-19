@@ -358,14 +358,19 @@ export class Auth {
     error: any | null;
   }> {
     try {
-      // Check if we have a token
-      const session = this.tokenManager.getSession();
-      if (!session?.accessToken) {
+      // Check if we have a stored user
+      const user = this.tokenManager.getUser();
+
+      if (user) {
+        return { data: { user }, error: null };
+      }
+      const accessToken = this.tokenManager.getAccessToken();
+      if (!accessToken) {
         return { data: null, error: null };
       }
 
       // Call the API for auth info
-      this.http.setAuthToken(session.accessToken);
+      this.http.setAuthToken(accessToken);
       const authResponse = await this.http.get<GetCurrentSessionResponse>('/api/auth/sessions/current');
 
       return {
