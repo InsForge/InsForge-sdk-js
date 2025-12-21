@@ -52,10 +52,12 @@ export class Realtime {
   private connectPromise: Promise<void> | null = null;
   private subscribedChannels: Set<string> = new Set();
   private eventListeners: Map<string, Set<EventCallback>> = new Map();
+  private anonKey?: string;
 
-  constructor(baseUrl: string, tokenManager: TokenManager) {
+  constructor(baseUrl: string, tokenManager: TokenManager, anonKey?: string) {
     this.baseUrl = baseUrl;
     this.tokenManager = tokenManager;
+    this.anonKey = anonKey;
   }
 
   private notifyListeners(event: string, payload?: unknown): void {
@@ -87,7 +89,8 @@ export class Realtime {
 
     this.connectPromise = new Promise((resolve, reject) => {
       const session = this.tokenManager.getSession();
-      const token = session?.accessToken;
+      const token = session?.accessToken ?? this.anonKey;
+      
 
       this.socket = io(this.baseUrl, {
         transports: ['websocket'],

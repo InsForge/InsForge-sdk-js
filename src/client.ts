@@ -85,7 +85,7 @@ export class InsForgeClient {
     this.storage = new Storage(this.http);
     this.ai = new AI(this.http);
     this.functions = new Functions(this.http);
-    this.realtime = new Realtime(this.http.baseUrl, this.tokenManager);
+    this.realtime = new Realtime(this.http.baseUrl, this.tokenManager, config.anonKey);
     this.emails = new Emails(this.http);
   }
 
