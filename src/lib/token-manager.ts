@@ -54,12 +54,15 @@ export class TokenManager {
   // In-memory storage
   private accessToken: string | null = null;
   private user: UserSchema | null = null;
-  
+
   // Persistent storage (for legacy backend)
   private storage: TokenStorage;
-  
+
   // Mode: 'memory' (new backend) or 'storage' (legacy backend, default)
   private _mode: 'memory' | 'storage' = 'storage';
+
+  // Callback for token changes (used by realtime to reconnect with new token)
+  onTokenChange: (() => void) | null = null;
 
   constructor(storage?: TokenStorage) {
     if (storage) {
@@ -128,6 +131,7 @@ export class TokenManager {
    * Save session (memory always, localStorage only in storage mode)
    */
   saveSession(session: AuthSession): void {
+    const tokenChanged = session.accessToken !== this.accessToken;
     this.accessToken = session.accessToken;
     this.user = session.user;
 
@@ -135,6 +139,10 @@ export class TokenManager {
     if (this._mode === 'storage') {
       this.storage.setItem(TOKEN_KEY, session.accessToken);
       this.storage.setItem(USER_KEY, JSON.stringify(session.user));
+    }
+
+    if (tokenChanged && this.onTokenChange) {
+      this.onTokenChange();
     }
   }
 
@@ -162,9 +170,13 @@ export class TokenManager {
    * Set access token
    */
   setAccessToken(token: string): void {
+    const tokenChanged = token !== this.accessToken;
     this.accessToken = token;
     if (this._mode === 'storage') {
       this.storage.setItem(TOKEN_KEY, token);
+    }
+    if (tokenChanged && this.onTokenChange) {
+      this.onTokenChange();
     }
   }
 
@@ -189,10 +201,15 @@ export class TokenManager {
    * Clear session (both memory and localStorage)
    */
   clearSession(): void {
+    const hadToken = this.accessToken !== null;
     this.accessToken = null;
     this.user = null;
     this.storage.removeItem(TOKEN_KEY);
     this.storage.removeItem(USER_KEY);
+
+    if (hadToken && this.onTokenChange) {
+      this.onTokenChange();
+    }
   }
 
   /**

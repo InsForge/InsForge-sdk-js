@@ -52,10 +52,15 @@ export class Realtime {
   private connectPromise: Promise<void> | null = null;
   private subscribedChannels: Set<string> = new Set();
   private eventListeners: Map<string, Set<EventCallback>> = new Map();
+  private anonKey?: string;
 
-  constructor(baseUrl: string, tokenManager: TokenManager) {
+  constructor(baseUrl: string, tokenManager: TokenManager, anonKey?: string) {
     this.baseUrl = baseUrl;
     this.tokenManager = tokenManager;
+    this.anonKey = anonKey;
+
+    // Handle token changes (e.g., after refresh)
+    this.tokenManager.onTokenChange = () => this.onTokenChange();
   }
 
   private notifyListeners(event: string, payload?: unknown): void {
@@ -87,7 +92,8 @@ export class Realtime {
 
     this.connectPromise = new Promise((resolve, reject) => {
       const session = this.tokenManager.getSession();
-      const token = session?.accessToken;
+      const token = session?.accessToken ?? this.anonKey;
+      
 
       this.socket = io(this.baseUrl, {
         transports: ['websocket'],
@@ -167,6 +173,28 @@ export class Realtime {
       this.socket = null;
     }
     this.subscribedChannels.clear();
+  }
+
+  /**
+   * Handle token changes (e.g., after auth refresh)
+   * Updates socket auth so reconnects use the new token
+   * If connected, triggers reconnect to apply new token immediately
+   */
+  private onTokenChange(): void {
+    const session = this.tokenManager.getSession();
+    const token = session?.accessToken ?? this.anonKey;
+
+    // Always update auth so socket.io auto-reconnect uses new token
+    if (this.socket) {
+      this.socket.auth = token ? { token } : {};
+    }
+
+    // Trigger reconnect if currently connected
+    if (this.socket?.connected) {
+      this.socket.disconnect();
+      this.socket.connect();
+      // Note: on('connect') handler automatically re-subscribes to channels
+    }
   }
 
   /**
