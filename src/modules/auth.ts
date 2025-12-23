@@ -538,6 +538,15 @@ export class Auth {
         { profile }
       );
 
+      // Update the local session/user with the new profile data
+      const currentUser = this.tokenManager.getUser();
+      if (currentUser && response.profile !== undefined) {
+        this.tokenManager.setUser({
+          ...currentUser,
+          profile: response.profile,
+        });
+      }
+
       return {
         data: response,
         error: null
