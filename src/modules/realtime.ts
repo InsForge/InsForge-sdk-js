@@ -181,16 +181,15 @@ export class Realtime {
    * If connected, triggers reconnect to apply new token immediately
    */
   private onTokenChange(): void {
-    const session = this.tokenManager.getSession();
-    const token = session?.accessToken ?? this.anonKey;
+    const token = this.tokenManager.getAccessToken() ?? this.anonKey;
 
     // Always update auth so socket.io auto-reconnect uses new token
     if (this.socket) {
       this.socket.auth = token ? { token } : {};
     }
 
-    // Trigger reconnect if currently connected
-    if (this.socket?.connected) {
+    // Trigger reconnect if connected OR connecting (to avoid completing with stale token)
+    if (this.socket && (this.socket.connected || this.connectPromise)) {
       this.socket.disconnect();
       this.socket.connect();
       // Note: on('connect') handler automatically re-subscribes to channels
