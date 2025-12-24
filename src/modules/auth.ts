@@ -143,12 +143,12 @@ export class Auth {
           accessToken: response.accessToken,
           user: response.user,
         };
-        this.tokenManager.saveSession(session);
-        this.http.setAuthToken(response.accessToken);
-
         if (response.csrfToken) {
+          this.tokenManager.setMemoryMode();
           setCsrfToken(response.csrfToken);
         }
+        this.tokenManager.saveSession(session);
+        this.http.setAuthToken(response.accessToken);
       }
 
       return {
@@ -188,12 +188,12 @@ export class Auth {
           accessToken: response.accessToken,
           user: response.user,
         };
-        this.tokenManager.saveSession(session);
-        this.http.setAuthToken(response.accessToken);
-
         if (response.csrfToken) {
+          this.tokenManager.setMemoryMode();
           setCsrfToken(response.csrfToken);
         }
+        this.tokenManager.saveSession(session);
+        this.http.setAuthToken(response.accessToken);
       }
 
       return {
@@ -764,12 +764,12 @@ export class Auth {
           accessToken: response.accessToken,
           user: response.user,
         };
-        this.tokenManager.saveSession(session);
-        this.http.setAuthToken(response.accessToken);
-
         if (response.csrfToken) {
+          this.tokenManager.setMemoryMode();
           setCsrfToken(response.csrfToken);
         }
+        this.tokenManager.saveSession(session);
+        this.http.setAuthToken(response.accessToken);
       }
 
       return {
