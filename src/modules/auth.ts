@@ -135,7 +135,7 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<CreateUserResponse>('/api/auth/users', request);
+      const response = await this.http.post<CreateUserResponse>('/api/auth/users', request, { credentials: 'include' });
 
       // Save session internally only if both accessToken and user exist
       if (response.accessToken && response.user && !isHostedAuthEnvironment()) {
@@ -181,7 +181,7 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<CreateSessionResponse>('/api/auth/sessions', request);
+      const response = await this.http.post<CreateSessionResponse>('/api/auth/sessions', request, { credentials: 'include' });
 
       if (!isHostedAuthEnvironment()) {
         const session: AuthSession = {
@@ -754,7 +754,8 @@ export class Auth {
     try {
       const response = await this.http.post<VerifyEmailResponse>(
         '/api/auth/email/verify',
-        request
+        request,
+        { credentials: 'include' }
       );
 
       // Save session if we got a token
