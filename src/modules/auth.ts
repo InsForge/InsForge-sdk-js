@@ -519,13 +519,14 @@ export class Auth {
   }
 
   /**
-   * Send email verification (code or link based on config)
+   * Resend email verification (code or link based on config)
    *
-   * Send email verification using the method configured in auth settings (verifyEmailMethod).
+   * Resend email verification when the previous OTP has expired or was not received.
+   * Uses the method configured in auth settings (verifyEmailMethod).
    * When method is 'code', sends a 6-digit numeric code. When method is 'link', sends a magic link.
    * Prevents user enumeration by returning success even if email doesn't exist.
    */
-  async sendVerificationEmail(request: SendVerificationEmailRequest): Promise<{
+  async resendVerificationEmail(request: SendVerificationEmailRequest): Promise<{
     data: { success: boolean; message: string } | null;
     error: InsForgeError | null;
   }> {
@@ -555,6 +556,16 @@ export class Auth {
         )
       };
     }
+  }
+
+  /**
+   * @deprecated Use `resendVerificationEmail` instead. This method will be removed in a future version.
+   */
+  async sendVerificationEmail(request: SendVerificationEmailRequest): Promise<{
+    data: { success: boolean; message: string } | null;
+    error: InsForgeError | null;
+  }> {
+    return this.resendVerificationEmail(request);
   }
 
   /**
