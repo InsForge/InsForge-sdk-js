@@ -348,62 +348,6 @@ export class Auth {
 
 
   /**
-   * Get the current user with full profile information
-   * Returns both auth info (id, email, role) and profile data (dynamic fields from users table)
-   */
-  async getCurrentUser(): Promise<{
-    data: {
-      user: UserSchema;
-    } | null;
-    error: any | null;
-  }> {
-    try {
-      // Check if we have a stored user
-      const user = this.tokenManager.getUser();
-
-      if (user) {
-        return { data: { user }, error: null };
-      }
-      const accessToken = this.tokenManager.getAccessToken();
-      if (!accessToken) {
-        return { data: null, error: null };
-      }
-
-      // Call the API for auth info
-      this.http.setAuthToken(accessToken);
-      const authResponse = await this.http.get<GetCurrentSessionResponse>('/api/auth/sessions/current');
-
-      return {
-        data: {
-          user: authResponse.user,
-        },
-        error: null
-      };
-    } catch (error) {
-      // If unauthorized, clear session
-      if (error instanceof InsForgeError && error.statusCode === 401) {
-        await this.signOut();
-        return { data: null, error: null };
-      }
-
-      // Pass through all other errors unchanged
-      if (error instanceof InsForgeError) {
-        return { data: null, error };
-      }
-
-      // Generic fallback for unexpected errors
-      return {
-        data: null,
-        error: new InsForgeError(
-          'An unexpected error occurred while fetching user',
-          500,
-          'UNEXPECTED_ERROR'
-        )
-      };
-    }
-  }
-
-  /**
    * Get any user's profile by ID
    * Returns profile information from the users table
    */
@@ -444,6 +388,11 @@ export class Auth {
     data: { session: AuthSession | null };
     error: InsForgeError | null;
   }> {
+    // If hosted auth environment, return null
+    if (isHostedAuthEnvironment()) {
+      return { data: { session: null }, error: null };
+    }
+
     try {
       // Step 1: Check if we already have session in memory
       const session = this.tokenManager.getSession();
