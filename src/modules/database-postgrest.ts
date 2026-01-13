@@ -18,14 +18,19 @@ function createInsForgePostgrestFetch(
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input.toString();
     const urlObj = new URL(url);
-    
-    // Extract table name from pathname
-    // postgrest-js sends: http://dummy/tablename?params
-    // We need: http://localhost:7130/api/database/records/tablename?params
-    const tableName = urlObj.pathname.slice(1); // Remove leading /
-    
-    // Build InsForge URL
-    const insforgeUrl = `${httpClient.baseUrl}/api/database/records/${tableName}${urlObj.search}`;
+
+    // Extract pathname (remove leading /)
+    // postgrest-js sends: http://dummy/tablename?params for tables
+    // postgrest-js sends: http://dummy/rpc/functionname?params for RPC
+    const pathname = urlObj.pathname.slice(1);
+
+    // Route to appropriate InsForge endpoint
+    const rpcMatch = pathname.match(/^rpc\/(.+)$/);
+    const endpoint = rpcMatch
+      ? `/api/database/rpc/${rpcMatch[1]}`
+      : `/api/database/records/${pathname}`;
+
+    const insforgeUrl = `${httpClient.baseUrl}${endpoint}${urlObj.search}`;
     
     // Get auth token from TokenManager or HttpClient
     const token = tokenManager.getAccessToken();
@@ -101,5 +106,29 @@ export class Database {
   from(table: string) {
     // Return postgrest query builder with all features
     return this.postgrest.from(table);
+  }
+
+  /**
+   * Call a PostgreSQL function (RPC)
+   *
+   * @example
+   * // Call a function with parameters
+   * const { data, error } = await client.database
+   *   .rpc('get_user_stats', { user_id: 123 });
+   *
+   * // Call a function with no parameters
+   * const { data, error } = await client.database
+   *   .rpc('get_all_active_users');
+   *
+   * // With options (head, count, get)
+   * const { data, count } = await client.database
+   *   .rpc('search_posts', { query: 'hello' }, { count: 'exact' });
+   */
+  rpc(
+    fn: string,
+    args?: Record<string, unknown>,
+    options?: { head?: boolean; get?: boolean; count?: 'exact' | 'planned' | 'estimated' }
+  ) {
+    return this.postgrest.rpc(fn, args, options);
   }
 }
