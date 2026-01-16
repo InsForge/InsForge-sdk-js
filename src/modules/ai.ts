@@ -47,14 +47,44 @@ class ChatCompletions {
    * });
    * console.log(completion.choices[0].message.content);
    *
-   * // With images
+   * // With images (OpenAI-compatible format)
    * const response = await client.ai.chat.completions.create({
    *   model: 'gpt-4-vision',
    *   messages: [{
    *     role: 'user',
-   *     content: 'What is in this image?',
-   *     images: [{ url: 'https://example.com/image.jpg' }]
+   *     content: [
+   *       { type: 'text', text: 'What is in this image?' },
+   *       { type: 'image_url', image_url: { url: 'https://example.com/image.jpg' } }
+   *     ]
    *   }]
+   * });
+   *
+   * // With PDF files
+   * const pdfResponse = await client.ai.chat.completions.create({
+   *   model: 'anthropic/claude-3.5-sonnet',
+   *   messages: [{
+   *     role: 'user',
+   *     content: [
+   *       { type: 'text', text: 'Summarize this document' },
+   *       { type: 'file', file: { filename: 'doc.pdf', file_data: 'https://example.com/doc.pdf' } }
+   *     ]
+   *   }],
+   *   fileParser: { enabled: true, pdf: { engine: 'mistral-ocr' } }
+   * });
+   *
+   * // With web search
+   * const searchResponse = await client.ai.chat.completions.create({
+   *   model: 'openai/gpt-4',
+   *   messages: [{ role: 'user', content: 'What are the latest news about AI?' }],
+   *   webSearch: { enabled: true, maxResults: 5 }
+   * });
+   * // Access citations from response.choices[0].message.annotations
+   *
+   * // With thinking/reasoning mode (Anthropic models)
+   * const thinkingResponse = await client.ai.chat.completions.create({
+   *   model: 'anthropic/claude-3.5-sonnet',
+   *   messages: [{ role: 'user', content: 'Solve this complex math problem...' }],
+   *   thinking: true
    * });
    *
    * // Streaming - returns async iterable
@@ -80,6 +110,10 @@ class ChatCompletions {
       maxTokens: params.maxTokens,
       topP: params.topP,
       stream: params.stream,
+      // New plugin options
+      webSearch: params.webSearch,
+      fileParser: params.fileParser,
+      thinking: params.thinking,
     };
 
     // For streaming, return an async iterable that yields OpenAI-like chunks
@@ -125,6 +159,8 @@ class ChatCompletions {
           message: {
             role: "assistant",
             content,
+            // Include annotations if present (from web search or file parsing)
+            ...(response.annotations && { annotations: response.annotations }),
           },
           finish_reason: "stop",
         },
