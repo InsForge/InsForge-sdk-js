@@ -12,7 +12,6 @@ import type {
   CreateUserResponse,
   CreateSessionRequest,
   CreateSessionResponse,
-  GetCurrentSessionResponse,
   GetOauthUrlResponse,
   GetPublicAuthConfigResponse,
   OAuthProvidersSchema,
@@ -23,6 +22,7 @@ import type {
   VerifyEmailResponse,
   UserSchema,
   GetProfileResponse,
+  OAuthCodeExchangeRequest
 } from '@insforge/shared-schemas';
 
 /**
@@ -51,41 +51,139 @@ function isHostedAuthEnvironment(): boolean {
   return false;
 }
 
+// ============================================================================
+// PKCE (Proof Key for Code Exchange) Utilities
+// ============================================================================
+
+const PKCE_VERIFIER_KEY = 'insforge_pkce_verifier';
+
+/**
+ * Generate a cryptographically random code verifier for PKCE
+ * RFC 7636 recommends 43-128 characters from unreserved URI characters
+ */
+function generateCodeVerifier(): string {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return base64UrlEncode(array);
+}
+
+/**
+ * Generate code challenge from verifier using SHA-256 (S256 method)
+ * This is the recommended method per RFC 7636
+ */
+async function generateCodeChallenge(verifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return base64UrlEncode(new Uint8Array(hash));
+}
+
+/**
+ * Base64 URL encode without padding (per RFC 7636)
+ */
+function base64UrlEncode(buffer: Uint8Array): string {
+  const base64 = btoa(String.fromCharCode(...buffer));
+  return base64
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+/**
+ * Store PKCE code verifier in sessionStorage
+ * Uses sessionStorage so it persists across the OAuth redirect but clears on tab close
+ */
+function storePkceVerifier(verifier: string): void {
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem(PKCE_VERIFIER_KEY, verifier);
+  }
+}
+
+/**
+ * Retrieve and clear PKCE code verifier from sessionStorage
+ * Clears after retrieval to prevent reuse
+ */
+function retrievePkceVerifier(): string | null {
+  if (typeof sessionStorage === 'undefined') {
+    return null;
+  }
+  const verifier = sessionStorage.getItem(PKCE_VERIFIER_KEY);
+  if (verifier) {
+    sessionStorage.removeItem(PKCE_VERIFIER_KEY);
+  }
+  return verifier;
+}
+
 export class Auth {
+  /**
+   * Promise that resolves when OAuth callback handling is complete.
+   * Resolves immediately if no OAuth callback is detected in the URL.
+   */
+  private authCallbackHandled: Promise<void>;
+
   constructor(
     private http: HttpClient,
     private tokenManager: TokenManager
   ) {
     // Auto-detect OAuth callback parameters in the URL
-    this.detectAuthCallback();
+    this.authCallbackHandled = this.detectAuthCallback();
   }
 
   /**
    * Automatically detect and handle OAuth callback parameters in the URL
    * This runs after initialization to seamlessly complete the OAuth flow
-   * Matches the backend's OAuth callback response (backend/src/api/routes/auth.ts:540-544)
+   *
+   * Supports two flows:
+   * - PKCE flow (new): Backend returns `insforge_code` param, exchanged for tokens
+   * - Legacy flow: Backend returns tokens directly in URL (backward compatible)
    */
-  private detectAuthCallback(): void {
+  private async detectAuthCallback(): Promise<void> {
     // Only run in browser environment
     if (typeof window === 'undefined') return;
 
     try {
       const params = new URLSearchParams(window.location.search);
-      // Backend returns: access_token, user_id, email, name (optional), csrf_token
+
+      // Check for error first
+      const error = params.get('error');
+      if (error) {
+        // Clean up error from URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete('error');
+        window.history.replaceState({}, document.title, url.toString());
+        console.debug('OAuth callback error:', error);
+        return;
+      }
+
+      // New PKCE flow: Backend returns authorization code as insforge_code
+      const code = params.get('insforge_code');
+      if (code) {
+        // Clean up URL immediately (before async exchange)
+        const url = new URL(window.location.href);
+        url.searchParams.delete('insforge_code');
+        window.history.replaceState({}, document.title, url.toString());
+
+        // Exchange code for tokens
+        const { error: exchangeError } = await this.exchangeOAuthCode(code);
+        if (exchangeError) {
+          console.debug('OAuth code exchange failed:', exchangeError.message);
+        }
+        return;
+      }
+
+      // Legacy flow: Backend returns tokens directly in URL (backward compatible)
       const accessToken = params.get('access_token');
       const userId = params.get('user_id');
       const email = params.get('email');
       const name = params.get('name');
       const csrfToken = params.get('csrf_token');
 
-      // Check if we have OAuth callback parameters
       if (accessToken && userId && email) {
         if (csrfToken) {
           this.tokenManager.setMemoryMode();
           setCsrfToken(csrfToken);
         }
-        // TODO: Use PKCE in future
-        // Create session with the data from backend
+
         const session: AuthSession = {
           accessToken,
           user: {
@@ -93,32 +191,22 @@ export class Auth {
             email: email,
             profile: { name: name || '' },
             metadata: null,
-            // These fields are not provided by backend OAuth callback
-            // They'll be populated when calling getCurrentUser()
             emailVerified: false,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           },
         };
 
-        // Save session and set auth token
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(accessToken);
 
-        // Clean up the URL to remove sensitive parameters
+        // Clean up the URL
         const url = new URL(window.location.href);
         url.searchParams.delete('access_token');
         url.searchParams.delete('user_id');
         url.searchParams.delete('email');
         url.searchParams.delete('name');
         url.searchParams.delete('csrf_token');
-
-        // Also handle error case from backend (line 581)
-        if (params.has('error')) {
-          url.searchParams.delete('error');
-        }
-
-        // Replace URL without adding to browser history
         window.history.replaceState({}, document.title, url.toString());
       }
     } catch (error) {
@@ -220,21 +308,32 @@ export class Auth {
 
   /**
    * Sign in with OAuth provider
+   * Uses PKCE (Proof Key for Code Exchange) for enhanced security
    */
   async signInWithOAuth(options: {
     provider: OAuthProvidersSchema;
     redirectTo?: string;
     skipBrowserRedirect?: boolean;
   }): Promise<{
-    data: { url?: string; provider?: string };
+    data: { url?: string; provider?: string; codeVerifier?: string };
     error: InsForgeError | null;
   }> {
     try {
       const { provider, redirectTo, skipBrowserRedirect } = options;
 
-      const params = redirectTo
-        ? { redirect_uri: redirectTo }
-        : undefined;
+      // Generate PKCE code verifier and challenge
+      const codeVerifier = generateCodeVerifier();
+      const codeChallenge = await generateCodeChallenge(codeVerifier);
+
+      // Store verifier for later exchange (persists across OAuth redirect)
+      storePkceVerifier(codeVerifier);
+
+      const params: Record<string, string> = {
+        code_challenge: codeChallenge,
+      };
+      if (redirectTo) {
+        params.redirect_uri = redirectTo;
+      }
 
       const endpoint = `/api/auth/oauth/${provider}`;
       const response = await this.http.get<GetOauthUrlResponse>(endpoint, { params });
@@ -248,7 +347,8 @@ export class Auth {
       return {
         data: {
           url: response.authUrl,
-          provider
+          provider,
+          codeVerifier, // Return verifier for manual flow (skipBrowserRedirect)
         },
         error: null
       };
@@ -263,6 +363,104 @@ export class Auth {
         data: {},
         error: new InsForgeError(
           'An unexpected error occurred during OAuth initialization',
+          500,
+          'UNEXPECTED_ERROR'
+        )
+      };
+    }
+  }
+
+  /**
+   * Exchange OAuth authorization code for tokens (PKCE flow)
+   *
+   * After OAuth callback redirects with an `insforge_code` parameter, call this method
+   * to exchange it for access tokens. The code verifier is automatically
+   * retrieved from sessionStorage if available.
+   *
+   * Note: This is called automatically by the SDK on initialization. You typically
+   * don't need to call this directly unless using `skipBrowserRedirect: true`.
+   *
+   * @param code - The authorization code from OAuth callback URL
+   * @param codeVerifier - Optional code verifier (auto-retrieved from sessionStorage if not provided)
+   * @returns Session data with access token and user info
+   *
+   * @example
+   * ```ts
+   * // Automatic verifier retrieval (recommended for browser)
+   * const params = new URLSearchParams(window.location.search);
+   * const code = params.get('insforge_code');
+   * if (code) {
+   *   const { data, error } = await insforge.auth.exchangeOAuthCode(code);
+   * }
+   *
+   * // Manual verifier (for custom flows)
+   * const { data, error } = await insforge.auth.exchangeOAuthCode(code, codeVerifier);
+   * ```
+   */
+  async exchangeOAuthCode(code: string, codeVerifier?: string): Promise<{
+    data: { accessToken: string; user: UserSchema; redirectTo?: string } | null;
+    error: InsForgeError | null;
+  }> {
+    try {
+      // Try to get verifier from storage if not provided
+      const verifier = codeVerifier ?? retrievePkceVerifier();
+
+      if (!verifier) {
+        return {
+          data: null,
+          error: new InsForgeError(
+            'PKCE code verifier not found. Ensure signInWithOAuth was called in the same browser session.',
+            400,
+            'PKCE_VERIFIER_MISSING'
+          )
+        };
+      }
+
+      const request: OAuthCodeExchangeRequest = {
+        code,
+        code_verifier: verifier,
+      };
+
+      const response = await this.http.post<{
+        accessToken: string;
+        user: UserSchema;
+        csrfToken?: string;
+        redirectTo?: string;
+      }>('/api/auth/oauth/exchange', request, { credentials: 'include' });
+
+      // Save session
+      if (!isHostedAuthEnvironment()) {
+        const session: AuthSession = {
+          accessToken: response.accessToken,
+          user: response.user,
+        };
+        if (response.csrfToken) {
+          this.tokenManager.setMemoryMode();
+          setCsrfToken(response.csrfToken);
+        }
+        this.tokenManager.saveSession(session);
+        this.http.setAuthToken(response.accessToken);
+      }
+
+      return {
+        data: {
+          accessToken: response.accessToken,
+          user: response.user,
+          redirectTo: response.redirectTo,
+        },
+        error: null
+      };
+    } catch (error) {
+      // Pass through API errors unchanged
+      if (error instanceof InsForgeError) {
+        return { data: null, error };
+      }
+
+      // Generic fallback for unexpected errors
+      return {
+        data: null,
+        error: new InsForgeError(
+          'An unexpected error occurred during OAuth code exchange',
           500,
           'UNEXPECTED_ERROR'
         )
@@ -383,11 +581,15 @@ export class Auth {
   /**
    * Get the current session (only session data, no API call)
    * Returns the stored JWT token and basic user info from local storage
+   * Automatically waits for any pending OAuth callback to complete first
    */
   async getCurrentSession(): Promise<{
     data: { session: AuthSession | null };
     error: InsForgeError | null;
   }> {
+    // Wait for any pending OAuth callback to complete (instant if none)
+    await this.authCallbackHandled;
+
     // If hosted auth environment, return null
     if (isHostedAuthEnvironment()) {
       return { data: { session: null }, error: null };
