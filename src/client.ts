@@ -67,7 +67,7 @@ export class InsForgeClient {
       this.http.setAuthToken(config.edgeFunctionToken);
       this.tokenManager.saveSession({
         accessToken: config.edgeFunctionToken,
-        user: null,
+        user: {} as any,
       });
     }
 
