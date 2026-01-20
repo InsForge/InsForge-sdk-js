@@ -398,6 +398,7 @@ export class Auth {
       const session = this.tokenManager.getSession();
       if (session) {
         this.http.setAuthToken(session.accessToken);
+        // For edge function, we need to populate user data from the API
         if (!session.user || Object.keys(session.user).length === 0) {
           try {
             const authResponse = await this.http.get<GetCurrentSessionResponse>(
