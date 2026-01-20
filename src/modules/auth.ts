@@ -399,9 +399,18 @@ export class Auth {
       if (session) {
         this.http.setAuthToken(session.accessToken);
         if (!session.user) {
-          const authResponse = await this.http.get<GetCurrentSessionResponse>('/api/auth/sessions/current', { credentials: 'include' });
-          session.user = authResponse.user;
-          this.tokenManager.setUser(session.user);
+          try {
+            const authResponse = await this.http.get<GetCurrentSessionResponse>(
+              '/api/auth/sessions/current',
+              { credentials: 'include' }
+            );
+            if (authResponse.user) {
+              session.user = authResponse.user;
+              this.tokenManager.setUser(authResponse.user);
+            }
+          } catch {
+            // Keep session without user if backend is unavailable
+          }
         }
         return { data: { session }, error: null };
       }
