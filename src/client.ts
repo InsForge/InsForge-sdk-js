@@ -1,7 +1,7 @@
 import { InsForgeConfig } from './types';
 import { HttpClient } from './lib/http-client';
 import { TokenManager } from './lib/token-manager';
-import { Auth } from './modules/auth';
+import { Auth } from './modules/auth/auth';
 import { Database } from './modules/database-postgrest';
 import { Storage } from './modules/storage';
 import { AI } from './modules/ai';
