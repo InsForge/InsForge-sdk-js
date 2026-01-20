@@ -398,7 +398,7 @@ export class Auth {
       const session = this.tokenManager.getSession();
       if (session) {
         this.http.setAuthToken(session.accessToken);
-        if (Object.keys(session.user).length === 0) {
+        if (!session.user || Object.keys(session.user).length === 0) {
           try {
             const authResponse = await this.http.get<GetCurrentSessionResponse>(
               '/api/auth/sessions/current',
