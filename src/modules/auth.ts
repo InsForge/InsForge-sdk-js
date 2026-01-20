@@ -398,6 +398,21 @@ export class Auth {
       const session = this.tokenManager.getSession();
       if (session) {
         this.http.setAuthToken(session.accessToken);
+        // For edge function, we need to populate user data from the API
+        if (!session.user || Object.keys(session.user).length === 0) {
+          try {
+            const authResponse = await this.http.get<GetCurrentSessionResponse>(
+              '/api/auth/sessions/current',
+              { credentials: 'include' }
+            );
+            if (authResponse.user) {
+              session.user = authResponse.user;
+              this.tokenManager.setUser(authResponse.user);
+            }
+          } catch {
+            // Keep session without user if backend is unavailable
+          }
+        }
         return { data: { session }, error: null };
       }
 
