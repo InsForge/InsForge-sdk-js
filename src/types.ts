@@ -60,7 +60,7 @@ export interface TokenStorage {
 }
 
 export interface AuthSession {
-  user: UserSchema;
+  user: UserSchema | null;
   accessToken: string;
   expiresAt?: Date;
 }
