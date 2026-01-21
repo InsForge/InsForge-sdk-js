@@ -359,6 +359,9 @@ export class Auth {
               // Legacy backend - try localStorage
               this.tokenManager.setStorageMode();
               const session = this.tokenManager.getSession();
+              if (session?.accessToken) {
++                this.http.setAuthToken(session.accessToken);
+              }
               return { data: { session }, error: null };
             }
             return { data: { session: null }, error };
