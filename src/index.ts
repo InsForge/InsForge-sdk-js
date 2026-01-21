@@ -27,7 +27,7 @@ export type {
 } from '@insforge/shared-schemas';
 
 // Re-export auth module for advanced usage
-export { Auth } from './modules/auth';
+export { Auth } from './modules/auth/auth';
 
 // Re-export database module (using postgrest-js)
 export { Database } from './modules/database-postgrest';
