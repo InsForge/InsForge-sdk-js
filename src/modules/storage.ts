@@ -103,68 +103,6 @@ export class StorageBucket {
   }
 
   /**
-   * Upload a file with auto-generated key
-   * Uses the upload strategy from backend (direct or presigned)
-   * @param file - File or Blob to upload
-   */
-  async uploadAuto(
-    file: File | Blob
-  ): Promise<StorageResponse<StorageFileSchema>> {
-    try {
-      const filename = file instanceof File ? file.name : 'file';
-      
-      // Get upload strategy from backend - this is required
-      const strategyResponse = await this.http.post<UploadStrategy>(
-        `/api/storage/buckets/${this.bucketName}/upload-strategy`,
-        {
-          filename,
-          contentType: file.type || 'application/octet-stream',
-          size: file.size
-        }
-      );
-
-      // Use presigned URL if available
-      if (strategyResponse.method === 'presigned') {
-        return await this.uploadWithPresignedUrl(strategyResponse, file);
-      }
-
-      // Use direct upload if strategy says so
-      if (strategyResponse.method === 'direct') {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await this.http.request<StorageFileSchema>(
-          'POST',
-          `/api/storage/buckets/${this.bucketName}/objects`,
-          {
-            body: formData as any,
-            headers: {
-              // Don't set Content-Type, let browser set multipart boundary
-            }
-          }
-        );
-
-        return { data: response, error: null };
-      }
-
-      throw new InsForgeError(
-        `Unsupported upload method: ${strategyResponse.method}`,
-        500,
-        'STORAGE_ERROR'
-      );
-    } catch (error) {
-      return { 
-        data: null, 
-        error: error instanceof InsForgeError ? error : new InsForgeError(
-          'Upload failed',
-          500,
-          'STORAGE_ERROR'
-        )
-      };
-    }
-  }
-
-  /**
    * Internal method to handle presigned URL uploads
    */
   private async uploadWithPresignedUrl(
