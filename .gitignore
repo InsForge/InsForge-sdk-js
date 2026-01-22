@@ -11,10 +11,6 @@ out/
 *.tsbuildinfo
 
 # Test files
-test-*.js
-test-*.ts
-*.test.js
-*.test.ts
 *.spec.js
 *.spec.ts
 

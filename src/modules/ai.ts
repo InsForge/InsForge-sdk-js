@@ -12,15 +12,19 @@ import {
   ChatCompletionResponse,
   ImageGenerationRequest,
   ImageGenerationResponse,
+  EmbeddingsRequest,
+  EmbeddingsResponse,
 } from "@insforge/shared-schemas";
 
 export class AI {
   public readonly chat: Chat;
   public readonly images: Images;
+  public readonly embeddings: Embeddings;
 
   constructor(private http: HttpClient) {
     this.chat = new Chat(http);
     this.images = new Images(http);
+    this.embeddings = new Embeddings(http);
   }
 }
 
@@ -235,6 +239,69 @@ class ChatCompletions {
     } finally {
       reader.releaseLock();
     }
+  }
+}
+
+class Embeddings {
+  constructor(private http: HttpClient) {}
+
+  /**
+   * Create embeddings for text input - OpenAI-like response format
+   *
+   * @example
+   * ```typescript
+   * // Single text input
+   * const response = await client.ai.embeddings.create({
+   *   model: 'openai/text-embedding-3-small',
+   *   input: 'Hello world'
+   * });
+   * console.log(response.data[0].embedding); // number[]
+   *
+   * // Multiple text inputs
+   * const response = await client.ai.embeddings.create({
+   *   model: 'openai/text-embedding-3-small',
+   *   input: ['Hello world', 'Goodbye world']
+   * });
+   * response.data.forEach((item, i) => {
+   *   console.log(`Embedding ${i}:`, item.embedding.slice(0, 5)); // First 5 dimensions
+   * });
+   *
+   * // With custom dimensions (if supported by model)
+   * const response = await client.ai.embeddings.create({
+   *   model: 'openai/text-embedding-3-small',
+   *   input: 'Hello world',
+   *   dimensions: 256
+   * });
+   *
+   * // With base64 encoding format
+   * const response = await client.ai.embeddings.create({
+   *   model: 'openai/text-embedding-3-small',
+   *   input: 'Hello world',
+   *   encoding_format: 'base64'
+   * });
+   * ```
+   */
+  async create(params: EmbeddingsRequest): Promise<any> {
+    const response: EmbeddingsResponse = await this.http.post(
+      "/api/ai/embeddings",
+      params
+    );
+
+    // Return OpenAI-compatible format
+    return {
+      object: response.object,
+      data: response.data,
+      model: response.metadata?.model,
+      usage: response.metadata?.usage
+        ? {
+            prompt_tokens: response.metadata.usage.promptTokens || 0,
+            total_tokens: response.metadata.usage.totalTokens || 0,
+          }
+        : {
+            prompt_tokens: 0,
+            total_tokens: 0,
+          },
+    };
   }
 }
 
