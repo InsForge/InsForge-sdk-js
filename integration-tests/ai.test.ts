@@ -105,7 +105,7 @@ describe("AI Module - Integration Tests", () => {
   describe("ChatCompletions", () => {
     // Skip these tests if models are not enabled on your server
     // Change the model names to match your server configuration
-    const CHAT_MODEL = "openai/gpt-4o-mini"; // Change this to an enabled model
+    const CHAT_MODEL = "openai/gpt-4o"; // Change this to an enabled model
     const THINKING_MODEL = "anthropic/claude-sonnet-4"; // Change this to an enabled Anthropic model
 
     describe.skip("create with basic request", () => {
@@ -167,6 +167,76 @@ describe("AI Module - Integration Tests", () => {
 
         console.log("Thinking mode response:", response.choices[0].message.content);
       });
+    });
+
+    describe.skip("create with fileParser (PDF)", () => {
+      const PDF_URL = "https://pdfco-test-files.s3.us-west-2.amazonaws.com/pdf-to-csv/sample.pdf";
+
+      it("should parse PDF and summarize content using pdf-text engine", async () => {
+        const response = await client.ai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Please summarize the content of this PDF document." },
+                {
+                  type: "file",
+                  file: {
+                    filename: "sample.pdf",
+                    file_data: PDF_URL,
+                  },
+                },
+              ],
+            },
+          ],
+          fileParser: {
+            enabled: true,
+            pdf: {
+              engine: "pdf-text",
+            },
+          },
+        });
+
+        expect(response.object).toBe("chat.completion");
+        expect(response.choices).toHaveLength(1);
+        expect(response.choices[0].message.content).toBeDefined();
+        expect(response.choices[0].message.content.length).toBeGreaterThan(0);
+
+        console.log("PDF summary response:", response.choices[0].message.content);
+      }, 30000); // 30 second timeout for PDF processing
+
+      it("should parse PDF using mistral-ocr engine", async () => {
+        const response = await client.ai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "What information can you extract from this PDF?" },
+                {
+                  type: "file",
+                  file: {
+                    filename: "sample.pdf",
+                    file_data: PDF_URL,
+                  },
+                },
+              ],
+            },
+          ],
+          fileParser: {
+            enabled: true,
+            pdf: {
+              engine: "mistral-ocr",
+            },
+          },
+        });
+
+        expect(response.object).toBe("chat.completion");
+        expect(response.choices[0].message.content).toBeDefined();
+
+        console.log("PDF OCR response:", response.choices[0].message.content);
+      }, 60000); // 60 second timeout for OCR processing
     });
 
     describe.skip("create with streaming", () => {
