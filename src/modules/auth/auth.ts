@@ -311,6 +311,7 @@ export class Auth {
 
   /**
    * Get current session, automatically waits for pending OAuth callback
+   * @deprecated Use `getCurrentUser` instead
    */
   async getCurrentSession(): Promise<{
     data: { session: AuthSession | null };
@@ -378,6 +379,82 @@ export class Auth {
         data: { session: null },
         error: new InsForgeError(
           'An unexpected error occurred while getting session',
+          500,
+          'UNEXPECTED_ERROR'
+        ),
+      };
+    }
+  }
+
+    /**
+   * Get current user, automatically waits for pending OAuth callback
+   */
+  async getCurrentUser(): Promise<{
+    data: { user: UserSchema | null };
+    error: InsForgeError | null;
+  }> {
+    await this.authCallbackHandled;
+
+    if (isHostedAuthEnvironment()) {
+      return { data: { user: null }, error: null };
+    }
+
+    try {
+      // Check memory first
+      const session = this.tokenManager.getSession();
+      if (session) {
+        this.http.setAuthToken(session.accessToken);
+        return { data: { user: session.user }, error: null };
+      }
+
+      // Try refresh via httpOnly cookie (browser only)
+      if (typeof window !== 'undefined') {
+        try {
+          const csrfToken = getCsrfToken();
+          const response = await this.http.post<{
+            accessToken: string;
+            user?: UserSchema;
+            csrfToken?: string;
+          }>('/api/auth/refresh', undefined, {
+            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+            credentials: 'include',
+          });
+
+          if (response.accessToken) {
+            this.tokenManager.setMemoryMode();
+            this.tokenManager.setAccessToken(response.accessToken);
+            this.http.setAuthToken(response.accessToken);
+
+            if (response.user) this.tokenManager.setUser(response.user);
+            if (response.csrfToken) setCsrfToken(response.csrfToken);
+
+            return { data: { user: response.user ?? null }, error: null };
+          }
+        } catch (error) {
+          if (error instanceof InsForgeError) {
+            if (error.statusCode === 404) {
+              // Legacy backend - try localStorage
+              this.tokenManager.setStorageMode();
+              const session = this.tokenManager.getSession();
+              if (session?.accessToken) {
++                this.http.setAuthToken(session.accessToken);
+              }
+              return { data: { user: session?.user ?? null }, error: null };
+            }
+            return { data: { user: null }, error };
+          }
+        }
+      }
+
+      return { data: { user: null }, error: null };
+    } catch (error) {
+      if (error instanceof InsForgeError) {
+        return { data: { user: null }, error };
+      }
+      return {
+        data: { user: null },
+        error: new InsForgeError(
+          'An unexpected error occurred while getting user',
           500,
           'UNEXPECTED_ERROR'
         ),
