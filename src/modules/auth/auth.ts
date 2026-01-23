@@ -53,7 +53,7 @@ export class Auth {
     user?: UserSchema;
     csrfToken?: string | null;
   }): boolean {
-    if (isHostedAuthEnvironment() || !response.accessToken || !response.user) {
+    if (!response.accessToken || !response.user) {
       return false;
     }
 
@@ -318,10 +318,6 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     await this.authCallbackHandled;
-
-    if (isHostedAuthEnvironment()) {
-      return { data: { session: null }, error: null };
-    }
 
     try {
       // Check memory first
