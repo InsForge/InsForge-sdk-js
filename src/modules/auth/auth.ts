@@ -311,6 +311,7 @@ export class Auth {
 
   /**
    * Get current session, automatically waits for pending OAuth callback
+   * @deprecated Use `getCurrentUser` instead
    */
   async getCurrentSession(): Promise<{
     data: { session: AuthSession | null };
