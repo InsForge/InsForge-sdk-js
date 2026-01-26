@@ -305,6 +305,48 @@ export class Auth {
     }
   }
 
+  /**
+   * Sign in with an ID token from a native SDK (Google One Tap, Sign in with Apple, etc.)
+   * Use this for native mobile apps or Google One Tap on web
+   */
+  async signInWithIdToken(credentials: {
+    provider: 'google';
+    token: string;
+  }): Promise<{
+    data: { accessToken: string; refreshToken: string; user: UserSchema } | null;
+    error: InsForgeError | null;
+  }> {
+    try {
+      const { provider, token } = credentials;
+
+      const response = await this.http.post<{
+        accessToken: string;
+        refreshToken: string;
+        user: UserSchema;
+      }>('/api/auth/id-token?client_type=mobile', { provider, token });
+
+      if (response.accessToken && response.user) {
+        const session: AuthSession = {
+          accessToken: response.accessToken,
+          user: response.user,
+        };
+        this.tokenManager.saveSession(session);
+        this.http.setAuthToken(response.accessToken);
+      }
+
+      return {
+        data: {
+          accessToken: response.accessToken,
+          refreshToken: response.refreshToken,
+          user: response.user,
+        },
+        error: null,
+      };
+    } catch (error) {
+      return wrapError(error, 'An unexpected error occurred during ID token sign in');
+    }
+  }
+
   // ============================================================================
   // Session Management
   // ============================================================================
