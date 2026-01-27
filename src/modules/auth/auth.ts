@@ -306,14 +306,17 @@ export class Auth {
   }
 
   /**
-   * Sign in with an ID token from a native SDK (Google One Tap, Sign in with Apple, etc.)
-   * Use this for native mobile apps or Google One Tap on web
+   * Sign in with an ID token from a native SDK (Google One Tap, etc.)
+   * Use this for native mobile apps or Google One Tap on web.
+   *
+   * @param credentials.provider - The identity provider (currently only 'google' is supported)
+   * @param credentials.token - The ID token from the native SDK
    */
   async signInWithIdToken(credentials: {
     provider: 'google';
     token: string;
   }): Promise<{
-    data: { accessToken: string; refreshToken: string; user: UserSchema } | null;
+    data: { accessToken: string; refreshToken?: string; user: UserSchema } | null;
     error: InsForgeError | null;
   }> {
     try {
@@ -321,18 +324,12 @@ export class Auth {
 
       const response = await this.http.post<{
         accessToken: string;
-        refreshToken: string;
+        refreshToken?: string;
         user: UserSchema;
-      }>('/api/auth/id-token?client_type=mobile', { provider, token });
+        csrfToken?: string | null;
+      }>('/api/auth/id-token?client_type=mobile', { provider, token }, { credentials: 'include' });
 
-      if (response.accessToken && response.user) {
-        const session: AuthSession = {
-          accessToken: response.accessToken,
-          user: response.user,
-        };
-        this.tokenManager.saveSession(session);
-        this.http.setAuthToken(response.accessToken);
-      }
+      this.saveSessionFromResponse(response);
 
       return {
         data: {
