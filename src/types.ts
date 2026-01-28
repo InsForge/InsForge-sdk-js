@@ -26,6 +26,14 @@ export interface InsForgeConfig {
   edgeFunctionToken?: string;
 
   /**
+   * Direct URL to Deno Subhosting functions (optional)
+   * When provided, SDK will try this URL first for function invocations.
+   * Falls back to proxy URL if subhosting returns 404.
+   * @example "https://{appKey}.functions.insforge.app"
+   */
+  functionsUrl?: string;
+
+  /**
    * Custom fetch implementation (useful for Node.js environments)
    */
   fetch?: typeof fetch;
