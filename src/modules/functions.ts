@@ -77,7 +77,10 @@ export class Functions {
     // Try direct subhosting URL first if configured
     if (this.functionsUrl) {
       try {
-        const data = await this.invokeDirectly<T>(slug, method, body, headers);
+        const data = await this.http.request<T>(method, `${this.functionsUrl}/${slug}`, {
+          body,
+          headers,
+        });
         return { data, error: null };
       } catch (error: any) {
         // If 404, fall through to proxy
@@ -98,56 +101,5 @@ export class Functions {
     } catch (error: any) {
       return { data: null, error };
     }
-  }
-
-  /**
-   * Invoke function directly on subhosting URL
-   */
-  private async invokeDirectly<T>(
-    slug: string,
-    method: string,
-    body: any,
-    headers: Record<string, string>
-  ): Promise<T> {
-    const url = `${this.functionsUrl}/${slug}`;
-
-    const requestHeaders: Record<string, string> = {
-      ...this.http.getHeaders(),
-      ...headers,
-    };
-
-    if (body !== undefined && method !== 'GET') {
-      requestHeaders['Content-Type'] = 'application/json;charset=UTF-8';
-    }
-
-    const response = await this.http.fetch(url, {
-      method,
-      headers: requestHeaders,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-
-    // Handle 204 No Content
-    if (response.status === 204) {
-      return undefined as T;
-    }
-
-    const contentType = response.headers.get('content-type');
-    let data: any;
-    if (contentType?.includes('json')) {
-      data = await response.json();
-    } else {
-      data = await response.text();
-    }
-
-    if (!response.ok) {
-      const error: any = new Error(data?.message || response.statusText);
-      error.statusCode = response.status;
-      if (data && typeof data === 'object') {
-        Object.assign(error, data);
-      }
-      throw error;
-    }
-
-    return data as T;
   }
 }
