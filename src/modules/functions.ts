@@ -5,12 +5,12 @@ export interface FunctionInvokeOptions {
    * The body of the request
    */
   body?: any;
-  
+
   /**
    * Custom headers to send with the request
    */
   headers?: Record<string, string>;
-  
+
   /**
    * HTTP method (default: POST)
    */
@@ -19,14 +19,14 @@ export interface FunctionInvokeOptions {
 
 /**
  * Edge Functions client for invoking serverless functions
- * 
+ *
  * @example
  * ```typescript
  * // Invoke a function with JSON body
  * const { data, error } = await client.functions.invoke('hello-world', {
  *   body: { name: 'World' }
  * });
- * 
+ *
  * // GET request
  * const { data, error } = await client.functions.invoke('get-data', {
  *   method: 'GET'
@@ -35,13 +35,36 @@ export interface FunctionInvokeOptions {
  */
 export class Functions {
   private http: HttpClient;
+  private functionsUrl: string | undefined;
 
-  constructor(http: HttpClient) {
+  constructor(http: HttpClient, functionsUrl?: string) {
     this.http = http;
+    this.functionsUrl = functionsUrl || Functions.deriveSubhostingUrl(http.baseUrl);
+  }
+
+  /**
+   * Derive the subhosting URL from the base URL.
+   * Base URL pattern: https://{appKey}.{region}.insforge.app
+   * Functions URL:    https://{appKey}.functions.insforge.app
+   * Only applies to .insforge.app domains.
+   */
+  private static deriveSubhostingUrl(baseUrl: string): string | undefined {
+    try {
+      const { hostname } = new URL(baseUrl);
+      if (!hostname.endsWith('.insforge.app')) return undefined;
+      const appKey = hostname.split('.')[0];
+      return `https://${appKey}.functions.insforge.app`;
+    } catch {
+      return undefined;
+    }
   }
 
   /**
    * Invokes an Edge Function
+   *
+   * If functionsUrl is configured, tries direct subhosting first.
+   * Falls back to proxy URL if subhosting returns 404.
+   *
    * @param slug The function slug to invoke
    * @param options Request options
    */
@@ -49,28 +72,34 @@ export class Functions {
     slug: string,
     options: FunctionInvokeOptions = {}
   ): Promise<{ data: T | null; error: Error | null }> {
+    const { method = 'POST', body, headers = {} } = options;
+
+    // Try direct subhosting URL first if configured
+    if (this.functionsUrl) {
+      try {
+        const data = await this.http.request<T>(method, `${this.functionsUrl}/${slug}`, {
+          body,
+          headers,
+        });
+        return { data, error: null };
+      } catch (error: any) {
+        // If 404, fall through to proxy
+        if (error?.statusCode === 404) {
+          // Function not found on subhosting, try proxy
+        } else {
+          // Other errors, return immediately
+          return { data: null, error };
+        }
+      }
+    }
+
+    // Fall back to proxy URL
     try {
-      const { method = 'POST', body, headers = {} } = options;
-      
-      // Simple path: /functions/{slug}
       const path = `/functions/${slug}`;
-      
-      // Use the HTTP client's request method
-      const data = await this.http.request<T>(
-        method,
-        path,
-        { body, headers }
-      );
-      
+      const data = await this.http.request<T>(method, path, { body, headers });
       return { data, error: null };
     } catch (error: any) {
-      // The HTTP client throws InsForgeError with all properties from the response
-      // including error, message, details, statusCode, etc.
-      // We need to preserve all of that information
-      return { 
-        data: null, 
-        error: error  // Pass through the full error object with all properties
-      };
+      return { data: null, error };
     }
   }
 }
