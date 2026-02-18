@@ -265,6 +265,147 @@ describe("AI Module - Integration Tests", () => {
         console.log("Full streamed content:", fullContent);
       });
     });
+
+    describe.skip("create with tool calling", () => {
+      const weatherTool = {
+        type: "function" as const,
+        function: {
+          name: "get_weather",
+          description: "Get current weather for a city",
+          parameters: {
+            type: "object",
+            properties: {
+              city: { type: "string", description: "City name" },
+            },
+            required: ["city"],
+          },
+        },
+      };
+
+      it("should return tool_calls when tools are provided", async () => {
+        const response = await client.ai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [
+            { role: "user", content: "What is the weather in Tokyo?" },
+          ],
+          tools: [weatherTool],
+        });
+
+        expect(response.object).toBe("chat.completion");
+        expect(response.choices).toHaveLength(1);
+
+        const message = response.choices[0].message;
+        expect(message.tool_calls).toBeDefined();
+        expect(message.tool_calls.length).toBeGreaterThan(0);
+
+        const toolCall = message.tool_calls[0];
+        expect(toolCall.id).toBeDefined();
+        expect(toolCall.type).toBe("function");
+        expect(toolCall.function.name).toBe("get_weather");
+
+        const args = JSON.parse(toolCall.function.arguments);
+        expect(args.city).toBeDefined();
+
+        expect(response.choices[0].finish_reason).toBe("tool_calls");
+
+        console.log("Tool call:", toolCall.function.name, toolCall.function.arguments);
+      });
+
+      it("should complete multi-turn tool calling conversation", async () => {
+        // Step 1: Send request with tools
+        const firstResponse = await client.ai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [
+            { role: "user", content: "What is the weather in Tokyo?" },
+          ],
+          tools: [weatherTool],
+        });
+
+        const toolCall = firstResponse.choices[0].message.tool_calls[0];
+        expect(toolCall).toBeDefined();
+
+        // Step 2: Send tool result back
+        const finalResponse = await client.ai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [
+            { role: "user", content: "What is the weather in Tokyo?" },
+            {
+              role: "assistant",
+              content: null,
+              tool_calls: [toolCall],
+            },
+            {
+              role: "tool",
+              content: JSON.stringify({ temp: "22°C", condition: "sunny" }),
+              tool_call_id: toolCall.id,
+            },
+          ],
+        });
+
+        // Final response should have text content, no more tool_calls
+        expect(finalResponse.choices[0].message.content).toBeDefined();
+        expect(finalResponse.choices[0].message.content.length).toBeGreaterThan(0);
+        expect(finalResponse.choices[0].finish_reason).toBe("stop");
+
+        console.log("Final response:", finalResponse.choices[0].message.content);
+      });
+
+      it("should handle tool_choice 'none' (no tool calls)", async () => {
+        const response = await client.ai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [
+            { role: "user", content: "What is the weather in Tokyo?" },
+          ],
+          tools: [weatherTool],
+          tool_choice: "none",
+        });
+
+        // With tool_choice: 'none', model should respond with text, not tool calls
+        expect(response.choices[0].message.content).toBeDefined();
+        expect(response.choices[0].message.content.length).toBeGreaterThan(0);
+
+        console.log("No-tool response:", response.choices[0].message.content);
+      });
+
+      it("should stream tool_calls in streaming mode", async () => {
+        const stream = await client.ai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [
+            { role: "user", content: "What is the weather in Tokyo?" },
+          ],
+          tools: [weatherTool],
+          stream: true,
+        });
+
+        let toolCalls: any = null;
+
+        for await (const chunk of stream) {
+          if (chunk.choices[0]?.delta?.tool_calls) {
+            toolCalls = chunk.choices[0].delta.tool_calls;
+          }
+        }
+
+        expect(toolCalls).toBeDefined();
+        expect(toolCalls.length).toBeGreaterThan(0);
+        expect(toolCalls[0].function.name).toBe("get_weather");
+
+        console.log("Streamed tool call:", toolCalls[0].function.name, toolCalls[0].function.arguments);
+      });
+    });
+
+    describe.skip("create without tools (backward compatibility)", () => {
+      it("should work normally without any tool fields", async () => {
+        const response = await client.ai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [{ role: "user", content: "Say hello" }],
+        });
+
+        expect(response.object).toBe("chat.completion");
+        expect(response.choices[0].message.content).toBeDefined();
+        expect(response.choices[0].message.tool_calls).toBeUndefined();
+        expect(response.choices[0].finish_reason).toBe("stop");
+      });
+    });
   });
 
   describe("Images", () => {
