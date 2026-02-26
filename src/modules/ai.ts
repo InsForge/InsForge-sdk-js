@@ -168,11 +168,11 @@ class ChatCompletions {
             role: "assistant",
             content,
             // Include tool_calls if present (from tool calling)
-            ...(response.tool_calls && { tool_calls: response.tool_calls }),
+            ...(response.tool_calls?.length && { tool_calls: response.tool_calls }),
             // Include annotations if present (from web search or file parsing)
-            ...(response.annotations && { annotations: response.annotations }),
+            ...(response.annotations?.length && { annotations: response.annotations }),
           },
-          finish_reason: response.tool_calls ? "tool_calls" : "stop",
+          finish_reason: response.tool_calls?.length ? "tool_calls" : "stop",
         },
       ],
       usage: response.metadata?.usage || {
@@ -230,7 +230,7 @@ class ChatCompletions {
                 }
 
                 // Yield tool_calls when received from stream
-                if (data.tool_calls) {
+                if (data.tool_calls?.length) {
                   yield {
                     id: `chatcmpl-${Date.now()}`,
                     object: "chat.completion.chunk",
