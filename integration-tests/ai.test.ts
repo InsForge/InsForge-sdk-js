@@ -357,12 +357,14 @@ describe("AI Module - Integration Tests", () => {
             { role: "user", content: "What is the weather in Tokyo?" },
           ],
           tools: [weatherTool],
-          tool_choice: "none",
+          toolChoice: "none",
         });
 
-        // With tool_choice: 'none', model should respond with text, not tool calls
+        // With toolChoice: 'none', model should respond with text, not tool calls
         expect(response.choices[0].message.content).toBeDefined();
         expect(response.choices[0].message.content.length).toBeGreaterThan(0);
+        expect(response.choices[0].message.tool_calls).toBeUndefined();
+        expect(response.choices[0].finish_reason).toBe("stop");
 
         console.log("No-tool response:", response.choices[0].message.content);
       });

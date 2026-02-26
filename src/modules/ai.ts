@@ -120,8 +120,8 @@ class ChatCompletions {
       thinking: params.thinking,
       // Tool calling options
       tools: params.tools,
-      tool_choice: params.tool_choice,
-      parallel_tool_calls: params.parallel_tool_calls,
+      toolChoice: params.toolChoice,
+      parallelToolCalls: params.parallelToolCalls,
     };
 
     // For streaming, return an async iterable that yields OpenAI-like chunks
