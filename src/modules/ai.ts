@@ -118,6 +118,10 @@ class ChatCompletions {
       webSearch: params.webSearch,
       fileParser: params.fileParser,
       thinking: params.thinking,
+      // Tool calling options
+      tools: params.tools,
+      toolChoice: params.toolChoice,
+      parallelToolCalls: params.parallelToolCalls,
     };
 
     // For streaming, return an async iterable that yields OpenAI-like chunks
@@ -163,10 +167,12 @@ class ChatCompletions {
           message: {
             role: "assistant",
             content,
+            // Include tool_calls if present (from tool calling)
+            ...(response.tool_calls?.length && { tool_calls: response.tool_calls }),
             // Include annotations if present (from web search or file parsing)
-            ...(response.annotations && { annotations: response.annotations }),
+            ...(response.annotations?.length && { annotations: response.annotations }),
           },
-          finish_reason: "stop",
+          finish_reason: response.tool_calls?.length ? "tool_calls" : "stop",
         },
       ],
       usage: response.metadata?.usage || {
@@ -217,7 +223,26 @@ class ChatCompletions {
                         delta: {
                           content: data.chunk || data.content,
                         },
-                        finish_reason: data.done ? "stop" : null,
+                        finish_reason: null,
+                      },
+                    ],
+                  };
+                }
+
+                // Yield tool_calls when received from stream
+                if (data.tool_calls?.length) {
+                  yield {
+                    id: `chatcmpl-${Date.now()}`,
+                    object: "chat.completion.chunk",
+                    created: Math.floor(Date.now() / 1000),
+                    model,
+                    choices: [
+                      {
+                        index: 0,
+                        delta: {
+                          tool_calls: data.tool_calls,
+                        },
+                        finish_reason: "tool_calls",
                       },
                     ],
                   };
