@@ -64,32 +64,8 @@ export function retrievePkceVerifier(): string | null {
 }
 
 // ============================================================================
-// Environment & Error Helpers
+// Error Helpers
 // ============================================================================
-
-/**
- * Check if current environment is a hosted auth environment
- * Returns true for:
- * - localhost with port 7130 (hosted auth app dev)
- * - https://*.insforge.app (hosted auth app production)
- */
-export function isHostedAuthEnvironment(): boolean {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-
-  const { hostname, port, protocol } = window.location;
-
-  if (hostname === 'localhost' && port === '7130') {
-    return true;
-  }
-
-  if (protocol === 'https:' && hostname.endsWith('.insforge.app')) {
-    return true;
-  }
-
-  return false;
-}
 
 /**
  * Wrap an error into the standard { data, error } format

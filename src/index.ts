@@ -11,7 +11,6 @@ export { InsForgeClient } from './client';
 export type {
   InsForgeConfig,
   InsForgeConfig as ClientOptions,  // Alias for compatibility
-  TokenStorage,
   AuthSession,
   ApiError,
 } from './types';

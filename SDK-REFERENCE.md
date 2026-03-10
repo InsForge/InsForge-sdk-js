@@ -10,11 +10,31 @@ npm install @insforge/sdk
 import { createClient } from '@insforge/sdk';
 
 const insforge = createClient({
-  baseUrl: 'http://localhost:7130'
+  baseUrl: 'http://localhost:7130',
+  isServerMode: false,       // Set true in SSR/server runtime
 });
 ```
 
-## OAuth Auto-Detection (v0.0.14+)
+## SSR Auth Mode
+
+Use `isServerMode: true` for Next.js/SSR.
+In this mode, auth endpoints use `client_type=mobile` so auth methods return `refreshToken` in response body.
+The SDK does not auto-refresh in server mode; your app should manage refresh token flow.
+In server mode, the SDK does not persist session/user state.
+Read your access token from cookies in Next.js and pass it as `edgeFunctionToken` per request.
+Your app should write/update cookies itself after login/refresh.
+
+```typescript
+const accessToken = /* read access token from request cookies */ null;
+
+const insforge = createClient({
+  baseUrl: process.env.INSFORGE_URL!,
+  isServerMode: true,
+  edgeFunctionToken: accessToken ?? undefined,
+});
+```
+
+## OAuth Auto-Detection (Browser)
 
 The SDK automatically detects and handles OAuth callback parameters when initialized. This feature works seamlessly with the InsForge backend OAuth flow.
 
@@ -34,7 +54,7 @@ const insforge = createClient({
 // If the URL contains OAuth callback parameters like:
 // ?access_token=xxx&user_id=yyy&email=user@example.com&name=John
 // The SDK will:
-// - Save the session to localStorage
+// - Save the session in memory
 // - Set the auth token for API calls
 // - Clean the URL (remove sensitive parameters)
 
@@ -80,7 +100,7 @@ await insforge.auth.signInWithOAuth({
 // AUTOMATIC OAuth Callback Detection (v0.0.14+):
 // When users are redirected back from OAuth provider, the SDK automatically:
 // 1. Detects OAuth parameters (access_token, user_id, email, name) in URL
-// 2. Saves the session to localStorage
+// 2. Saves the session in memory
 // 3. Cleans the URL of sensitive parameters
 // No manual handling needed - just initialize the client!
 ```
@@ -90,14 +110,6 @@ await insforge.auth.signInWithOAuth({
 await insforge.auth.signOut()
 // Response: { error }
 // Clears stored tokens
-```
-
-### `getCurrentSession()`
-```javascript
-await insforge.auth.getCurrentSession()
-// Response: { data: { session }, error }
-// session: { accessToken, user }
-// Gets from local storage, no API call
 ```
 
 ### `getCurrentUser()`
@@ -163,10 +175,9 @@ await insforge.auth.getPublicAuthConfig()
 }
 ```
 
-## Storage
-- **Browser**: localStorage
-- **Node.js**: In-memory Map
-- **Custom**: Provide via `storage` option in config
+## Auth Session Storage
+- **Browser**: in-memory (per client instance)
+- **Node.js**: in-memory (per request/client instance)
 
 ## Database Methods
 

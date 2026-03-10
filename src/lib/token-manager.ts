@@ -1,17 +1,11 @@
 /**
  * Token Manager for InsForge SDK
- * 
- * Simple token storage that supports two modes:
- * - Memory mode (new backend): tokens stored in memory only, more secure
- * - Storage mode (legacy backend): tokens persisted in localStorage
+ *
+ * Memory-only token storage.
  */
 
 import type { UserSchema } from '@insforge/shared-schemas';
-import type { AuthSession, TokenStorage } from '../types';
-
-// localStorage keys
-export const TOKEN_KEY = 'insforge-auth-token';
-export const USER_KEY = 'insforge-auth-user';
+import type { AuthSession } from '../types';
 
 // CSRF token cookie name
 export const CSRF_TOKEN_COOKIE = 'insforge_csrf_token';
@@ -55,91 +49,18 @@ export class TokenManager {
   private accessToken: string | null = null;
   private user: UserSchema | null = null;
 
-  // Persistent storage (for legacy backend)
-  private storage: TokenStorage;
-
-  // Mode: 'memory' (new backend) or 'storage' (legacy backend, default)
-  private _mode: 'memory' | 'storage' = 'storage';
-
   // Callback for token changes (used by realtime to reconnect with new token)
   onTokenChange: (() => void) | null = null;
 
-  constructor(storage?: TokenStorage) {
-    if (storage) {
-      // Use provided storage
-      this.storage = storage;
-    } else if (typeof window !== 'undefined' && window.localStorage) {
-      // Browser: use localStorage
-      this.storage = window.localStorage;
-    } else {
-      // Node.js: use in-memory storage
-      const store = new Map<string, string>();
-      this.storage = {
-        getItem: (key: string) => store.get(key) || null,
-        setItem: (key: string, value: string) => { store.set(key, value); },
-        removeItem: (key: string) => { store.delete(key); }
-      };
-    }
-  }
+  constructor() {}
 
   /**
-   * Get current mode
-   */
-  get mode(): 'memory' | 'storage' {
-    return this._mode;
-  }
-
-  /**
-   * Set mode to memory (new backend with cookies + memory)
-   */
-  setMemoryMode(): void {
-    if (this._mode === 'storage') {
-      // Clear localStorage when switching from storage to memory mode
-      this.storage.removeItem(TOKEN_KEY);
-      this.storage.removeItem(USER_KEY);
-    }
-    this._mode = 'memory';
-  }
-
-  /**
-   * Set mode to storage (legacy backend with localStorage)
-   * Also loads existing session from localStorage
-   */
-  setStorageMode(): void {
-    this._mode = 'storage';
-    this.loadFromStorage();
-  }
-
-  /**
-   * Load session from localStorage
-   */
-  private loadFromStorage(): void {
-    const token = this.storage.getItem(TOKEN_KEY) as string | null;
-    const userStr = this.storage.getItem(USER_KEY) as string | null;
-
-    if (token && userStr) {
-      try {
-        this.accessToken = token;
-        this.user = JSON.parse(userStr);
-      } catch {
-        this.clearSession();
-      }
-    }
-  }
-
-  /**
-   * Save session (memory always, localStorage only in storage mode)
+   * Save session in memory
    */
   saveSession(session: AuthSession): void {
     const tokenChanged = session.accessToken !== this.accessToken;
     this.accessToken = session.accessToken;
     this.user = session.user;
-
-    // Persist to localStorage in storage mode
-    if (this._mode === 'storage') {
-      this.storage.setItem(TOKEN_KEY, session.accessToken);
-      this.storage.setItem(USER_KEY, JSON.stringify(session.user));
-    }
 
     if (tokenChanged && this.onTokenChange) {
       this.onTokenChange();
@@ -150,7 +71,6 @@ export class TokenManager {
    * Get current session
    */
   getSession(): AuthSession | null {
-    this.loadFromStorage();
     if (!this.accessToken || !this.user) return null;
     return {
       accessToken: this.accessToken,
@@ -162,7 +82,6 @@ export class TokenManager {
    * Get access token
    */
   getAccessToken(): string | null {
-    this.loadFromStorage();
     return this.accessToken;
   }
 
@@ -172,9 +91,6 @@ export class TokenManager {
   setAccessToken(token: string): void {
     const tokenChanged = token !== this.accessToken;
     this.accessToken = token;
-    if (this._mode === 'storage') {
-      this.storage.setItem(TOKEN_KEY, token);
-    }
     if (tokenChanged && this.onTokenChange) {
       this.onTokenChange();
     }
@@ -192,31 +108,18 @@ export class TokenManager {
    */
   setUser(user: UserSchema): void {
     this.user = user;
-    if (this._mode === 'storage') {
-      this.storage.setItem(USER_KEY, JSON.stringify(user));
-    }
   }
 
   /**
-   * Clear session (both memory and localStorage)
+   * Clear in-memory session
    */
   clearSession(): void {
     const hadToken = this.accessToken !== null;
     this.accessToken = null;
     this.user = null;
-    this.storage.removeItem(TOKEN_KEY);
-    this.storage.removeItem(USER_KEY);
 
     if (hadToken && this.onTokenChange) {
       this.onTokenChange();
     }
-  }
-
-  /**
-   * Check if there's a session in localStorage (for legacy detection)
-   */
-  hasStoredSession(): boolean {
-    const token = this.storage.getItem(TOKEN_KEY);
-    return !!token;
   }
 }
