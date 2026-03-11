@@ -361,6 +361,52 @@ export class Auth {
   // ============================================================================
 
   /**
+   * Refresh the current auth session.
+   *
+   * Browser mode:
+   * - Uses httpOnly refresh cookie and optional CSRF header.
+   *
+   * Server mode (`isServerMode: true`):
+   * - Uses mobile auth flow and requires `refreshToken` in request body.
+   */
+  async refreshSession(options?: { refreshToken?: string }): Promise<{
+    data: RefreshSessionResponse | null;
+    error: InsForgeError | null;
+  }> {
+    try {
+      if (this.isServerMode() && !options?.refreshToken) {
+        return {
+          data: null,
+          error: new InsForgeError(
+            'refreshToken is required when refreshing session in server mode',
+            400,
+            'REFRESH_TOKEN_REQUIRED'
+          ),
+        };
+      }
+
+      const csrfToken = !this.isServerMode() ? getCsrfToken() : null;
+
+      const response = await this.http.post<RefreshSessionResponse>(
+        this.isServerMode() ? '/api/auth/refresh?client_type=mobile' : '/api/auth/refresh',
+        this.isServerMode() ? { refresh_token: options?.refreshToken } : undefined,
+        {
+          headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+          credentials: 'include',
+        }
+      );
+
+      if (response.accessToken) {
+        this.saveSessionFromResponse(response);
+      }
+
+      return { data: response, error: null };
+    } catch (error) {
+      return wrapError(error, 'An unexpected error occurred during session refresh');
+    }
+  }
+
+  /**
    * Get current user, automatically waits for pending OAuth callback
    */
   async getCurrentUser(): Promise<{
@@ -389,21 +435,12 @@ export class Auth {
 
       // Try refresh via httpOnly cookie (browser only)
       if (typeof window !== 'undefined') {
-        try {
-          const csrfToken = getCsrfToken();
-          const response = await this.http.post<RefreshSessionResponse>('/api/auth/refresh', undefined, {
-            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
-            credentials: 'include',
-          });
-
-          if (response.accessToken) {
-            this.saveSessionFromResponse(response);
-            return { data: { user: response.user ?? null }, error: null };
-          }
-        } catch (error) {
-          if (error instanceof InsForgeError) {
-            return { data: { user: null }, error };
-          }
+        const { data: refreshed, error: refreshError } = await this.refreshSession();
+        if (refreshError) {
+          return { data: { user: null }, error: refreshError };
+        }
+        if (refreshed?.accessToken) {
+          return { data: { user: refreshed.user ?? null }, error: null };
         }
       }
 
