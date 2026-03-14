@@ -5,6 +5,44 @@
 
 import type { UserSchema } from '@insforge/shared-schemas';
 
+export interface RetryConfig {
+  /**
+   * Number of retries after the initial attempt.
+   * @default 2
+   */
+  retries?: number;
+
+  /**
+   * Initial backoff delay in milliseconds.
+   * @default 300
+   */
+  initialDelayMs?: number;
+
+  /**
+   * Maximum backoff delay in milliseconds.
+   * @default 3000
+   */
+  maxDelayMs?: number;
+
+  /**
+   * Delay multiplier applied after each retry.
+   * @default 2
+   */
+  backoffMultiplier?: number;
+
+  /**
+   * HTTP status codes that should trigger a retry.
+   * @default [408, 429, 500, 502, 503, 504]
+   */
+  retryableStatusCodes?: number[];
+
+  /**
+   * HTTP methods allowed to retry.
+   * @default ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE']
+   */
+  retryMethods?: string[];
+}
+
 export interface InsForgeConfig {
   /**
    * The base URL of the InsForge backend API
@@ -37,6 +75,17 @@ export interface InsForgeConfig {
    * Custom fetch implementation (useful for Node.js environments)
    */
   fetch?: typeof fetch;
+
+  /**
+   * Request timeout in milliseconds.
+   * @default 30000
+   */
+  requestTimeoutMs?: number;
+
+  /**
+   * Retry behavior for transient failures.
+   */
+  retry?: RetryConfig;
 
   /**
    * Storage adapter for persisting tokens

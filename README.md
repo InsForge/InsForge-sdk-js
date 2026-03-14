@@ -171,7 +171,15 @@ The SDK supports the following configuration options:
 ```javascript
 const insforge = createClient({
   baseUrl: 'http://localhost:7130',  // Required: Your InsForge backend URL
-  storageStrategy: 'localStorage'     // Optional: 'localStorage' or 'memory' (default: 'localStorage')
+  requestTimeoutMs: 30000,            // Optional: request timeout (default: 30s)
+  retry: {                            // Optional: retry behavior for transient failures
+    retries: 2,                       // Retries after the initial request
+    initialDelayMs: 300,              // Exponential backoff starts here
+    maxDelayMs: 3000,                 // Backoff cap
+  },
+  headers: {                          // Optional: custom headers
+    'X-App-Name': 'my-app',
+  },
 });
 ```
 
