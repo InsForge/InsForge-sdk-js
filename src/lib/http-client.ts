@@ -1,4 +1,5 @@
 import { InsForgeConfig, ApiError, InsForgeError } from '../types';
+import { Logger } from './logger';
 
 export interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
@@ -10,8 +11,9 @@ export class HttpClient {
   private defaultHeaders: Record<string, string>;
   private anonKey: string | undefined;
   private userToken: string | null = null;
+  private logger: Logger;
 
-  constructor(config: InsForgeConfig) {
+  constructor(config: InsForgeConfig, logger?: Logger) {
     this.baseUrl = config.baseUrl || 'http://localhost:7130';
     // Properly bind fetch to maintain its context
     this.fetch = config.fetch || (globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined as any);
@@ -19,6 +21,7 @@ export class HttpClient {
     this.defaultHeaders = {
       ...config.headers,
     };
+    this.logger = logger || new Logger(false);
 
     if (!this.fetch) {
       throw new Error(
@@ -65,6 +68,7 @@ export class HttpClient {
     const { params, headers = {}, body, ...fetchOptions } = options;
     
     const url = this.buildUrl(path, params);
+    const startTime = Date.now();
     
     const requestHeaders: Record<string, string> = {
       ...this.defaultHeaders,
@@ -93,6 +97,8 @@ export class HttpClient {
     }
     
     Object.assign(requestHeaders, headers);
+
+    this.logger.logRequest(method, url, requestHeaders, processedBody);
     
     const response = await this.fetch(url, {
       method,
@@ -119,6 +125,7 @@ export class HttpClient {
 
     // Handle errors
     if (!response.ok) {
+      this.logger.logResponse(method, url, response.status, Date.now() - startTime, data);
       if (data && typeof data === 'object' && 'error' in data) {
         // Add the HTTP status code if not already in the data
         if (!data.statusCode && !data.status) {
@@ -140,6 +147,7 @@ export class HttpClient {
       );
     }
 
+    this.logger.logResponse(method, url, response.status, Date.now() - startTime, data);
     return data as T;
   }
 
