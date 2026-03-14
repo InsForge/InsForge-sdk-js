@@ -105,14 +105,38 @@ describe('Logger', () => {
       expect(output).toContain('application/json');
     });
 
-    it('should include body when present', () => {
+    it('should redact sensitive fields in body', () => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       const logger = new Logger(true);
 
-      logger.logRequest('POST', 'http://localhost/api', {}, JSON.stringify({ email: 'test@test.com' }));
+      logger.logRequest('POST', 'http://localhost/api', {}, JSON.stringify({ email: 'test@test.com', name: 'John' }));
 
       const output = logSpy.mock.calls[0][0] as string;
-      expect(output).toContain('test@test.com');
+      expect(output).toContain('***REDACTED***');
+      expect(output).not.toContain('test@test.com');
+      expect(output).toContain('John');
+    });
+
+    it('should redact sensitive fields in object body', () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const logger = new Logger(true);
+
+      logger.logRequest('POST', 'http://localhost/api', {}, { password: 'secret123', username: 'admin' });
+
+      const output = logSpy.mock.calls[0][0] as string;
+      expect(output).not.toContain('secret123');
+      expect(output).toContain('admin');
+    });
+
+    it('should redact nested sensitive fields', () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const logger = new Logger(true);
+
+      logger.logRequest('POST', 'http://localhost/api', {}, { user: { token: 'abc123', name: 'Jane' } });
+
+      const output = logSpy.mock.calls[0][0] as string;
+      expect(output).not.toContain('abc123');
+      expect(output).toContain('Jane');
     });
 
     it('should not output when disabled', () => {

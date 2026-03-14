@@ -2,16 +2,47 @@ type LogFunction = (message: string, ...args: any[]) => void;
 
 const SENSITIVE_HEADERS = ['authorization', 'x-api-key', 'cookie', 'set-cookie'];
 
+const SENSITIVE_BODY_KEYS = [
+  'password', 'token', 'accesstoken', 'refreshtoken',
+  'authorization', 'secret', 'apikey', 'api_key',
+  'email', 'ssn', 'creditcard', 'credit_card',
+];
+
 function redactHeaders(headers: Record<string, string>): Record<string, string> {
   const redacted: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers)) {
     if (SENSITIVE_HEADERS.includes(key.toLowerCase())) {
-      redacted[key] = value.slice(0, 10) + '***REDACTED***';
+      redacted[key] = '***REDACTED***';
     } else {
       redacted[key] = value;
     }
   }
   return redacted;
+}
+
+function sanitizeBody(body: any): any {
+  if (body === null || body === undefined) return body;
+  if (typeof body === 'string') {
+    try {
+      const parsed = JSON.parse(body);
+      return sanitizeBody(parsed);
+    } catch {
+      return body;
+    }
+  }
+  if (Array.isArray(body)) return body.map(sanitizeBody);
+  if (typeof body === 'object') {
+    const sanitized: Record<string, any> = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (SENSITIVE_BODY_KEYS.includes(key.toLowerCase().replace(/[-_]/g, ''))) {
+        sanitized[key] = '***REDACTED***';
+      } else {
+        sanitized[key] = sanitizeBody(value);
+      }
+    }
+    return sanitized;
+  }
+  return body;
 }
 
 function formatBody(body: any): string {
@@ -86,7 +117,7 @@ export class Logger {
     if (headers && Object.keys(headers).length > 0) {
       parts.push(`  Headers: ${JSON.stringify(redactHeaders(headers))}`);
     }
-    const formattedBody = formatBody(body);
+    const formattedBody = formatBody(sanitizeBody(body));
     if (formattedBody) {
       parts.push(`  Body: ${formattedBody}`);
     }
@@ -104,7 +135,7 @@ export class Logger {
     const parts: string[] = [
       `← ${method} ${url} ${status} (${durationMs}ms)`,
     ];
-    const formattedBody = formatBody(body);
+    const formattedBody = formatBody(sanitizeBody(body));
     if (formattedBody) {
       const truncated = formattedBody.length > 1000
         ? formattedBody.slice(0, 1000) + '... [truncated]'
