@@ -123,7 +123,10 @@ export class Logger {
     }
     const formattedBody = formatBody(sanitizeBody(body));
     if (formattedBody) {
-      parts.push(`  Body: ${formattedBody}`);
+      const truncated = formattedBody.length > 1000
+        ? formattedBody.slice(0, 1000) + '... [truncated]'
+        : formattedBody;
+      parts.push(`  Body: ${truncated}`);
     }
     this.log(parts.join('\n'));
   }

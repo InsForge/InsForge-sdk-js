@@ -49,6 +49,7 @@
     "url": "https://github.com/InsForge/insforge-sdk-js/issues"
   },
   "dependencies": {
+    "@insforge/sdk": "^1.1.6",
     "@insforge/shared-schemas": "^1.1.44",
     "@supabase/postgrest-js": "^1.21.3",
     "socket.io-client": "^4.8.1"
