@@ -8,6 +8,11 @@ const SENSITIVE_BODY_KEYS = [
   'email', 'ssn', 'creditcard', 'credit_card',
 ];
 
+/**
+ * Replaces values of sensitive headers with a redaction mask.
+ * @param headers - The headers object to redact
+ * @returns A new headers object with sensitive values masked
+ */
 function redactHeaders(headers: Record<string, string>): Record<string, string> {
   const redacted: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers)) {
@@ -20,6 +25,12 @@ function redactHeaders(headers: Record<string, string>): Record<string, string> 
   return redacted;
 }
 
+/**
+ * Recursively masks sensitive keys (e.g. password, token, email) in request/response bodies.
+ * Handles objects, arrays, and JSON strings.
+ * @param body - The body payload to sanitize
+ * @returns A sanitized copy of the body with sensitive values masked
+ */
 function sanitizeBody(body: any): any {
   if (body === null || body === undefined) return body;
   if (typeof body === 'string') {
@@ -45,6 +56,12 @@ function sanitizeBody(body: any): any {
   return body;
 }
 
+/**
+ * Formats a body payload as a pretty-printed JSON string for debug output.
+ * Safely handles circular references and FormData.
+ * @param body - The body to format
+ * @returns A formatted string representation of the body, or empty string if null/undefined
+ */
 function formatBody(body: any): string {
   if (body === undefined || body === null) return '';
   if (typeof body === 'string') {
@@ -64,10 +81,30 @@ function formatBody(body: any): string {
   }
 }
 
+/**
+ * Debug logger for the InsForge SDK.
+ * Logs HTTP request/response details with automatic redaction of sensitive data.
+ *
+ * @example
+ * ```typescript
+ * // Enable via SDK config
+ * const client = new InsForgeClient({ debug: true });
+ *
+ * // Or with a custom log function
+ * const client = new InsForgeClient({
+ *   debug: (msg) => myLogger.info(msg)
+ * });
+ * ```
+ */
 export class Logger {
+  /** Whether debug logging is currently enabled */
   public enabled: boolean;
   private customLog: LogFunction | null;
 
+  /**
+   * Creates a new Logger instance.
+   * @param debug - Set to true to enable console logging, or pass a custom log function
+   */
   constructor(debug?: boolean | LogFunction) {
     if (typeof debug === 'function') {
       this.enabled = true;
@@ -78,6 +115,11 @@ export class Logger {
     }
   }
 
+  /**
+   * Logs a debug message at the info level.
+   * @param message - The message to log
+   * @param args - Additional arguments to pass to the log function
+   */
   log(message: string, ...args: any[]): void {
     if (!this.enabled) return;
     const formatted = `[InsForge Debug] ${message}`;
@@ -88,6 +130,11 @@ export class Logger {
     }
   }
 
+  /**
+   * Logs a debug message at the warning level.
+   * @param message - The message to log
+   * @param args - Additional arguments to pass to the log function
+   */
   warn(message: string, ...args: any[]): void {
     if (!this.enabled) return;
     const formatted = `[InsForge Debug] ${message}`;
@@ -98,6 +145,11 @@ export class Logger {
     }
   }
 
+  /**
+   * Logs a debug message at the error level.
+   * @param message - The message to log
+   * @param args - Additional arguments to pass to the log function
+   */
   error(message: string, ...args: any[]): void {
     if (!this.enabled) return;
     const formatted = `[InsForge Debug] ${message}`;
@@ -108,6 +160,14 @@ export class Logger {
     }
   }
 
+  /**
+   * Logs an outgoing HTTP request with method, URL, headers, and body.
+   * Sensitive headers and body fields are automatically redacted.
+   * @param method - HTTP method (GET, POST, etc.)
+   * @param url - The full request URL
+   * @param headers - Request headers (sensitive values will be redacted)
+   * @param body - Request body (sensitive fields will be masked)
+   */
   logRequest(
     method: string,
     url: string,
@@ -131,6 +191,15 @@ export class Logger {
     this.log(parts.join('\n'));
   }
 
+  /**
+   * Logs an incoming HTTP response with method, URL, status, duration, and body.
+   * Error responses (4xx/5xx) are logged at the error level.
+   * @param method - HTTP method (GET, POST, etc.)
+   * @param url - The full request URL
+   * @param status - HTTP response status code
+   * @param durationMs - Request duration in milliseconds
+   * @param body - Response body (sensitive fields will be masked, large bodies truncated)
+   */
   logResponse(
     method: string,
     url: string,
