@@ -396,7 +396,7 @@ export class Auth {
               this.tokenManager.setStorageMode();
               const session = this.tokenManager.getSession();
               if (session?.accessToken) {
-+                this.http.setAuthToken(session.accessToken);
+                 this.http.setAuthToken(session.accessToken);
               }
               return { data: { session }, error: null };
             }
@@ -472,7 +472,7 @@ export class Auth {
               this.tokenManager.setStorageMode();
               const session = this.tokenManager.getSession();
               if (session?.accessToken) {
-+                this.http.setAuthToken(session.accessToken);
+                 this.http.setAuthToken(session.accessToken);
               }
               return { data: { user: session?.user ?? null }, error: null };
             }
