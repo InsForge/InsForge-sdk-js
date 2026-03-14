@@ -57,7 +57,11 @@ function formatBody(body: any): string {
   if (typeof FormData !== 'undefined' && body instanceof FormData) {
     return '[FormData]';
   }
-  return JSON.stringify(body, null, 2);
+  try {
+    return JSON.stringify(body, null, 2);
+  } catch {
+    return '[Unserializable body]';
+  }
 }
 
 export class Logger {
