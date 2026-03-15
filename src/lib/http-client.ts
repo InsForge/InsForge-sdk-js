@@ -145,7 +145,7 @@ export class HttpClient {
           resolvedRetryConfig &&
           this.shouldRetryResponse(response.status, normalizedMethod, attempt, resolvedRetryConfig)
         ) {
-          await this.waitWithBackoff(attempt, resolvedRetryConfig);
+          await this.waitWithBackoff(attempt, resolvedRetryConfig, fetchOptions.signal);
           continue;
         }
 
@@ -162,7 +162,7 @@ export class HttpClient {
             resolvedRetryConfig &&
             this.shouldRetryMethod(normalizedMethod, attempt, resolvedRetryConfig)
           ) {
-            await this.waitWithBackoff(attempt, resolvedRetryConfig);
+            await this.waitWithBackoff(attempt, resolvedRetryConfig, fetchOptions.signal);
             continue;
           }
 
@@ -177,7 +177,7 @@ export class HttpClient {
           resolvedRetryConfig &&
           this.shouldRetryError(error, normalizedMethod, attempt, resolvedRetryConfig)
         ) {
-          await this.waitWithBackoff(attempt, resolvedRetryConfig);
+          await this.waitWithBackoff(attempt, resolvedRetryConfig, fetchOptions.signal);
           continue;
         }
 
@@ -323,11 +323,41 @@ export class HttpClient {
 
   private async waitWithBackoff(
     attempt: number,
-    config: ResolvedRetryConfig
+    config: ResolvedRetryConfig,
+    signal?: AbortSignal | null
   ): Promise<void> {
     const calculatedDelay = config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt);
     const delay = Math.min(config.maxDelayMs, calculatedDelay);
-    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    await new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(this.createAbortError(signal));
+        return;
+      }
+
+      const timeoutId = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, delay);
+
+      const onAbort = () => {
+        clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', onAbort);
+        reject(this.createAbortError(signal));
+      };
+
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+
+  private createAbortError(signal?: AbortSignal | null): unknown {
+    if (signal?.reason !== undefined) {
+      return signal.reason;
+    }
+
+    const abortError = new Error('The operation was aborted');
+    abortError.name = 'AbortError';
+    return abortError;
   }
 
   private async handleResponse<T>(response: Response): Promise<T> {

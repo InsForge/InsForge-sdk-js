@@ -120,4 +120,39 @@ describe('HttpClient retry and timeout', () => {
     await expect(client.post('/api/test', { data: 'value' })).rejects.toBeInstanceOf(InsForgeError);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('aborts immediately while waiting for retry backoff', async () => {
+    vi.useFakeTimers();
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: 'TEMP', message: 'temporary failure', statusCode: 503 }),
+        { status: 503, headers: { 'content-type': 'application/json' } }
+      )
+    );
+
+    const client = new HttpClient({
+      baseUrl: 'https://example.com',
+      fetch: fetchMock as unknown as typeof fetch,
+      retry: {
+        retries: 1,
+        initialDelayMs: 100,
+        maxDelayMs: 100,
+      },
+    });
+
+    const controller = new AbortController();
+    const requestPromise = client.get('/api/test', { signal: controller.signal });
+
+    await Promise.resolve();
+    controller.abort();
+
+    await expect(requestPromise).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
