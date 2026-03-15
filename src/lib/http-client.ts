@@ -7,6 +7,10 @@ export interface RequestOptions extends RequestInit {
 
 const RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504]);
 
+/**
+ * HTTP client with built-in retry, timeout, and exponential backoff support.
+ * Handles authentication, request serialization, and error normalization.
+ */
 export class HttpClient {
   public readonly baseUrl: string;
   public readonly fetch: typeof fetch;
@@ -18,6 +22,11 @@ export class HttpClient {
   private retryCount: number;
   private retryDelay: number;
 
+  /**
+   * Creates a new HttpClient instance.
+   * @param config - SDK configuration including baseUrl, timeout, retry settings, and fetch implementation.
+   * @param logger - Optional logger instance for request/response debugging.
+   */
   constructor(config: InsForgeConfig, logger?: Logger) {
     this.baseUrl = config.baseUrl || 'http://localhost:7130';
     // Properly bind fetch to maintain its context
@@ -38,6 +47,10 @@ export class HttpClient {
     }
   }
 
+  /**
+   * Builds a full URL from a path and optional query parameters.
+   * Normalizes PostgREST select parameters for proper syntax.
+   */
   private buildUrl(path: string, params?: Record<string, string>): string {
     const url = new URL(path, this.baseUrl);
     if (params) {
@@ -68,16 +81,32 @@ export class HttpClient {
     return url.toString();
   }
 
+  /** Checks if an HTTP status code is eligible for retry (5xx server errors). */
   private isRetryableStatus(status: number): boolean {
     return RETRYABLE_STATUS_CODES.has(status);
   }
 
+  /**
+   * Computes the delay before the next retry using exponential backoff with jitter.
+   * @param attempt - The current retry attempt number (1-based).
+   * @returns Delay in milliseconds.
+   */
   private computeRetryDelay(attempt: number): number {
     const base = this.retryDelay * Math.pow(2, attempt - 1);
     const jitter = base * (0.85 + Math.random() * 0.3);
     return Math.round(jitter);
   }
 
+  /**
+   * Performs an HTTP request with automatic retry and timeout handling.
+   * Retries on network errors and 5xx server errors with exponential backoff.
+   * Client errors (4xx) and timeouts are thrown immediately without retry.
+   * @param method - HTTP method (GET, POST, PUT, PATCH, DELETE).
+   * @param path - API path relative to the base URL.
+   * @param options - Optional request configuration including headers, body, and query params.
+   * @returns Parsed response data.
+   * @throws {InsForgeError} On timeout, network failure, or HTTP error responses.
+   */
   async request<T>(
     method: string,
     path: string,
@@ -237,30 +266,37 @@ export class HttpClient {
     );
   }
 
+  /** Performs a GET request. */
   get<T>(path: string, options?: RequestOptions): Promise<T> {
     return this.request<T>('GET', path, options);
   }
 
+  /** Performs a POST request with an optional JSON body. */
   post<T>(path: string, body?: any, options?: RequestOptions): Promise<T> {
     return this.request<T>('POST', path, { ...options, body });
   }
 
+  /** Performs a PUT request with an optional JSON body. */
   put<T>(path: string, body?: any, options?: RequestOptions): Promise<T> {
     return this.request<T>('PUT', path, { ...options, body });
   }
 
+  /** Performs a PATCH request with an optional JSON body. */
   patch<T>(path: string, body?: any, options?: RequestOptions): Promise<T> {
     return this.request<T>('PATCH', path, { ...options, body });
   }
 
+  /** Performs a DELETE request. */
   delete<T>(path: string, options?: RequestOptions): Promise<T> {
     return this.request<T>('DELETE', path, options);
   }
 
+  /** Sets or clears the user authentication token for subsequent requests. */
   setAuthToken(token: string | null) {
     this.userToken = token;
   }
 
+  /** Returns the current default headers including the authorization header if set. */
   getHeaders(): Record<string, string> {
     const headers = { ...this.defaultHeaders };
     
