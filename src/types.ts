@@ -59,6 +59,14 @@ export interface InsForgeConfig {
    * Custom headers to include with every request
    */
   headers?: Record<string, string>;
+
+  /**
+   * Enable debug logging for HTTP requests and responses.
+   * When true, request/response details are logged to the console.
+   * Can also be a custom log function for advanced use cases.
+   * @default false
+   */
+  debug?: boolean | ((message: string, ...args: any[]) => void);
 }
 
 export interface TokenStorage {
