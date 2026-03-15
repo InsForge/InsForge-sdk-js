@@ -231,6 +231,95 @@ describe('HttpClient', () => {
     });
   });
 
+  describe('no retry on non-idempotent methods', () => {
+    it('should not retry POST on network error by default', async () => {
+      const mockFetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+
+      const client = createClient(mockFetch, { retryCount: 3, retryDelay: 10 });
+
+      await expect(client.post('/api/create', { name: 'test' })).rejects.toThrow(InsForgeError);
+      expect(mockFetch).toHaveBeenCalledOnce();
+    });
+
+    it('should not retry PATCH on network error by default', async () => {
+      const mockFetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+
+      const client = createClient(mockFetch, { retryCount: 3, retryDelay: 10 });
+
+      await expect(client.patch('/api/update', { name: 'test' })).rejects.toThrow(InsForgeError);
+      expect(mockFetch).toHaveBeenCalledOnce();
+    });
+
+    it('should retry POST when idempotent flag is set', async () => {
+      const mockFetch = vi.fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(createJsonResponse(200, { created: true }));
+
+      const client = createClient(mockFetch, { retryCount: 2, retryDelay: 10 });
+      const result = await client.post('/api/create', { name: 'test' }, { idempotent: true });
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result).toEqual({ created: true });
+    });
+
+    it('should retry PUT on network error (idempotent by default)', async () => {
+      const mockFetch = vi.fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(createJsonResponse(200, { updated: true }));
+
+      const client = createClient(mockFetch, { retryCount: 2, retryDelay: 10 });
+      const result = await client.put('/api/update', { name: 'test' });
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result).toEqual({ updated: true });
+    });
+  });
+
+  describe('signal composition', () => {
+    it('should propagate caller abort as-is (not as REQUEST_TIMEOUT)', async () => {
+      const callerController = new AbortController();
+
+      const mockFetch = vi.fn().mockImplementation((_url: string, opts: any) => {
+        return new Promise((_resolve, reject) => {
+          const onAbort = () => reject(new DOMException('The operation was aborted.', 'AbortError'));
+          if (opts?.signal) {
+            if (opts.signal.aborted) { onAbort(); return; }
+            opts.signal.addEventListener('abort', onAbort);
+          }
+        });
+      });
+
+      const client = createClient(mockFetch, { timeout: 0 });
+
+      const promise = client.get('/api/slow', { signal: callerController.signal });
+      callerController.abort();
+
+      const error = await promise.catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(DOMException);
+      expect((error as DOMException).name).toBe('AbortError');
+    });
+  });
+
+  describe('malformed response body', () => {
+    it('should throw non-retryable error on malformed JSON from 4xx response', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: () => Promise.reject(new SyntaxError('Unexpected token')),
+        text: () => Promise.resolve('not json'),
+      } as unknown as Response);
+
+      const client = createClient(mockFetch, { retryCount: 3, retryDelay: 10 });
+
+      const error = await client.get('/api/bad').catch((e: unknown) => e) as InsForgeError;
+      expect(error).toBeInstanceOf(InsForgeError);
+      expect(error.error).toBe('REQUEST_FAILED');
+      expect(mockFetch).toHaveBeenCalledOnce(); // No retries
+    });
+  });
+
   describe('exponential backoff', () => {
     it('should increase delay between retries', async () => {
       const delays: number[] = [];
@@ -252,11 +341,11 @@ describe('HttpClient', () => {
       expect(delays.length).toBe(3);
       // With jitter (±15%), delays should roughly be: ~100, ~200, ~400
       expect(delays[0]).toBeGreaterThanOrEqual(85);
-      expect(delays[0]).toBeLessThanOrEqual(130);
+      expect(delays[0]).toBeLessThanOrEqual(115);
       expect(delays[1]).toBeGreaterThanOrEqual(170);
-      expect(delays[1]).toBeLessThanOrEqual(260);
+      expect(delays[1]).toBeLessThanOrEqual(230);
       expect(delays[2]).toBeGreaterThanOrEqual(340);
-      expect(delays[2]).toBeLessThanOrEqual(520);
+      expect(delays[2]).toBeLessThanOrEqual(460);
     });
   });
 

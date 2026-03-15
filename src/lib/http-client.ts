@@ -3,9 +3,12 @@ import { Logger } from './logger';
 
 export interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
+  /** Allow retrying non-idempotent requests (POST, PATCH). Off by default to prevent duplicate writes. */
+  idempotent?: boolean;
 }
 
 const RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504]);
+const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'TRACE']);
 
 /**
  * HTTP client with built-in retry, timeout, and exponential backoff support.
@@ -112,21 +115,23 @@ export class HttpClient {
     path: string,
     options: RequestOptions = {}
   ): Promise<T> {
-    const { params, headers = {}, body, ...fetchOptions } = options;
-    
+    const { params, headers = {}, body, signal: callerSignal, ...fetchOptions } = options as RequestOptions & { signal?: AbortSignal };
+
     const url = this.buildUrl(path, params);
     const startTime = Date.now();
-    
+    const canRetry = IDEMPOTENT_METHODS.has(method.toUpperCase()) || options.idempotent === true;
+    const maxAttempts = canRetry ? this.retryCount : 0;
+
     const requestHeaders: Record<string, string> = {
       ...this.defaultHeaders,
     };
-    
+
     // Set Authorization header: prefer user token, fallback to anon key
     const authToken = this.userToken || this.anonKey;
     if (authToken) {
       requestHeaders['Authorization'] = `Bearer ${authToken}`;
     }
-    
+
     // Handle body serialization
     let processedBody: any;
     if (body !== undefined) {
@@ -142,26 +147,38 @@ export class HttpClient {
         processedBody = JSON.stringify(body);
       }
     }
-    
+
     Object.assign(requestHeaders, headers);
 
     this.logger.logRequest(method, url, requestHeaders, processedBody);
 
     let lastError: Error | undefined;
 
-    for (let attempt = 0; attempt <= this.retryCount; attempt++) {
+    for (let attempt = 0; attempt <= maxAttempts; attempt++) {
       if (attempt > 0) {
         const delay = this.computeRetryDelay(attempt);
-        this.logger.warn(`Retry ${attempt}/${this.retryCount} for ${method} ${url} in ${delay}ms`);
+        this.logger.warn(`Retry ${attempt}/${maxAttempts} for ${method} ${url} in ${delay}ms`);
         await new Promise(r => setTimeout(r, delay));
       }
 
       let controller: AbortController | undefined;
       let timer: ReturnType<typeof setTimeout> | undefined;
 
-      if (this.timeout > 0) {
+      // Compose SDK timeout signal with caller-provided signal
+      if (this.timeout > 0 || callerSignal) {
         controller = new AbortController();
-        timer = setTimeout(() => controller!.abort(), this.timeout);
+
+        if (this.timeout > 0) {
+          timer = setTimeout(() => controller!.abort(), this.timeout);
+        }
+
+        if (callerSignal) {
+          if (callerSignal.aborted) {
+            controller.abort(callerSignal.reason);
+          } else {
+            callerSignal.addEventListener('abort', () => controller!.abort(callerSignal.reason), { once: true });
+          }
+        }
       }
 
       try {
@@ -171,12 +188,13 @@ export class HttpClient {
           body: processedBody,
           ...(controller ? { signal: controller.signal } : {}),
           ...fetchOptions,
+          // Ensure our composed signal is never overridden by fetchOptions
+          ...(controller ? { signal: controller.signal } : {}),
         });
 
-        if (timer !== undefined) clearTimeout(timer);
-
         // If server error and retries remaining, continue loop
-        if (this.isRetryableStatus(response.status) && attempt < this.retryCount) {
+        if (this.isRetryableStatus(response.status) && attempt < maxAttempts) {
+          if (timer !== undefined) clearTimeout(timer);
           lastError = new InsForgeError(
             `Server error: ${response.status} ${response.statusText}`,
             response.status,
@@ -187,19 +205,33 @@ export class HttpClient {
 
         // Handle 204 No Content
         if (response.status === 204) {
+          if (timer !== undefined) clearTimeout(timer);
           return undefined as T;
         }
 
-        // Try to parse JSON response
+        // Parse response body (keep timeout active to cover body reads)
         let data: any;
         const contentType = response.headers.get('content-type');
-        // Check for any JSON content type (including PostgREST's vnd.pgrst.object+json)
-        if (contentType?.includes('json')) {
-          data = await response.json();
-        } else {
-          // For non-JSON responses, return text
-          data = await response.text();
+        try {
+          // Check for any JSON content type (including PostgREST's vnd.pgrst.object+json)
+          if (contentType?.includes('json')) {
+            data = await response.json();
+          } else {
+            // For non-JSON responses, return text
+            data = await response.text();
+          }
+        } catch (parseErr: any) {
+          if (timer !== undefined) clearTimeout(timer);
+          // Body parse error (e.g. malformed JSON on a 4xx) — not retryable
+          throw new InsForgeError(
+            `Failed to parse response body: ${parseErr?.message || 'Unknown error'}`,
+            response.status,
+            response.ok ? 'PARSE_ERROR' : 'REQUEST_FAILED'
+          );
         }
+
+        // Clear timeout after body is fully read
+        if (timer !== undefined) clearTimeout(timer);
 
         // Handle errors
         if (!response.ok) {
@@ -230,13 +262,17 @@ export class HttpClient {
       } catch (err: any) {
         if (timer !== undefined) clearTimeout(timer);
 
-        // Timeout: abort error
+        // Determine if this was an SDK timeout or a caller abort
         if (err?.name === 'AbortError') {
-          throw new InsForgeError(
-            `Request timed out after ${this.timeout}ms`,
-            0,
-            'REQUEST_TIMEOUT'
-          );
+          if (controller && controller.signal.aborted && this.timeout > 0 && !callerSignal?.aborted) {
+            throw new InsForgeError(
+              `Request timed out after ${this.timeout}ms`,
+              0,
+              'REQUEST_TIMEOUT'
+            );
+          }
+          // Caller-initiated abort — propagate as-is
+          throw err;
         }
 
         // InsForgeError from response handling — don't retry client errors
@@ -245,7 +281,7 @@ export class HttpClient {
         }
 
         // Network error — retry if attempts remain
-        if (attempt < this.retryCount) {
+        if (attempt < maxAttempts) {
           lastError = err;
           continue;
         }
