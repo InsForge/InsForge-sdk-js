@@ -57,6 +57,32 @@ describe('HttpClient', () => {
       expect(result).toEqual({ id: 2 });
     });
 
+    it('should merge headers from a Headers instance', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        createJsonResponse(200, { ok: true })
+      );
+
+      const client = createClient(mockFetch);
+      await client.get('/api/items', { headers: new Headers({ 'X-Custom': 'value' }) });
+
+      const callHeaders = mockFetch.mock.calls[0][1].headers;
+      // Headers class lowercases keys per spec
+      expect(callHeaders['x-custom']).toBe('value');
+    });
+
+    it('should merge headers from a [string, string][] array', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        createJsonResponse(200, { ok: true })
+      );
+
+      const client = createClient(mockFetch);
+      await client.get('/api/items', { headers: [['X-Array', 'arr-value'], ['X-Other', 'other']] });
+
+      const callHeaders = mockFetch.mock.calls[0][1].headers;
+      expect(callHeaders['X-Array']).toBe('arr-value');
+      expect(callHeaders['X-Other']).toBe('other');
+    });
+
     it('should throw InsForgeError on 4xx error', async () => {
       const mockFetch = vi.fn().mockResolvedValue(
         createJsonResponse(401, { error: 'Unauthorized', message: 'Invalid token', statusCode: 401 })
@@ -297,6 +323,29 @@ describe('HttpClient', () => {
       const error = await promise.catch((e: unknown) => e);
       expect(error).toBeInstanceOf(DOMException);
       expect((error as DOMException).name).toBe('AbortError');
+    });
+
+    it('should abort backoff sleep when caller signal fires', async () => {
+      const callerController = new AbortController();
+
+      const mockFetch = vi.fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(createJsonResponse(200, { ok: true }));
+
+      const client = createClient(mockFetch, { retryCount: 2, retryDelay: 60_000, timeout: 0 });
+
+      const promise = client.get('/api/slow', { signal: callerController.signal });
+
+      // Abort during the long backoff sleep
+      setTimeout(() => callerController.abort(), 50);
+
+      const start = Date.now();
+      await expect(promise).rejects.toBeDefined();
+      const elapsed = Date.now() - start;
+
+      // Should resolve well under the 60s backoff delay
+      expect(elapsed).toBeLessThan(5000);
+      expect(mockFetch).toHaveBeenCalledOnce();
     });
   });
 

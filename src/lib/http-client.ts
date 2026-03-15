@@ -148,7 +148,14 @@ export class HttpClient {
       }
     }
 
-    Object.assign(requestHeaders, headers);
+    // Normalize HeadersInit (Headers | [string,string][] | Record) to plain object
+    if (headers instanceof Headers) {
+      headers.forEach((value, key) => { requestHeaders[key] = value; });
+    } else if (Array.isArray(headers)) {
+      headers.forEach(([key, value]) => { requestHeaders[key] = value; });
+    } else {
+      Object.assign(requestHeaders, headers);
+    }
 
     this.logger.logRequest(method, url, requestHeaders, processedBody);
 
@@ -158,7 +165,15 @@ export class HttpClient {
       if (attempt > 0) {
         const delay = this.computeRetryDelay(attempt);
         this.logger.warn(`Retry ${attempt}/${maxAttempts} for ${method} ${url} in ${delay}ms`);
-        await new Promise(r => setTimeout(r, delay));
+        // Abortable backoff sleep — respects caller cancellation
+        if (callerSignal?.aborted) throw callerSignal.reason;
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, delay);
+          if (callerSignal) {
+            const onAbort = () => { clearTimeout(timer); reject(callerSignal.reason); };
+            callerSignal.addEventListener('abort', onAbort, { once: true });
+          }
+        });
       }
 
       let controller: AbortController | undefined;
