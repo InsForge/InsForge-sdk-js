@@ -177,9 +177,6 @@ const insforge = createClient({
     initialDelayMs: 300,              // Exponential backoff starts here
     maxDelayMs: 3000,                 // Backoff cap
   },
-  headers: {                          // Optional: custom headers
-    'X-App-Name': 'my-app',
-  },
 });
 ```
 

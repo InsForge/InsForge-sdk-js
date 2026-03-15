@@ -43,7 +43,7 @@ export class HttpClient {
       ...config.headers,
     };
     this.requestTimeoutMs = Math.max(1, config.requestTimeoutMs ?? DEFAULT_TIMEOUT_MS);
-    this.retryConfig = this.resolveRetryConfig(config.retry);
+    this.retryConfig = this.resolveRetryConfig(config.retry, DEFAULT_RETRY_CONFIG);
 
     if (!this.fetch) {
       throw new Error(
@@ -89,7 +89,8 @@ export class HttpClient {
   ): Promise<T> {
     const { params, headers = {}, body, timeoutMs, retry, ...fetchOptions } = options;
     const resolvedTimeoutMs = Math.max(1, timeoutMs ?? this.requestTimeoutMs);
-    const resolvedRetryConfig = retry === false ? null : this.resolveRetryConfig(retry);
+    const resolvedRetryConfig =
+      retry === false ? null : this.resolveRetryConfig(retry, this.retryConfig);
     const normalizedMethod = method.toUpperCase();
 
     const url = this.buildUrl(path, params);
@@ -221,32 +222,27 @@ export class HttpClient {
     return headers;
   }
 
-  private resolveRetryConfig(config?: RetryConfig): ResolvedRetryConfig {
+  private resolveRetryConfig(
+    config: RetryConfig | undefined,
+    baseConfig: ResolvedRetryConfig
+  ): ResolvedRetryConfig {
     return {
-      retries: Math.max(0, config?.retries ?? this.retryConfig?.retries ?? DEFAULT_RETRY_CONFIG.retries),
+      retries: Math.max(0, config?.retries ?? baseConfig.retries),
       initialDelayMs: Math.max(
         0,
-        config?.initialDelayMs ?? this.retryConfig?.initialDelayMs ?? DEFAULT_RETRY_CONFIG.initialDelayMs
+        config?.initialDelayMs ?? baseConfig.initialDelayMs
       ),
       maxDelayMs: Math.max(
         0,
-        config?.maxDelayMs ?? this.retryConfig?.maxDelayMs ?? DEFAULT_RETRY_CONFIG.maxDelayMs
+        config?.maxDelayMs ?? baseConfig.maxDelayMs
       ),
       backoffMultiplier: Math.max(
         1,
-        config?.backoffMultiplier ??
-          this.retryConfig?.backoffMultiplier ??
-          DEFAULT_RETRY_CONFIG.backoffMultiplier
+        config?.backoffMultiplier ?? baseConfig.backoffMultiplier
       ),
-      retryableStatusCodes:
-        config?.retryableStatusCodes ??
-        this.retryConfig?.retryableStatusCodes ??
-        DEFAULT_RETRY_CONFIG.retryableStatusCodes,
+      retryableStatusCodes: config?.retryableStatusCodes ?? baseConfig.retryableStatusCodes,
       retryMethods: new Set(
-        (
-          config?.retryMethods ??
-          [...(this.retryConfig?.retryMethods ?? DEFAULT_RETRY_CONFIG.retryMethods)]
-        ).map((value) => value.toUpperCase())
+        (config?.retryMethods ?? [...baseConfig.retryMethods]).map((value) => value.toUpperCase())
       ),
     };
   }
@@ -319,10 +315,6 @@ export class HttpClient {
 
     // Retry transient fetch failures (network disconnects, DNS, connection resets, etc)
     if (error instanceof TypeError) {
-      return true;
-    }
-
-    if (error instanceof Error && error.name === 'AbortError') {
       return true;
     }
 
