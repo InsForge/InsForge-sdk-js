@@ -195,6 +195,7 @@ export class HttpClient {
       if (
         error instanceof InsForgeError &&
         error.statusCode === 401 &&
+        error.message == 'Invalid token' &&
         this.autoRefreshToken
       ) {
         try {
@@ -216,11 +217,7 @@ export class HttpClient {
           this.userToken = null;
           this.refreshToken = null;
           clearCsrfToken();
-          throw new InsForgeError(
-            refreshError.message,
-            401,
-            'AUTH_UNAUTHORIZED',
-          );
+          throw refreshError;
         }
       }
       throw error;
