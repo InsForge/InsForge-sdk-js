@@ -210,15 +210,16 @@ export class HttpClient {
           }
 
           return await this.handleRequest<T>(method, path, options);
-        } catch (refreshError) {
+        } catch (refresh) {
+          const refreshError = error as InsForgeError;
           this.tokenManager.clearSession();
           this.userToken = null;
           this.refreshToken = null;
           clearCsrfToken();
           throw new InsForgeError(
-            'Session expired. Please login again.',
+            refreshError.message,
             401,
-            'SESSION_EXPIRED',
+            'AUTH_UNAUTHORIZED',
           );
         }
       }
@@ -275,9 +276,13 @@ export class HttpClient {
     this.refreshPromise = (async () => {
       try {
         // Call your backend refresh endpoint
-        const response = await this.post<AuthRefreshResponse>('/auth/refresh', {
-          refreshToken: this.refreshToken,
-        });
+        const response = await this.handleRequest<AuthRefreshResponse>(
+          'POST',
+          '/auth/refresh',
+          {
+            body: JSON.stringify({ refreshToken: this.refreshToken }),
+          },
+        );
         return response;
       } finally {
         this.isRefreshing = false;
