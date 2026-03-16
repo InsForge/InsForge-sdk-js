@@ -67,6 +67,31 @@ export interface InsForgeConfig {
    * @default false
    */
   debug?: boolean | ((message: string, ...args: any[]) => void);
+
+  /**
+   * Request timeout in milliseconds.
+   * Requests that exceed this duration will be aborted.
+   * Set to 0 to disable timeout.
+   * @default 30000
+   */
+  timeout?: number;
+
+  /**
+   * Maximum number of retry attempts for failed requests.
+   * Retries are triggered on network errors and server errors (5xx).
+   * Client errors (4xx) are never retried.
+   * Set to 0 to disable retries.
+   * @default 3
+   */
+  retryCount?: number;
+
+  /**
+   * Initial delay in milliseconds before the first retry.
+   * The delay doubles with each subsequent attempt (exponential backoff)
+   * with ±15% jitter to prevent thundering herd.
+   * @default 500
+   */
+  retryDelay?: number;
 }
 
 export interface TokenStorage {
