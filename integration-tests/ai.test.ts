@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { InsForgeClient } from "../src/client";
 
-// Test configuration - connect to local server
+// Test configuration - defaults to local values, but supports CI secrets.
 const TEST_CONFIG = {
-  baseUrl: "http://localhost:7130",
-  anonKey: "your_anon_key_here",
+  baseUrl: process.env.INSFORGE_INTEGRATION_BASE_URL || "http://localhost:7130",
+  anonKey: process.env.INSFORGE_INTEGRATION_ANON_KEY || "your_anon_key_here",
 };
 
 describe("AI Module - Integration Tests", () => {

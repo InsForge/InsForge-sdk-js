@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, Typecheck, Unit Test, Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:run
+
+      - name: Build
+        run: npm run build
+
+  integration:
+    name: Integration Tests (Gated)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: quality
+
+    steps:
+      - name: Check integration test secrets
+        id: integration-secrets
+        env:
+          INSFORGE_INTEGRATION_BASE_URL: ${{ secrets.INSFORGE_INTEGRATION_BASE_URL }}
+          INSFORGE_INTEGRATION_ANON_KEY: ${{ secrets.INSFORGE_INTEGRATION_ANON_KEY }}
+        run: |
+          missing=""
+          if [ -z "$INSFORGE_INTEGRATION_BASE_URL" ]; then
+            missing="$missing INSFORGE_INTEGRATION_BASE_URL"
+          fi
+          if [ -z "$INSFORGE_INTEGRATION_ANON_KEY" ]; then
+            missing="$missing INSFORGE_INTEGRATION_ANON_KEY"
+          fi
+
+          if [ -n "$missing" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "reason=Missing required repository secrets:$missing" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "reason=All required integration test secrets are available." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip integration tests when secrets are missing
+        if: steps.integration-secrets.outputs.ready != 'true'
+        run: echo "${{ steps.integration-secrets.outputs.reason }}"
+
+      - name: Checkout
+        if: steps.integration-secrets.outputs.ready == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: steps.integration-secrets.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.integration-secrets.outputs.ready == 'true'
+        run: npm ci
+
+      - name: Run integration tests
+        if: steps.integration-secrets.outputs.ready == 'true'
+        env:
+          INSFORGE_INTEGRATION_BASE_URL: ${{ secrets.INSFORGE_INTEGRATION_BASE_URL }}
+          INSFORGE_INTEGRATION_ANON_KEY: ${{ secrets.INSFORGE_INTEGRATION_ANON_KEY }}
+        run: npm run test:integration

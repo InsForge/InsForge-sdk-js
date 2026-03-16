@@ -239,6 +239,28 @@ npm test
 npm run test:integration
 ```
 
+### CI Integrated Testing Workflow
+
+GitHub Actions runs two jobs:
+
+- `quality`: lint + typecheck + unit tests + build
+- `integration`: runs `npm run test:integration` in a gated job
+
+The integration job runs only when the following repository secrets are set:
+
+- `INSFORGE_INTEGRATION_BASE_URL`
+- `INSFORGE_INTEGRATION_ANON_KEY`
+
+When these secrets are missing, the integration job is skipped with a clear reason message.
+
+To run integration tests locally with the same configuration:
+
+```bash
+INSFORGE_INTEGRATION_BASE_URL=https://your-app.region.insforge.app \
+INSFORGE_INTEGRATION_ANON_KEY=your-anon-key \
+npm run test:integration
+```
+
 ## License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICENSE) file for details.
