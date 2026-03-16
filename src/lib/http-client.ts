@@ -8,7 +8,7 @@ export interface RequestOptions extends RequestInit {
 }
 
 const RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504]);
-const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'TRACE']);
+const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']);
 
 /**
  * HTTP client with built-in retry, timeout, and exponential backoff support.
@@ -191,7 +191,12 @@ export class HttpClient {
           if (callerSignal.aborted) {
             controller.abort(callerSignal.reason);
           } else {
-            callerSignal.addEventListener('abort', () => controller!.abort(callerSignal.reason), { once: true });
+            const onCallerAbort = () => controller!.abort(callerSignal!.reason);
+            callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+            // Clean up listener after fetch completes (timeout or success) to prevent accumulation
+            controller.signal.addEventListener('abort', () => {
+              callerSignal!.removeEventListener('abort', onCallerAbort);
+            }, { once: true });
           }
         }
       }
@@ -201,15 +206,15 @@ export class HttpClient {
           method,
           headers: requestHeaders,
           body: processedBody,
-          ...(controller ? { signal: controller.signal } : {}),
           ...fetchOptions,
-          // Ensure our composed signal is never overridden by fetchOptions
           ...(controller ? { signal: controller.signal } : {}),
         });
 
         // If server error and retries remaining, continue loop
         if (this.isRetryableStatus(response.status) && attempt < maxAttempts) {
           if (timer !== undefined) clearTimeout(timer);
+          // Drain the body to free the connection before retrying
+          await response.body?.cancel();
           lastError = new InsForgeError(
             `Server error: ${response.status} ${response.statusText}`,
             response.status,
@@ -282,7 +287,7 @@ export class HttpClient {
           if (controller && controller.signal.aborted && this.timeout > 0 && !callerSignal?.aborted) {
             throw new InsForgeError(
               `Request timed out after ${this.timeout}ms`,
-              0,
+              408,
               'REQUEST_TIMEOUT'
             );
           }
