@@ -1,6 +1,6 @@
 /**
  * Token Manager for InsForge SDK
- * 
+ *
  * Simple token storage that supports two modes:
  * - Memory mode (new backend): tokens stored in memory only, more secure
  * - Storage mode (legacy backend): tokens persisted in localStorage
@@ -24,7 +24,7 @@ export function getCsrfToken(): string | null {
   if (typeof document === 'undefined') return null;
   const match = document.cookie
     .split(';')
-    .find(c => c.trim().startsWith(`${CSRF_TOKEN_COOKIE}=`));
+    .find((c) => c.trim().startsWith(`${CSRF_TOKEN_COOKIE}=`));
   if (!match) return null;
   return match.split('=')[1] || null;
 }
@@ -36,7 +36,10 @@ export function getCsrfToken(): string | null {
 export function setCsrfToken(token: string): void {
   if (typeof document === 'undefined') return;
   const maxAge = 7 * 24 * 60 * 60; // 7 days (same as refresh token)
-  const secure = (typeof window !== 'undefined' && window.location.protocol === 'https:') ? '; Secure' : '';
+  const secure =
+    typeof window !== 'undefined' && window.location.protocol === 'https:'
+      ? '; Secure'
+      : '';
   document.cookie = `${CSRF_TOKEN_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=${maxAge}; SameSite=Lax${secure}`;
 }
 
@@ -46,7 +49,10 @@ export function setCsrfToken(token: string): void {
  */
 export function clearCsrfToken(): void {
   if (typeof document === 'undefined') return;
-  const secure = (typeof window !== 'undefined' && window.location.protocol === 'https:') ? '; Secure' : '';
+  const secure =
+    typeof window !== 'undefined' && window.location.protocol === 'https:'
+      ? '; Secure'
+      : '';
   document.cookie = `${CSRF_TOKEN_COOKIE}=; path=/; max-age=0; SameSite=Lax${secure}`;
 }
 
@@ -76,8 +82,12 @@ export class TokenManager {
       const store = new Map<string, string>();
       this.storage = {
         getItem: (key: string) => store.get(key) || null,
-        setItem: (key: string, value: string) => { store.set(key, value); },
-        removeItem: (key: string) => { store.delete(key); }
+        setItem: (key: string, value: string) => {
+          store.set(key, value);
+        },
+        removeItem: (key: string) => {
+          store.delete(key);
+        },
       };
     }
   }

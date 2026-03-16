@@ -21,6 +21,7 @@ export class HttpClient {
   private isRefreshing: boolean = false;
   private refreshPromise: Promise<AuthRefreshResponse> | null = null;
   private tokenManager: TokenManager;
+  private refreshToken: string | null = null;
 
   constructor(
     config: InsForgeConfig,
@@ -236,6 +237,10 @@ export class HttpClient {
     this.userToken = token;
   }
 
+  setRefreshToken(token: string | null) {
+    this.refreshToken = token;
+  }
+
   getHeaders(): Record<string, string> {
     const headers = { ...this.defaultHeaders };
 
@@ -257,7 +262,9 @@ export class HttpClient {
     this.refreshPromise = (async () => {
       try {
         // Call your backend refresh endpoint
-        const response = await this.post<AuthRefreshResponse>('/auth/refresh');
+        const response = await this.post<AuthRefreshResponse>('/auth/refresh', {
+          refreshToken: this.refreshToken,
+        });
         return response;
       } finally {
         this.isRefreshing = false;
