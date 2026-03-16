@@ -7,15 +7,17 @@ import {
 import { Logger } from './logger';
 import { clearCsrfToken, setCsrfToken, TokenManager } from './token-manager';
 
-type JsonRequestBody =
-  | Record<string, unknown>
-  | unknown[]
-  | number
-  | boolean
-  | null;
+type JsonRequestBody = Record<string, unknown> | unknown[] | null;
 export interface RequestOptions extends Omit<RequestInit, 'body'> {
   params?: Record<string, string>;
-  body?: JsonRequestBody | FormData;
+  body?:
+    | JsonRequestBody
+    | FormData
+    | ArrayBuffer
+    | AsyncIterable<Uint8Array>
+    | Blob
+    | Iterable<Uint8Array>
+    | NodeJS.ArrayBufferView;
   /** Allow retrying non-idempotent requests (POST, PATCH). Off by default to prevent duplicate writes. */
   idempotent?: boolean;
 }
