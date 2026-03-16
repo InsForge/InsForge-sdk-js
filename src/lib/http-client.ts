@@ -15,7 +15,7 @@ type JsonRequestBody =
   | null;
 export interface RequestOptions extends Omit<RequestInit, 'body'> {
   params?: Record<string, string>;
-  body?: JsonRequestBody;
+  body?: JsonRequestBody | FormData;
   /** Allow retrying non-idempotent requests (POST, PATCH). Off by default to prevent duplicate writes. */
   idempotent?: boolean;
 }
