@@ -243,7 +243,7 @@ npm run test:integration
 
 GitHub Actions runs two jobs:
 
-- `quality`: lint + typecheck + unit tests + build
+- `quality`: typecheck + unit tests + build
 - `integration`: runs `npm run test:integration` in a gated job
 
 The integration job runs only when the following repository secrets are set:
