@@ -275,12 +275,14 @@ export class HttpClient {
     this.isRefreshing = true;
     this.refreshPromise = (async () => {
       try {
-        // Call your backend refresh endpoint
+        const body = this.refreshToken
+          ? ({ refreshToken: this.refreshToken } as unknown as BodyInit)
+          : undefined;
         const response = await this.handleRequest<AuthRefreshResponse>(
           'POST',
           '/auth/refresh',
           {
-            body: JSON.stringify({ refreshToken: this.refreshToken }),
+            body,
           },
         );
         return response;
