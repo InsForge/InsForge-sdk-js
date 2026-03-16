@@ -81,6 +81,13 @@ export interface AuthSession {
   expiresAt?: Date;
 }
 
+export interface AuthRefreshResponse {
+  user: UserSchema;
+  accessToken: string;
+  csrfToken?: string;
+  refreshToken?: string;
+}
+
 export interface ApiError {
   error: string;
   message: string;
@@ -93,7 +100,12 @@ export class InsForgeError extends Error {
   public error: string;
   public nextActions?: string;
 
-  constructor(message: string, statusCode: number, error: string, nextActions?: string) {
+  constructor(
+    message: string,
+    statusCode: number,
+    error: string,
+    nextActions?: string,
+  ) {
     super(message);
     this.name = 'InsForgeError';
     this.statusCode = statusCode;
@@ -106,7 +118,7 @@ export class InsForgeError extends Error {
       apiError.message,
       apiError.statusCode,
       apiError.error,
-      apiError.nextActions
+      apiError.nextActions,
     );
   }
 }

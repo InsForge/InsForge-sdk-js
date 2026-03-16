@@ -1,5 +1,11 @@
-import { InsForgeConfig, ApiError, InsForgeError } from '../types';
+import {
+  InsForgeConfig,
+  ApiError,
+  InsForgeError,
+  AuthRefreshResponse,
+} from '../types';
 import { Logger } from './logger';
+import { setCsrfToken, TokenManager } from './token-manager';
 
 export interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
@@ -12,20 +18,32 @@ export class HttpClient {
   private anonKey: string | undefined;
   private userToken: string | null = null;
   private logger: Logger;
+  private isRefreshing: boolean = false;
+  private refreshPromise: Promise<AuthRefreshResponse> | null = null;
+  private tokenManager: TokenManager;
 
-  constructor(config: InsForgeConfig, logger?: Logger) {
+  constructor(
+    config: InsForgeConfig,
+    tokenManager: TokenManager,
+    logger?: Logger,
+  ) {
     this.baseUrl = config.baseUrl || 'http://localhost:7130';
     // Properly bind fetch to maintain its context
-    this.fetch = config.fetch || (globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined as any);
+    this.fetch =
+      config.fetch ||
+      (globalThis.fetch
+        ? globalThis.fetch.bind(globalThis)
+        : (undefined as any));
     this.anonKey = config.anonKey;
     this.defaultHeaders = {
       ...config.headers,
     };
+    this.tokenManager = tokenManager;
     this.logger = logger || new Logger(false);
 
     if (!this.fetch) {
       throw new Error(
-        'Fetch is not available. Please provide a fetch implementation in the config.'
+        'Fetch is not available. Please provide a fetch implementation in the config.',
       );
     }
   }
@@ -45,12 +63,12 @@ export class HttpClient {
 
           // Fix spaces around parentheses and inside them
           normalizedValue = normalizedValue
-            .replace(/\s*\(\s*/g, '(')  // Remove spaces around opening parens
-            .replace(/\s*\)\s*/g, ')')  // Remove spaces around closing parens
-            .replace(/\(\s+/g, '(')     // Remove spaces after opening parens
-            .replace(/\s+\)/g, ')')     // Remove spaces before closing parens
+            .replace(/\s*\(\s*/g, '(') // Remove spaces around opening parens
+            .replace(/\s*\)\s*/g, ')') // Remove spaces around closing parens
+            .replace(/\(\s+/g, '(') // Remove spaces after opening parens
+            .replace(/\s+\)/g, ')') // Remove spaces before closing parens
             .replace(/,\s+(?=[^()]*\))/g, ','); // Remove spaces after commas inside parens
-          
+
           url.searchParams.append(key, normalizedValue);
         } else {
           url.searchParams.append(key, value);
@@ -60,26 +78,26 @@ export class HttpClient {
     return url.toString();
   }
 
-  async request<T>(
+  private async handleRequest<T>(
     method: string,
     path: string,
-    options: RequestOptions = {}
+    options: RequestOptions = {},
   ): Promise<T> {
     const { params, headers = {}, body, ...fetchOptions } = options;
-    
+
     const url = this.buildUrl(path, params);
     const startTime = Date.now();
-    
+
     const requestHeaders: Record<string, string> = {
       ...this.defaultHeaders,
     };
-    
+
     // Set Authorization header: prefer user token, fallback to anon key
     const authToken = this.userToken || this.anonKey;
     if (authToken) {
       requestHeaders['Authorization'] = `Bearer ${authToken}`;
     }
-    
+
     // Handle body serialization
     let processedBody: any;
     if (body !== undefined) {
@@ -95,11 +113,11 @@ export class HttpClient {
         processedBody = JSON.stringify(body);
       }
     }
-    
+
     Object.assign(requestHeaders, headers);
 
     this.logger.logRequest(method, url, requestHeaders, processedBody);
-    
+
     const response = await this.fetch(url, {
       method,
       headers: requestHeaders,
@@ -125,7 +143,13 @@ export class HttpClient {
 
     // Handle errors
     if (!response.ok) {
-      this.logger.logResponse(method, url, response.status, Date.now() - startTime, data);
+      this.logger.logResponse(
+        method,
+        url,
+        response.status,
+        Date.now() - startTime,
+        data,
+      );
       if (data && typeof data === 'object' && 'error' in data) {
         // Add the HTTP status code if not already in the data
         if (!data.statusCode && !data.status) {
@@ -133,7 +157,7 @@ export class HttpClient {
         }
         const error = InsForgeError.fromApiError(data as ApiError);
         // Preserve all additional fields from the error response
-        Object.keys(data).forEach(key => {
+        Object.keys(data).forEach((key) => {
           if (key !== 'error' && key !== 'message' && key !== 'statusCode') {
             (error as any)[key] = data[key];
           }
@@ -143,12 +167,49 @@ export class HttpClient {
       throw new InsForgeError(
         `Request failed: ${response.statusText}`,
         response.status,
-        'REQUEST_FAILED'
+        'REQUEST_FAILED',
       );
     }
 
-    this.logger.logResponse(method, url, response.status, Date.now() - startTime, data);
+    this.logger.logResponse(
+      method,
+      url,
+      response.status,
+      Date.now() - startTime,
+      data,
+    );
     return data as T;
+  }
+
+  async request<T>(
+    method: string,
+    path: string,
+    options: RequestOptions = {},
+  ): Promise<T> {
+    try {
+      return await this.handleRequest<T>(method, path, { ...options });
+    } catch (error) {
+      if (error instanceof InsForgeError && error.statusCode === 401) {
+        try {
+          // Attempt refresh
+          const newTokenData = await this.handleTokenRefresh();
+          this.setAuthToken(newTokenData.accessToken);
+          this.tokenManager!.saveSession(newTokenData);
+          if (newTokenData.csrfToken) {
+            setCsrfToken(newTokenData.csrfToken);
+          }
+          return await this.handleRequest<T>(method, path, options);
+        } catch (refreshError) {
+          this.tokenManager.clearSession();
+          throw new InsForgeError(
+            'Session expired. Please login again.',
+            401,
+            'SESSION_EXPIRED',
+          );
+        }
+      }
+      throw error;
+    }
   }
 
   get<T>(path: string, options?: RequestOptions): Promise<T> {
@@ -177,13 +238,33 @@ export class HttpClient {
 
   getHeaders(): Record<string, string> {
     const headers = { ...this.defaultHeaders };
-    
+
     // Include Authorization header if token is available (same logic as request method)
     const authToken = this.userToken || this.anonKey;
     if (authToken) {
       headers['Authorization'] = `Bearer ${authToken}`;
     }
-    
+
     return headers;
+  }
+
+  private async handleTokenRefresh(): Promise<AuthRefreshResponse> {
+    if (this.isRefreshing) {
+      return this.refreshPromise!;
+    }
+
+    this.isRefreshing = true;
+    this.refreshPromise = (async () => {
+      try {
+        // Call your backend refresh endpoint
+        const response = await this.post<AuthRefreshResponse>('/auth/refresh');
+        return response;
+      } finally {
+        this.isRefreshing = false;
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
   }
 }
