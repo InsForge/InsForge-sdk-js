@@ -7,8 +7,16 @@ import {
 import { Logger } from './logger';
 import { clearCsrfToken, setCsrfToken, TokenManager } from './token-manager';
 
-export interface RequestOptions extends RequestInit {
+type JsonRequestBody =
+  | Record<string, unknown>
+  | unknown[]
+  | number
+  | boolean
+  | null;
+
+export interface RequestOptions extends Omit<RequestInit, 'body'> {
   params?: Record<string, string>;
+  body?: JsonRequestBody | FormData;
 }
 
 export class HttpClient {
@@ -273,7 +281,7 @@ export class HttpClient {
     this.refreshPromise = (async () => {
       try {
         const body = this.refreshToken
-          ? ({ refreshToken: this.refreshToken } as unknown as BodyInit)
+          ? { refreshToken: this.refreshToken }
           : undefined;
         const response = await this.handleRequest<AuthRefreshResponse>(
           'POST',
