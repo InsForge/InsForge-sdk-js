@@ -5,7 +5,7 @@ import {
   AuthRefreshResponse,
 } from '../types';
 import { Logger } from './logger';
-import { setCsrfToken, TokenManager } from './token-manager';
+import { clearCsrfToken, setCsrfToken, TokenManager } from './token-manager';
 
 export interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
@@ -18,6 +18,7 @@ export class HttpClient {
   private anonKey: string | undefined;
   private userToken: string | null = null;
   private logger: Logger;
+  private autoRefreshToken: boolean = true;
   private isRefreshing: boolean = false;
   private refreshPromise: Promise<AuthRefreshResponse> | null = null;
   private tokenManager: TokenManager;
@@ -29,6 +30,7 @@ export class HttpClient {
     logger?: Logger,
   ) {
     this.baseUrl = config.baseUrl || 'http://localhost:7130';
+    this.autoRefreshToken = config.autoRefreshToken!;
     // Properly bind fetch to maintain its context
     this.fetch =
       config.fetch ||
@@ -190,7 +192,11 @@ export class HttpClient {
     try {
       return await this.handleRequest<T>(method, path, { ...options });
     } catch (error) {
-      if (error instanceof InsForgeError && error.statusCode === 401) {
+      if (
+        error instanceof InsForgeError &&
+        error.statusCode === 401 &&
+        this.autoRefreshToken
+      ) {
         try {
           // Attempt refresh
           const newTokenData = await this.handleTokenRefresh();
@@ -199,9 +205,16 @@ export class HttpClient {
           if (newTokenData.csrfToken) {
             setCsrfToken(newTokenData.csrfToken);
           }
+          if (newTokenData.refreshToken) {
+            this.setRefreshToken(newTokenData.refreshToken);
+          }
+
           return await this.handleRequest<T>(method, path, options);
         } catch (refreshError) {
           this.tokenManager.clearSession();
+          this.userToken = null;
+          this.refreshToken = null;
+          clearCsrfToken();
           throw new InsForgeError(
             'Session expired. Please login again.',
             401,
