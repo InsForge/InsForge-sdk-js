@@ -30,7 +30,7 @@ export class HttpClient {
     logger?: Logger,
   ) {
     this.baseUrl = config.baseUrl || 'http://localhost:7130';
-    this.autoRefreshToken = config.autoRefreshToken!;
+    this.autoRefreshToken = config.autoRefreshToken ?? true;
     // Properly bind fetch to maintain its context
     this.fetch =
       config.fetch ||
