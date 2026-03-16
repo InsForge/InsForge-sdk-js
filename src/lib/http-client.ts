@@ -168,9 +168,12 @@ export class HttpClient {
         // Abortable backoff sleep — respects caller cancellation
         if (callerSignal?.aborted) throw callerSignal.reason;
         await new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(resolve, delay);
+          const onAbort = () => { clearTimeout(timer); reject(callerSignal!.reason); };
+          const timer = setTimeout(() => {
+            if (callerSignal) callerSignal.removeEventListener('abort', onAbort);
+            resolve();
+          }, delay);
           if (callerSignal) {
-            const onAbort = () => { clearTimeout(timer); reject(callerSignal.reason); };
             callerSignal.addEventListener('abort', onAbort, { once: true });
           }
         });
