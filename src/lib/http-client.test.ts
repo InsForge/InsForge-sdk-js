@@ -155,4 +155,38 @@ describe('HttpClient retry and timeout', () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('drains retryable response body before retrying', async () => {
+    const cancelMock = vi.fn().mockResolvedValue(undefined);
+    const retryResponse = {
+      status: 503,
+      body: {
+        cancel: cancelMock,
+      },
+    } as unknown as Response;
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(retryResponse)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+
+    const client = new HttpClient({
+      baseUrl: 'https://example.com',
+      fetch: fetchMock as unknown as typeof fetch,
+      retry: {
+        retries: 1,
+        initialDelayMs: 0,
+        maxDelayMs: 0,
+      },
+    });
+
+    const data = await client.get<{ ok: boolean }>('/api/test');
+    expect(data).toEqual({ ok: true });
+    expect(cancelMock).toHaveBeenCalledTimes(1);
+  });
 });

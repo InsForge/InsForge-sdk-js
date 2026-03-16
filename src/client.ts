@@ -1,5 +1,6 @@
 import { InsForgeConfig } from './types';
 import { HttpClient } from './lib/http-client';
+import { Logger } from './lib/logger';
 import { TokenManager } from './lib/token-manager';
 import { Auth } from './modules/auth/auth';
 import { Database } from './modules/database-postgrest';
@@ -45,6 +46,12 @@ import { Emails } from './modules/email';
  * const { data, error } = await client.functions.invoke('my-function', {
  *   body: { message: 'Hello from SDK' }
  * });
+ * 
+ * // Enable debug logging
+ * const debugClient = new InsForgeClient({
+ *   baseUrl: 'http://localhost:7130',
+ *   debug: true
+ * });
  * ```
  */
 export class InsForgeClient {
@@ -59,7 +66,8 @@ export class InsForgeClient {
   public readonly emails: Emails;
 
   constructor(config: InsForgeConfig = {}) {
-    this.http = new HttpClient(config);
+    const logger = new Logger(config.debug);
+    this.http = new HttpClient(config, logger);
     this.tokenManager = new TokenManager(config.storage);
 
     // Check for edge function token

@@ -1,4 +1,5 @@
 import { InsForgeConfig, ApiError, InsForgeError, RetryConfig } from '../types';
+import { Logger } from './logger';
 
 export interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
@@ -33,8 +34,9 @@ export class HttpClient {
   private userToken: string | null = null;
   private readonly requestTimeoutMs: number;
   private readonly retryConfig: ResolvedRetryConfig;
+  private logger: Logger;
 
-  constructor(config: InsForgeConfig) {
+  constructor(config: InsForgeConfig, logger?: Logger) {
     this.baseUrl = config.baseUrl || 'http://localhost:7130';
     // Properly bind fetch to maintain its context
     this.fetch = config.fetch || (globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined as any);
@@ -44,6 +46,7 @@ export class HttpClient {
     };
     this.requestTimeoutMs = Math.max(1, config.requestTimeoutMs ?? DEFAULT_TIMEOUT_MS);
     this.retryConfig = this.resolveRetryConfig(config.retry, DEFAULT_RETRY_CONFIG);
+    this.logger = logger || new Logger(false);
 
     if (!this.fetch) {
       throw new Error(
@@ -94,6 +97,7 @@ export class HttpClient {
     const normalizedMethod = method.toUpperCase();
 
     const url = this.buildUrl(path, params);
+    const startTime = Date.now();
 
     const requestHeaders: Record<string, string> = {
       ...this.defaultHeaders,
@@ -114,7 +118,7 @@ export class HttpClient {
         processedBody = body;
       } else {
         // JSON body
-        if (method !== 'GET') {
+        if (normalizedMethod !== 'GET') {
           requestHeaders['Content-Type'] = 'application/json;charset=UTF-8';
         }
         processedBody = JSON.stringify(body);
@@ -122,6 +126,7 @@ export class HttpClient {
     }
 
     Object.assign(requestHeaders, headers);
+    this.logger.logRequest(normalizedMethod, url, requestHeaders, processedBody);
 
     for (let attempt = 0; ; attempt++) {
       const controller = new AbortController();
@@ -145,11 +150,12 @@ export class HttpClient {
           resolvedRetryConfig &&
           this.shouldRetryResponse(response.status, normalizedMethod, attempt, resolvedRetryConfig)
         ) {
+          await this.drainResponseBody(response);
           await this.waitWithBackoff(attempt, resolvedRetryConfig, fetchOptions.signal);
           continue;
         }
 
-        return this.handleResponse<T>(response);
+        return this.handleResponse<T>(response, normalizedMethod, url, startTime);
       } catch (error) {
         cleanup();
 
@@ -350,6 +356,16 @@ export class HttpClient {
     });
   }
 
+  private async drainResponseBody(response: Response): Promise<void> {
+    try {
+      if (response.body) {
+        await response.body.cancel();
+      }
+    } catch {
+      // Best effort: response body may already be consumed/closed in some runtimes.
+    }
+  }
+
   private createAbortError(signal?: AbortSignal | null): unknown {
     if (signal?.reason !== undefined) {
       return signal.reason;
@@ -360,7 +376,12 @@ export class HttpClient {
     return abortError;
   }
 
-  private async handleResponse<T>(response: Response): Promise<T> {
+  private async handleResponse<T>(
+    response: Response,
+    method: string,
+    url: string,
+    startTime: number
+  ): Promise<T> {
     // Handle 204 No Content
     if (response.status === 204) {
       return undefined as T;
@@ -379,6 +400,7 @@ export class HttpClient {
 
     // Handle errors
     if (!response.ok) {
+      this.logger.logResponse(method, url, response.status, Date.now() - startTime, data);
       if (data && typeof data === 'object' && 'error' in data) {
         // Add the HTTP status code if not already in the data
         if (!data.statusCode && !data.status) {
@@ -400,6 +422,7 @@ export class HttpClient {
       );
     }
 
+    this.logger.logResponse(method, url, response.status, Date.now() - startTime, data);
     return data as T;
   }
 }
