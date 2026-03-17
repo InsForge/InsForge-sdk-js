@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { createClient } from "../src";
 
-const baseUrl = process.env.INSFORGE_INTEGRATION_BASE_URL;
-const anonKey = process.env.INSFORGE_INTEGRATION_ANON_KEY;
-const hasIntegrationSecrets = Boolean(baseUrl && anonKey);
+const hasIntegrationSecrets = Boolean(
+  process.env.INSFORGE_INTEGRATION_BASE_URL &&
+    process.env.INSFORGE_INTEGRATION_ANON_KEY
+);
 
 describe("SDK Integration Smoke Tests", () => {
   it("creates a client with all core modules", () => {
+    const baseUrl = process.env.INSFORGE_INTEGRATION_BASE_URL;
+    const anonKey = process.env.INSFORGE_INTEGRATION_ANON_KEY;
     const client = createClient({
       baseUrl: baseUrl || "http://localhost:7130",
       anonKey: anonKey || "integration-anon-key-not-set",
@@ -25,12 +28,11 @@ describe("SDK Integration Smoke Tests", () => {
 const describeIfIntegration = hasIntegrationSecrets ? describe : describe.skip;
 
 describeIfIntegration("SDK Backend Integration Tests", () => {
-  const client = createClient({
-    baseUrl: baseUrl as string,
-    anonKey: anonKey as string,
-  });
-
   it("retrieves public auth configuration", async () => {
+    const client = createClient({
+      baseUrl: process.env.INSFORGE_INTEGRATION_BASE_URL as string,
+      anonKey: process.env.INSFORGE_INTEGRATION_ANON_KEY as string,
+    });
     const { data, error } = await client.auth.getPublicAuthConfig();
 
     expect(error).toBeNull();
