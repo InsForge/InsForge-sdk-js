@@ -55,9 +55,9 @@ const { data, error } = await insforge.auth.signInWithPassword({
   password: 'securePassword123'
 });
 
-// OAuth authentication (Google, GitHub)
+// OAuth authentication (built-in or custom provider key)
 await insforge.auth.signInWithOAuth({
-  provider: 'google',
+  provider: 'google', // e.g. built-in: "google", custom: "auth0-acme"
   redirectTo: 'http://localhost:3000/dashboard'
 });
 

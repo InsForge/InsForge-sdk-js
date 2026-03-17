@@ -90,7 +90,7 @@ await insforge.auth.signInWithPassword({
 ### `signInWithOAuth()`
 ```javascript
 await insforge.auth.signInWithOAuth({
-  provider: 'google',  // or 'github'
+  provider: 'google',  // built-in (e.g. "google") or custom provider key (e.g. "auth0-acme")
   redirectTo: 'http://localhost:3000/dashboard',
   skipBrowserRedirect: true  // optional, returns URL instead of redirecting
 })
