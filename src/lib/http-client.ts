@@ -10,14 +10,7 @@ import { clearCsrfToken, setCsrfToken, TokenManager } from './token-manager';
 type JsonRequestBody = Record<string, unknown> | unknown[] | null;
 export interface RequestOptions extends Omit<RequestInit, 'body'> {
   params?: Record<string, string>;
-  body?:
-    | JsonRequestBody
-    | FormData
-    | ArrayBuffer
-    | AsyncIterable<Uint8Array>
-    | Blob
-    | Iterable<Uint8Array>
-    | NodeJS.ArrayBufferView;
+  body?: RequestInit['body'] | JsonRequestBody;
   /** Allow retrying non-idempotent requests (POST, PATCH). Off by default to prevent duplicate writes. */
   idempotent?: boolean;
 }
@@ -408,7 +401,7 @@ export class HttpClient {
       if (
         error instanceof InsForgeError &&
         error.statusCode === 401 &&
-        error.message == 'Invalid token' &&
+        error.error === 'INVALID_TOKEN' &&
         this.autoRefreshToken
       ) {
         try {
@@ -421,14 +414,13 @@ export class HttpClient {
           if (newTokenData.refreshToken) {
             this.setRefreshToken(newTokenData.refreshToken);
           }
-          return await this.handleRequest<T>(method, path, options);
-        } catch (refresh) {
-          const refreshError = error as InsForgeError;
+          return await this.handleRequest<T>(method, path, { ...options });
+        } catch (error) {
           this.tokenManager.clearSession();
           this.userToken = null;
           this.refreshToken = null;
           clearCsrfToken();
-          throw refreshError;
+          throw error;
         }
       }
       throw error;
