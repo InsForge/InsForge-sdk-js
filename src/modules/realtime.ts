@@ -91,8 +91,7 @@ export class Realtime {
     }
 
     this.connectPromise = new Promise((resolve, reject) => {
-      const session = this.tokenManager.getSession();
-      const token = session?.accessToken ?? this.anonKey;
+      const token = this.tokenManager.getAccessToken() ?? this.anonKey;
       
 
       this.socket = io(this.baseUrl, {

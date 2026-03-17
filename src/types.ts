@@ -39,21 +39,11 @@ export interface InsForgeConfig {
   fetch?: typeof fetch;
 
   /**
-   * Storage adapter for persisting tokens
+   * Enable server-side auth mode (SSR/Node runtime)
+   * In this mode auth endpoints use `client_type=mobile` and refresh_token body flow.
+   * @default false
    */
-  storage?: TokenStorage;
-
-  /**
-   * Whether to automatically refresh tokens before they expire
-   * @default true
-   */
-  autoRefreshToken?: boolean;
-
-  /**
-   * Whether to persist session in storage
-   * @default true
-   */
-  persistSession?: boolean;
+  isServerMode?: boolean;
 
   /**
    * Custom headers to include with every request
@@ -92,12 +82,6 @@ export interface InsForgeConfig {
    * @default 500
    */
   retryDelay?: number;
-}
-
-export interface TokenStorage {
-  getItem(key: string): string | null | Promise<string | null>;
-  setItem(key: string, value: string): void | Promise<void>;
-  removeItem(key: string): void | Promise<void>;
 }
 
 export interface AuthSession {

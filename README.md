@@ -170,8 +170,29 @@ The SDK supports the following configuration options:
 
 ```javascript
 const insforge = createClient({
-  baseUrl: 'http://localhost:7130',  // Required: Your InsForge backend URL
-  storageStrategy: 'localStorage'     // Optional: 'localStorage' or 'memory' (default: 'localStorage')
+  baseUrl: 'http://localhost:7130', // Your InsForge backend URL
+  anonKey: 'your-anon-key',         // Optional
+  isServerMode: false               // Optional (set true in SSR/server runtime)
+});
+```
+
+### SSR / Next.js
+
+For SSR apps, configure `isServerMode: true`.
+In this mode, auth requests use `client_type=mobile` so auth methods return `refreshToken` in the response body.
+The SDK does not auto-refresh in server mode; your Next.js app should manage refresh token flow.
+In server mode, the SDK does not persist session/user state.
+Read your access token from cookies in Next.js and pass it as `edgeFunctionToken` per request.
+Your app should write/update cookies itself after login/refresh.
+
+```typescript
+import { createClient } from '@insforge/sdk';
+const accessToken = /* read access token from request cookies */ null;
+
+const insforge = createClient({
+  baseUrl: process.env.INSFORGE_URL!,
+  isServerMode: true,
+  edgeFunctionToken: accessToken ?? undefined,
 });
 ```
 
@@ -211,7 +232,7 @@ if (error) {
 The SDK works in all modern browsers that support:
 - ES6+ features
 - Fetch API
-- LocalStorage (for session management)
+- Cookies (for refresh token flow)
 
 For Node.js environments, ensure you're using Node.js 18 or higher.
 
