@@ -277,7 +277,8 @@ Optional profile-update strict mode:
 `INSFORGE_INTEGRATION_REQUIRE_PROFILE_UPDATE` controls whether profile update must succeed in integration tests.
 When `INSFORGE_INTEGRATION_REQUIRE_PROFILE_UPDATE=true`, the test requires `setProfile` to succeed.
 When this variable is unset, the test tolerates `401/403` profile-update failures because some backends require extra permissions or setup for profile updates.
-Set this variable to `true` when your backend enforces those restrictions and you want strict verification for profile updates.
+Set this variable to `true` only when your backend allows profile updates and you want strict verification that `setProfile` consistently succeeds.
+Leave this variable unset (or `false`) when your backend enforces restrictions and may return `401/403`.
 
 ```bash
 INSFORGE_INTEGRATION_REQUIRE_PROFILE_UPDATE=true \
