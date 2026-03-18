@@ -271,6 +271,15 @@ INSFORGE_INTEGRATION_ANON_KEY=your-anon-key \
 npm run test:integration
 ```
 
+Optional strict profile-update assertion (fail test when update is unauthorized):
+
+```bash
+INSFORGE_INTEGRATION_REQUIRE_PROFILE_UPDATE=true \
+INSFORGE_INTEGRATION_BASE_URL=https://your-app.region.insforge.app \
+INSFORGE_INTEGRATION_ANON_KEY=your-anon-key \
+npm run test:integration
+```
+
 ## License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICENSE) file for details.

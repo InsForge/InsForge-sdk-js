@@ -9,6 +9,8 @@ const describeIfIntegration = hasIntegrationSecrets ? describe : describe.skip;
 const existingEmail = process.env.INSFORGE_INTEGRATION_TEST_EMAIL;
 const existingPassword = process.env.INSFORGE_INTEGRATION_TEST_PASSWORD;
 const useExistingCredentials = Boolean(existingEmail && existingPassword);
+const requireProfileUpdate =
+  process.env.INSFORGE_INTEGRATION_REQUIRE_PROFILE_UPDATE === "true";
 
 const generatedEmail = `sdk-int-${Date.now()}-${Math.random()
   .toString(36)
@@ -21,7 +23,28 @@ const password = existingPassword || generatedPassword;
 describeIfIntegration("Auth Module - Integration Tests", () => {
   let client: InsForgeClient;
   let currentUserId = "";
-  let hasSessionToken = false;
+
+  const sleep = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+  const hasActiveSession = async (pollAttempts = 5, pollDelayMs = 250) => {
+    for (let i = 0; i < pollAttempts; i += 1) {
+      const session = await client.auth.getCurrentSession();
+      if (
+        !session.error &&
+        session.data.session?.accessToken &&
+        session.data.session?.user?.id
+      ) {
+        return true;
+      }
+
+      if (i < pollAttempts - 1) {
+        await sleep(pollDelayMs);
+      }
+    }
+
+    return false;
+  };
 
   const signInWithRetry = async (attempts = 3) => {
     let lastErrorMessage = "";
@@ -29,17 +52,36 @@ describeIfIntegration("Auth Module - Integration Tests", () => {
     for (let i = 0; i < attempts; i += 1) {
       const signIn = await client.auth.signInWithPassword({ email, password });
       if (!signIn.error) {
-        return signIn;
+        const sessionReady = await hasActiveSession();
+        if (sessionReady) {
+          return signIn;
+        }
+
+        lastErrorMessage =
+          "signIn succeeded but authenticated session was not ready in time";
+      } else {
+        lastErrorMessage = signIn.error.message || "unknown sign-in error";
       }
 
-      lastErrorMessage = signIn.error.message || "unknown sign-in error";
-
       if (i < attempts - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await sleep(500);
       }
     }
 
-    throw new Error(`signInWithPassword failed after ${attempts} attempts: ${lastErrorMessage}`);
+    throw new Error(
+      `signInWithPassword failed after ${attempts} attempts: ${lastErrorMessage}`
+    );
+  };
+
+  const assertAuthFailureContract = (
+    response: Awaited<ReturnType<InsForgeClient["auth"]["signInWithPassword"]>>
+  ) => {
+    expect(response.data).toBeNull();
+    expect(response.error).toBeTruthy();
+    expect(response.error?.statusCode).toBeDefined();
+    expect([400, 401, 403]).toContain(response.error?.statusCode);
+    expect(response.error?.error).toBeTruthy();
+    expect(response.error?.message).toBeTruthy();
   };
 
   beforeAll(async () => {
@@ -64,7 +106,6 @@ describeIfIntegration("Auth Module - Integration Tests", () => {
     }
 
     const signIn = await signInWithRetry();
-    hasSessionToken = Boolean(signIn.data?.accessToken);
 
     currentUserId = signIn.data?.user?.id || "";
     if (!currentUserId) {
@@ -79,10 +120,10 @@ describeIfIntegration("Auth Module - Integration Tests", () => {
 
   it("should successfully sign in with valid credentials", async () => {
     const response = await signInWithRetry();
-    hasSessionToken = hasSessionToken || Boolean(response.data?.accessToken);
 
     expect(response.error).toBeNull();
     expect(response.data).toBeTruthy();
+    expect(response.data?.accessToken).toBeTruthy();
     expect(response.data?.user?.id).toBeTruthy();
   }, 30000);
 
@@ -92,8 +133,7 @@ describeIfIntegration("Auth Module - Integration Tests", () => {
       password: `${password}-wrong`,
     });
 
-    expect(response.data).toBeNull();
-    expect(response.error).toBeTruthy();
+    assertAuthFailureContract(response);
   }, 30000);
 
   it("should fail with non-existent email", async () => {
@@ -103,8 +143,7 @@ describeIfIntegration("Auth Module - Integration Tests", () => {
       password,
     });
 
-    expect(response.data).toBeNull();
-    expect(response.error).toBeTruthy();
+    assertAuthFailureContract(response);
   }, 30000);
 
   it("should return current session after sign in", async () => {
@@ -112,10 +151,8 @@ describeIfIntegration("Auth Module - Integration Tests", () => {
 
     expect(response.error).toBeNull();
     expect(response.data).toBeTruthy();
-    expect(response.data).toHaveProperty("session");
-    if (response.data.session) {
-      expect(response.data.session.user?.id).toBeTruthy();
-    }
+    expect(response.data.session).not.toBeNull();
+    expect(response.data.session?.user?.id).toBeTruthy();
   }, 30000);
 
   it("should get user profile after sign in", async () => {
@@ -131,11 +168,13 @@ describeIfIntegration("Auth Module - Integration Tests", () => {
       displayName: updatedName,
     });
 
-    if (response.error) {
+    if (!requireProfileUpdate && response.error) {
       expect([401, 403]).toContain(response.error.statusCode);
+      expect(response.data).toBeNull();
       return;
     }
 
+    expect(response.error).toBeNull();
     expect(response.data).toBeTruthy();
   }, 30000);
 
@@ -152,8 +191,6 @@ describeIfIntegration("Auth Module - Integration Tests", () => {
 
     const currentSession = await client.auth.getCurrentSession();
     expect(currentSession.error).toBeNull();
-    if (hasSessionToken) {
-      expect(currentSession.data.session).toBeNull();
-    }
+    expect(currentSession.data.session).toBeNull();
   }, 30000);
 });
