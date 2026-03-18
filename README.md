@@ -251,6 +251,8 @@ The integration job runs only when the following repository secrets are set:
 - `INSFORGE_INTEGRATION_BASE_URL`
 - `INSFORGE_INTEGRATION_ANON_KEY`
 
+What gets tested: SDK initialization, authentication flows (sign-in, sign-out, session management, profile operations), and backend connectivity with a live InsForge instance.
+
 When these secrets are missing, the integration job is skipped with a clear reason message.
 
 To run integration tests locally with the same configuration:
@@ -271,7 +273,11 @@ INSFORGE_INTEGRATION_ANON_KEY=your-anon-key \
 npm run test:integration
 ```
 
-Optional strict profile-update assertion (fail test when update is unauthorized):
+Optional profile-update strict mode:
+`INSFORGE_INTEGRATION_REQUIRE_PROFILE_UPDATE` controls whether profile update must succeed in integration tests.
+When `INSFORGE_INTEGRATION_REQUIRE_PROFILE_UPDATE=true`, the test requires `setProfile` to succeed.
+When this variable is unset, the test tolerates `401/403` profile-update failures because some backends require extra permissions or setup for profile updates.
+Set this variable to `true` when your backend enforces those restrictions and you want strict verification for profile updates.
 
 ```bash
 INSFORGE_INTEGRATION_REQUIRE_PROFILE_UPDATE=true \
