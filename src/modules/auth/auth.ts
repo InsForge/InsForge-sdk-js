@@ -10,7 +10,7 @@ import {
   setCsrfToken,
   clearCsrfToken,
 } from '../../lib/token-manager';
-import { AuthSession, InsForgeError } from '../../types';
+import { AuthRefreshResponse, AuthSession, InsForgeError } from '../../types';
 import {
   generateCodeVerifier,
   generateCodeChallenge,
@@ -494,14 +494,7 @@ export class Auth {
       if (typeof window !== 'undefined') {
         try {
           const csrfToken = getCsrfToken();
-          const response = await this.http.post<{
-            accessToken: string;
-            user?: UserSchema;
-            csrfToken?: string;
-          }>('/api/auth/refresh', undefined, {
-            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
-            credentials: 'include',
-          });
+          const response = await this.http.handleTokenRefresh();
 
           if (response.accessToken) {
             this.tokenManager.setMemoryMode();

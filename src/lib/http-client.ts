@@ -5,7 +5,12 @@ import {
   AuthRefreshResponse,
 } from '../types';
 import { Logger } from './logger';
-import { clearCsrfToken, setCsrfToken, TokenManager } from './token-manager';
+import {
+  clearCsrfToken,
+  getCsrfToken,
+  setCsrfToken,
+  TokenManager,
+} from './token-manager';
 
 type JsonRequestBody = Record<string, unknown> | unknown[] | null;
 export interface RequestOptions extends Omit<RequestInit, 'body'> {
@@ -474,7 +479,7 @@ export class HttpClient {
     return headers;
   }
 
-  private async handleTokenRefresh(): Promise<AuthRefreshResponse> {
+  async handleTokenRefresh(): Promise<AuthRefreshResponse> {
     if (this.isRefreshing) {
       return this.refreshPromise!;
     }
@@ -482,6 +487,7 @@ export class HttpClient {
     this.isRefreshing = true;
     this.refreshPromise = (async () => {
       try {
+        const csrfToken = getCsrfToken();
         const body = this.refreshToken
           ? { refreshToken: this.refreshToken }
           : undefined;
@@ -490,6 +496,8 @@ export class HttpClient {
           '/auth/refresh',
           {
             body,
+            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+            credentials: 'include',
           },
         );
         return response;
