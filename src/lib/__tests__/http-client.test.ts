@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { HttpClient } from '../http-client';
 import { InsForgeError } from '../../types';
+import { TokenManager } from '../token-manager';
+import * as tokenManagerModule from '../token-manager';
 
 function createJsonResponse(status: number, body: any, statusText = 'OK'): Response {
   return {
@@ -13,17 +15,30 @@ function createJsonResponse(status: number, body: any, statusText = 'OK'): Respo
   } as Response;
 }
 
+function createMockTokenManager(): TokenManager {
+  return {
+    saveSession: vi.fn(),
+    clearSession: vi.fn(),
+    getSession: vi.fn().mockReturnValue(null),
+    getAccessToken: vi.fn().mockReturnValue(null),
+  } as unknown as TokenManager;
+}
+
 function createClient(
   fetchFn: ReturnType<typeof vi.fn>,
-  overrides: Record<string, any> = {}
+  overrides: Record<string, any> = {},
+  tokenManager?: TokenManager,
 ) {
-  return new HttpClient({
-    baseUrl: 'http://localhost:7130',
-    fetch: fetchFn as any,
-    retryCount: 0,
-    timeout: 0,
-    ...overrides,
-  });
+  return new HttpClient(
+    {
+      baseUrl: 'http://localhost:7130',
+      fetch: fetchFn as any,
+      retryCount: 0,
+      timeout: 0,
+      ...overrides,
+    },
+    tokenManager ?? createMockTokenManager(),
+  );
 }
 
 describe('HttpClient', () => {
@@ -410,14 +425,190 @@ describe('HttpClient', () => {
 
     it('should use default values when not specified', () => {
       const mockFetch = vi.fn();
-      const client = new HttpClient({
-        baseUrl: 'http://localhost:7130',
-        fetch: mockFetch as any,
-      });
+      const client = new HttpClient(
+        {
+          baseUrl: 'http://localhost:7130',
+          fetch: mockFetch as any,
+        },
+        createMockTokenManager(),
+      );
 
       // Verify the client was created successfully (defaults are set internally)
       expect(client).toBeDefined();
       expect(client.baseUrl).toBe('http://localhost:7130');
+    });
+  });
+
+  describe('token refresh', () => {
+    it('should refresh token and retry on 401 INVALID_TOKEN', async () => {
+      const tokenManager = createMockTokenManager();
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce(
+          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(200, { accessToken: 'new-token', user: { id: '1' } }),
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(200, { data: 'secret' }),
+        );
+
+      const client = createClient(mockFetch, {}, tokenManager);
+      const result = await client.get('/api/protected');
+
+      expect(result).toEqual({ data: 'secret' });
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(tokenManager.saveSession).toHaveBeenCalledOnce();
+    });
+
+    it('should NOT refresh token on 401 with other error codes', async () => {
+      const tokenManager = createMockTokenManager();
+      const mockFetch = vi.fn().mockResolvedValue(
+        createJsonResponse(401, { error: 'UNAUTHORIZED', message: 'Forbidden', statusCode: 401 }, 'Unauthorized'),
+      );
+
+      const client = createClient(mockFetch, {}, tokenManager);
+      const error = await client.get('/api/protected').catch((e: unknown) => e) as InsForgeError;
+
+      expect(error).toBeInstanceOf(InsForgeError);
+      expect(error.error).toBe('UNAUTHORIZED');
+      expect(mockFetch).toHaveBeenCalledOnce(); // No refresh attempt
+    });
+
+    it('should NOT refresh token when autoRefreshToken is false', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+      );
+
+      const client = createClient(mockFetch, { autoRefreshToken: false });
+      const error = await client.get('/api/protected').catch((e: unknown) => e) as InsForgeError;
+
+      expect(error).toBeInstanceOf(InsForgeError);
+      expect(mockFetch).toHaveBeenCalledOnce();
+    });
+
+    it('should use new access token on retry after refresh', async () => {
+      const tokenManager = createMockTokenManager();
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce(
+          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(200, { accessToken: 'fresh-token', user: { id: '1' } }),
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(200, { ok: true }),
+        );
+
+      const client = createClient(mockFetch, {}, tokenManager);
+      client.setAuthToken('old-token');
+      await client.get('/api/protected');
+
+      // Third call (the retry) should use the new token
+      const retryCallHeaders = mockFetch.mock.calls[2][1].headers;
+      expect(retryCallHeaders['Authorization']).toBe('Bearer fresh-token');
+    });
+
+    it('should send refresh token in body when available', async () => {
+      const tokenManager = createMockTokenManager();
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce(
+          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(200, { accessToken: 'new-token', user: { id: '1' } }),
+        )
+        .mockResolvedValueOnce(createJsonResponse(200, {}));
+
+      const client = createClient(mockFetch, {}, tokenManager);
+      client.setRefreshToken('my-refresh-token');
+      await client.get('/api/protected');
+
+      const refreshCallBody = JSON.parse(mockFetch.mock.calls[1][1].body);
+      expect(refreshCallBody).toEqual({ refreshToken: 'my-refresh-token' });
+    });
+
+    it('should send X-CSRF-Token header on refresh when CSRF token is available', async () => {
+      const tokenManager = createMockTokenManager();
+      vi.spyOn(tokenManagerModule, 'getCsrfToken').mockReturnValue('csrf-abc');
+
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce(
+          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(200, { accessToken: 'new-token', user: { id: '1' } }),
+        )
+        .mockResolvedValueOnce(createJsonResponse(200, {}));
+
+      const client = createClient(mockFetch, {}, tokenManager);
+      await client.get('/api/protected');
+
+      const refreshCallHeaders = mockFetch.mock.calls[1][1].headers;
+      expect(refreshCallHeaders['X-CSRF-Token']).toBe('csrf-abc');
+    });
+
+    it('should send credentials: include on refresh request', async () => {
+      const tokenManager = createMockTokenManager();
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce(
+          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(200, { accessToken: 'new-token', user: { id: '1' } }),
+        )
+        .mockResolvedValueOnce(createJsonResponse(200, {}));
+
+      const client = createClient(mockFetch, {}, tokenManager);
+      await client.get('/api/protected');
+
+      expect(mockFetch.mock.calls[1][1].credentials).toBe('include');
+    });
+
+    it('should clear session when refresh fails and rethrow refresh error', async () => {
+      const tokenManager = createMockTokenManager();
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce(
+          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(401, { error: 'REFRESH_EXPIRED', message: 'Refresh token expired', statusCode: 401 }, 'Unauthorized'),
+        );
+
+      const client = createClient(mockFetch, {}, tokenManager);
+      const error = await client.get('/api/protected').catch((e: unknown) => e) as InsForgeError;
+
+      expect(error).toBeInstanceOf(InsForgeError);
+      expect(error.error).toBe('REFRESH_EXPIRED');
+      expect(tokenManager.clearSession).toHaveBeenCalledOnce();
+    });
+
+    it('should deduplicate concurrent refresh calls', async () => {
+      const tokenManager = createMockTokenManager();
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce(
+          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(200, { accessToken: 'new-token', user: { id: '1' } }),
+        )
+        .mockResolvedValue(createJsonResponse(200, { ok: true }));
+
+      const client = createClient(mockFetch, {}, tokenManager);
+
+      await Promise.all([
+        client.get('/api/a'),
+        client.get('/api/b'),
+      ]);
+
+      // Only one refresh call should have been made (call index 2, after the two 401s)
+      const refreshCalls = mockFetch.mock.calls.filter(
+        ([url]: [string]) => url.includes('/auth/refresh'),
+      );
+      expect(refreshCalls).toHaveLength(1);
     });
   });
 });
