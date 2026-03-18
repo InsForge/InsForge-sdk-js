@@ -235,7 +235,7 @@ export class Auth {
   }> {
     try {
       const { provider, redirectTo, skipBrowserRedirect } = options;
-      const providerKey = provider.toLowerCase();
+      const providerKey = encodeURIComponent(provider.toLowerCase());
 
       const codeVerifier = generateCodeVerifier();
       const codeChallenge = await generateCodeChallenge(codeVerifier);
