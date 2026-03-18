@@ -261,6 +261,16 @@ INSFORGE_INTEGRATION_ANON_KEY=your-anon-key \
 npm run test:integration
 ```
 
+Optional auth-test credentials (when you want to use an existing account instead of auto-generated sign-up):
+
+```bash
+INSFORGE_INTEGRATION_TEST_EMAIL=existing-user@example.com \
+INSFORGE_INTEGRATION_TEST_PASSWORD=your-password \
+INSFORGE_INTEGRATION_BASE_URL=https://your-app.region.insforge.app \
+INSFORGE_INTEGRATION_ANON_KEY=your-anon-key \
+npm run test:integration
+```
+
 ## License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICENSE) file for details.
