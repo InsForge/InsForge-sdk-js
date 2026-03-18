@@ -33,6 +33,7 @@ import type {
   GetProfileResponse,
   OAuthCodeExchangeRequest,
 } from '@insforge/shared-schemas';
+import { oAuthProvidersSchema } from '@insforge/shared-schemas';
 
 interface AuthOptions {
   isServerMode?: boolean;
@@ -225,7 +226,7 @@ export class Auth {
    * Sign in with OAuth provider using PKCE flow
    */
   async signInWithOAuth(options: {
-    provider: OAuthProvidersSchema;
+    provider: OAuthProvidersSchema | string;
     redirectTo?: string;
     skipBrowserRedirect?: boolean;
   }): Promise<{
@@ -234,6 +235,7 @@ export class Auth {
   }> {
     try {
       const { provider, redirectTo, skipBrowserRedirect } = options;
+      const providerKey = encodeURIComponent(provider.toLowerCase());
 
       const codeVerifier = generateCodeVerifier();
       const codeChallenge = await generateCodeChallenge(codeVerifier);
@@ -241,8 +243,14 @@ export class Auth {
 
       const params: Record<string, string> = { code_challenge: codeChallenge };
       if (redirectTo) params.redirect_uri = redirectTo;
+      const isBuiltInProvider = oAuthProvidersSchema.options.includes(
+        providerKey as OAuthProvidersSchema
+      );
+      const oauthPath = isBuiltInProvider
+        ? `/api/auth/oauth/${providerKey}`
+        : `/api/auth/oauth/custom/${providerKey}`;
 
-      const response = await this.http.get<GetOauthUrlResponse>(`/api/auth/oauth/${provider}`, { params });
+      const response = await this.http.get<GetOauthUrlResponse>(oauthPath, { params });
 
       if (!this.isServerMode() && typeof window !== 'undefined' && !skipBrowserRedirect) {
         window.location.href = response.authUrl;
@@ -250,7 +258,7 @@ export class Auth {
       }
 
       return {
-        data: { url: response.authUrl, provider, codeVerifier },
+        data: { url: response.authUrl, provider: providerKey, codeVerifier },
         error: null,
       };
     } catch (error) {
