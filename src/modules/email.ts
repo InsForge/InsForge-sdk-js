@@ -54,10 +54,11 @@ export class Emails {
 
       return { data, error: null };
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') throw error;
       return {
         data: null,
         error: error instanceof InsForgeError ? error : new InsForgeError(
-          'Email send failed',
+          error instanceof Error ? error.message : 'Email send failed',
           500,
           'EMAIL_ERROR'
         ),

@@ -84,6 +84,7 @@ export class Functions {
         });
         return { data, error: null };
       } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') throw error;
         // If 404, fall through to proxy
         if (error instanceof InsForgeError && error.statusCode === 404) {
           // Function not found on subhosting, try proxy
@@ -92,7 +93,7 @@ export class Functions {
           return {
             data: null,
             error: error instanceof InsForgeError ? error : new InsForgeError(
-              'Function invocation failed',
+              error instanceof Error ? error.message : 'Function invocation failed',
               500,
               'FUNCTION_ERROR'
             ),
@@ -107,10 +108,11 @@ export class Functions {
       const data = await this.http.request<T>(method, path, { body, headers });
       return { data, error: null };
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') throw error;
       return {
         data: null,
         error: error instanceof InsForgeError ? error : new InsForgeError(
-          'Function invocation failed',
+          error instanceof Error ? error.message : 'Function invocation failed',
           500,
           'FUNCTION_ERROR'
         ),
