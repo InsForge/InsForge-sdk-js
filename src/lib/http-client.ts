@@ -493,7 +493,7 @@ export class HttpClient {
           : undefined;
         const response = await this.handleRequest<AuthRefreshResponse>(
           'POST',
-          '/auth/refresh',
+          '/api/auth/sessions/current',
           {
             body,
             headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
