@@ -67,27 +67,18 @@ export class InsForgeClient {
 
   constructor(config: InsForgeConfig = {}) {
     const logger = new Logger(config.debug);
-    this.tokenManager = new TokenManager(config.storage);
+    this.tokenManager = new TokenManager();
     this.http = new HttpClient(config, this.tokenManager, logger);
 
     // Check for edge function token
     if (config.edgeFunctionToken) {
       this.http.setAuthToken(config.edgeFunctionToken);
-      this.tokenManager.saveSession({
-        accessToken: config.edgeFunctionToken,
-        user: {} as any,
-      });
+      this.tokenManager.setAccessToken(config.edgeFunctionToken);
     }
 
-    // Check for existing session
-    // In secure mode: try to refresh to get access token
-    // In local mode: check localStorage
-    const existingSession = this.tokenManager.getSession();
-    if (existingSession?.accessToken) {
-      this.http.setAuthToken(existingSession.accessToken);
-    }
-
-    this.auth = new Auth(this.http, this.tokenManager);
+    this.auth = new Auth(this.http, this.tokenManager, {
+      isServerMode: config.isServerMode ?? false,
+    });
     this.database = new Database(this.http, this.tokenManager);
     this.storage = new Storage(this.http);
     this.ai = new AI(this.http);

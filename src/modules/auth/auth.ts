@@ -16,7 +16,6 @@ import {
   generateCodeChallenge,
   storePkceVerifier,
   retrievePkceVerifier,
-  isHostedAuthEnvironment,
   wrapError,
   cleanUrlParams,
 } from './helpers';
@@ -34,10 +33,16 @@ import type {
   ExchangeResetPasswordTokenRequest,
   VerifyEmailRequest,
   VerifyEmailResponse,
+  RefreshSessionResponse,
   UserSchema,
   GetProfileResponse,
   OAuthCodeExchangeRequest,
 } from '@insforge/shared-schemas';
+import { oAuthProvidersSchema } from '@insforge/shared-schemas';
+
+interface AuthOptions {
+  isServerMode?: boolean;
+}
 
 export class Auth {
   private authCallbackHandled: Promise<void>;
@@ -45,20 +50,26 @@ export class Auth {
   constructor(
     private http: HttpClient,
     private tokenManager: TokenManager,
+    private options: AuthOptions = {},
   ) {
     this.authCallbackHandled = this.detectAuthCallback();
   }
 
+  private isServerMode(): boolean {
+    return !!this.options.isServerMode;
+  }
+
   /**
    * Save session from API response
-   * Handles token storage, CSRF token, and HTTP client auth header
+   * Handles token storage, CSRF token, and HTTP auth header
    */
-  private saveSessionFromResponse(response: {
-    accessToken?: string | null;
-    user?: UserSchema;
-    csrfToken?: string | null;
-    refreshToken?: string | null;
-  }): boolean {
+  private saveSessionFromResponse(
+    response:
+      | CreateUserResponse
+      | CreateSessionResponse
+      | VerifyEmailResponse
+      | RefreshSessionResponse,
+  ): boolean {
     if (!response.accessToken || !response.user) {
       return false;
     }
@@ -68,12 +79,14 @@ export class Auth {
       user: response.user,
     };
 
-    if (response.csrfToken) {
-      this.tokenManager.setMemoryMode();
+    // Browser web flow: csrf token is returned for cookie-based refresh
+    if (!this.isServerMode() && response.csrfToken) {
       setCsrfToken(response.csrfToken);
     }
 
-    this.tokenManager.saveSession(session);
+    if (!this.isServerMode()) {
+      this.tokenManager.saveSession(session);
+    }
     this.http.setAuthToken(response.accessToken);
     this.http.setRefreshToken(response.refreshToken ?? null);
     return true;
@@ -88,7 +101,7 @@ export class Auth {
    * Supports PKCE flow (insforge_code) and legacy flow (access_token in URL)
    */
   private async detectAuthCallback(): Promise<void> {
-    if (typeof window === 'undefined') return;
+    if (this.isServerMode() || typeof window === 'undefined') return;
 
     try {
       const params = new URLSearchParams(window.location.search);
@@ -122,7 +135,6 @@ export class Auth {
         const name = params.get('name');
 
         if (csrfToken) {
-          this.tokenManager.setMemoryMode();
           setCsrfToken(csrfToken);
         }
 
@@ -164,7 +176,9 @@ export class Auth {
   }> {
     try {
       const response = await this.http.post<CreateUserResponse>(
-        '/api/auth/users',
+        this.isServerMode()
+          ? '/api/auth/users?client_type=mobile'
+          : '/api/auth/users',
         request,
         { credentials: 'include' },
       );
@@ -188,7 +202,9 @@ export class Auth {
   }> {
     try {
       const response = await this.http.post<CreateSessionResponse>(
-        '/api/auth/sessions',
+        this.isServerMode()
+          ? '/api/auth/sessions?client_type=mobile'
+          : '/api/auth/sessions',
         request,
         { credentials: 'include' },
       );
@@ -206,19 +222,24 @@ export class Auth {
 
   async signOut(): Promise<{ error: InsForgeError | null }> {
     try {
-      // Try backend logout (may fail for legacy backends)
+      // Try backend logout first
       try {
-        await this.http.post('/api/auth/logout', undefined, {
-          credentials: 'include',
-        });
+        await this.http.post(
+          this.isServerMode()
+            ? '/api/auth/logout?client_type=mobile'
+            : '/api/auth/logout',
+          undefined,
+          { credentials: 'include' },
+        );
       } catch {
-        // Ignore - legacy backend may not have this endpoint
+        // Ignore backend logout failure so local state is still cleared
       }
 
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
-      this.http.setRefreshToken(null);
-      clearCsrfToken();
+      if (!this.isServerMode()) {
+        clearCsrfToken();
+      }
 
       return { error: null };
     } catch {
@@ -236,7 +257,7 @@ export class Auth {
    * Sign in with OAuth provider using PKCE flow
    */
   async signInWithOAuth(options: {
-    provider: OAuthProvidersSchema;
+    provider: OAuthProvidersSchema | string;
     redirectTo?: string;
     skipBrowserRedirect?: boolean;
   }): Promise<{
@@ -245,6 +266,7 @@ export class Auth {
   }> {
     try {
       const { provider, redirectTo, skipBrowserRedirect } = options;
+      const providerKey = encodeURIComponent(provider.toLowerCase());
 
       const codeVerifier = generateCodeVerifier();
       const codeChallenge = await generateCodeChallenge(codeVerifier);
@@ -252,19 +274,28 @@ export class Auth {
 
       const params: Record<string, string> = { code_challenge: codeChallenge };
       if (redirectTo) params.redirect_uri = redirectTo;
-
-      const response = await this.http.get<GetOauthUrlResponse>(
-        `/api/auth/oauth/${provider}`,
-        { params },
+      const isBuiltInProvider = oAuthProvidersSchema.options.includes(
+        providerKey as OAuthProvidersSchema,
       );
+      const oauthPath = isBuiltInProvider
+        ? `/api/auth/oauth/${providerKey}`
+        : `/api/auth/oauth/custom/${providerKey}`;
 
-      if (typeof window !== 'undefined' && !skipBrowserRedirect) {
+      const response = await this.http.get<GetOauthUrlResponse>(oauthPath, {
+        params,
+      });
+
+      if (
+        !this.isServerMode() &&
+        typeof window !== 'undefined' &&
+        !skipBrowserRedirect
+      ) {
         window.location.href = response.authUrl;
         return { data: {}, error: null };
       }
 
       return {
-        data: { url: response.authUrl, provider, codeVerifier },
+        data: { url: response.authUrl, provider: providerKey, codeVerifier },
         error: null,
       };
     } catch (error) {
@@ -290,7 +321,12 @@ export class Auth {
     code: string,
     codeVerifier?: string,
   ): Promise<{
-    data: { accessToken: string; user: UserSchema; redirectTo?: string } | null;
+    data: {
+      accessToken: string;
+      refreshToken?: string;
+      user: UserSchema;
+      redirectTo?: string;
+    } | null;
     error: InsForgeError | null;
   }> {
     try {
@@ -311,18 +347,20 @@ export class Auth {
         code,
         code_verifier: verifier,
       };
-      const response = await this.http.post<{
-        accessToken: string;
-        user: UserSchema;
-        csrfToken?: string;
-        redirectTo?: string;
-      }>('/api/auth/oauth/exchange', request, { credentials: 'include' });
+      const response = await this.http.post<CreateSessionResponse>(
+        this.isServerMode()
+          ? '/api/auth/oauth/exchange?client_type=mobile'
+          : '/api/auth/oauth/exchange',
+        request,
+        { credentials: 'include' },
+      );
 
       this.saveSessionFromResponse(response);
 
       return {
         data: {
           accessToken: response.accessToken,
+          refreshToken: response.refreshToken,
           user: response.user,
           redirectTo: response.redirectTo,
         },
@@ -357,12 +395,7 @@ export class Auth {
     try {
       const { provider, token } = credentials;
 
-      const response = await this.http.post<{
-        accessToken: string;
-        refreshToken?: string;
-        user: UserSchema;
-        csrfToken?: string | null;
-      }>(
+      const response = await this.http.post<CreateSessionResponse>(
         '/api/auth/id-token?client_type=mobile',
         { provider, token },
         { credentials: 'include' },
@@ -394,78 +427,55 @@ export class Auth {
   // ============================================================================
 
   /**
-   * Get current session, automatically waits for pending OAuth callback
-   * @deprecated Use `getCurrentUser` instead
+   * Refresh the current auth session.
+   *
+   * Browser mode:
+   * - Uses httpOnly refresh cookie and optional CSRF header.
+   *
+   * Server mode (`isServerMode: true`):
+   * - Uses mobile auth flow and requires `refreshToken` in request body.
    */
-  async getCurrentSession(): Promise<{
-    data: { session: AuthSession | null };
+  async refreshSession(options?: { refreshToken?: string }): Promise<{
+    data: RefreshSessionResponse | null;
     error: InsForgeError | null;
   }> {
-    await this.authCallbackHandled;
-
     try {
-      // Check memory first
-      const session = this.tokenManager.getSession();
-      if (session) {
-        this.http.setAuthToken(session.accessToken);
-        return { data: { session }, error: null };
+      if (this.isServerMode() && !options?.refreshToken) {
+        return {
+          data: null,
+          error: new InsForgeError(
+            'refreshToken is required when refreshing session in server mode',
+            400,
+            'REFRESH_TOKEN_REQUIRED',
+          ),
+        };
       }
 
-      // Try refresh via httpOnly cookie (browser only)
-      if (typeof window !== 'undefined') {
-        try {
-          const csrfToken = getCsrfToken();
-          const response = await this.http.post<{
-            accessToken: string;
-            user?: UserSchema;
-            csrfToken?: string;
-          }>('/api/auth/refresh', undefined, {
-            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
-            credentials: 'include',
-          });
+      const csrfToken = !this.isServerMode() ? getCsrfToken() : null;
 
-          if (response.accessToken) {
-            this.tokenManager.setMemoryMode();
-            this.tokenManager.setAccessToken(response.accessToken);
-            this.http.setAuthToken(response.accessToken);
+      const response = await this.http.post<RefreshSessionResponse>(
+        this.isServerMode()
+          ? '/api/auth/refresh?client_type=mobile'
+          : '/api/auth/refresh',
+        this.isServerMode()
+          ? { refresh_token: options?.refreshToken }
+          : undefined,
+        {
+          headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+          credentials: 'include',
+        },
+      );
 
-            if (response.user) this.tokenManager.setUser(response.user);
-            if (response.csrfToken) setCsrfToken(response.csrfToken);
-
-            return {
-              data: { session: this.tokenManager.getSession() },
-              error: null,
-            };
-          }
-        } catch (error) {
-          if (error instanceof InsForgeError) {
-            if (error.statusCode === 404) {
-              // Legacy backend - try localStorage
-              this.tokenManager.setStorageMode();
-              const session = this.tokenManager.getSession();
-              if (session?.accessToken) {
-                this.http.setAuthToken(session.accessToken);
-              }
-              return { data: { session }, error: null };
-            }
-            return { data: { session: null }, error };
-          }
-        }
+      if (response.accessToken) {
+        this.saveSessionFromResponse(response);
       }
 
-      return { data: { session: null }, error: null };
+      return { data: response, error: null };
     } catch (error) {
-      if (error instanceof InsForgeError) {
-        return { data: { session: null }, error };
-      }
-      return {
-        data: { session: null },
-        error: new InsForgeError(
-          'An unexpected error occurred while getting session',
-          500,
-          'UNEXPECTED_ERROR',
-        ),
-      };
+      return wrapError(
+        error,
+        'An unexpected error occurred during session refresh',
+      );
     }
   }
 
@@ -478,12 +488,20 @@ export class Auth {
   }> {
     await this.authCallbackHandled;
 
-    if (isHostedAuthEnvironment()) {
-      return { data: { user: null }, error: null };
-    }
-
     try {
-      // Check memory first
+      if (this.isServerMode()) {
+        const accessToken = this.tokenManager.getAccessToken();
+        if (!accessToken) return { data: { user: null }, error: null };
+
+        this.http.setAuthToken(accessToken);
+        const response = await this.http.get<{ user: UserSchema }>(
+          '/api/auth/sessions/current',
+        );
+        const user = response.user ?? null;
+        return { data: { user }, error: null };
+      }
+
+      // Browser mode: check memory first
       const session = this.tokenManager.getSession();
       if (session) {
         this.http.setAuthToken(session.accessToken);
@@ -492,33 +510,13 @@ export class Auth {
 
       // Try refresh via httpOnly cookie (browser only)
       if (typeof window !== 'undefined') {
-        try {
-          const csrfToken = getCsrfToken();
-          const response = await this.http.handleTokenRefresh();
-
-          if (response.accessToken) {
-            this.tokenManager.setMemoryMode();
-            this.tokenManager.setAccessToken(response.accessToken);
-            this.http.setAuthToken(response.accessToken);
-
-            if (response.user) this.tokenManager.setUser(response.user);
-            if (response.csrfToken) setCsrfToken(response.csrfToken);
-
-            return { data: { user: response.user ?? null }, error: null };
-          }
-        } catch (error) {
-          if (error instanceof InsForgeError) {
-            if (error.statusCode === 404) {
-              // Legacy backend - try localStorage
-              this.tokenManager.setStorageMode();
-              const session = this.tokenManager.getSession();
-              if (session?.accessToken) {
-                this.http.setAuthToken(session.accessToken);
-              }
-              return { data: { user: session?.user ?? null }, error: null };
-            }
-            return { data: { user: null }, error };
-          }
+        const { data: refreshed, error: refreshError } =
+          await this.refreshSession();
+        if (refreshError) {
+          return { data: { user: null }, error: refreshError };
+        }
+        if (refreshed?.accessToken) {
+          return { data: { user: refreshed.user ?? null }, error: null };
         }
       }
 
@@ -566,11 +564,17 @@ export class Auth {
     try {
       const response = await this.http.patch<GetProfileResponse>(
         '/api/auth/profiles/current',
-        { profile },
+        {
+          profile,
+        },
       );
 
       const currentUser = this.tokenManager.getUser();
-      if (currentUser && response.profile !== undefined) {
+      if (
+        !this.isServerMode() &&
+        currentUser &&
+        response.profile !== undefined
+      ) {
         this.tokenManager.setUser({
           ...currentUser,
           profile: response.profile,
@@ -621,7 +625,9 @@ export class Auth {
   }> {
     try {
       const response = await this.http.post<VerifyEmailResponse>(
-        '/api/auth/email/verify',
+        this.isServerMode()
+          ? '/api/auth/email/verify?client_type=mobile'
+          : '/api/auth/email/verify',
         request,
         { credentials: 'include' },
       );
