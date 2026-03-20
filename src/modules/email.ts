@@ -1,4 +1,5 @@
 import { HttpClient } from '../lib/http-client';
+import { InsForgeError } from '../types';
 import type { SendRawEmailRequest, SendEmailResponse } from '@insforge/shared-schemas';
 
 export type { SendRawEmailRequest as SendEmailOptions, SendEmailResponse } from '@insforge/shared-schemas';
@@ -44,7 +45,7 @@ export class Emails {
    */
   async send(
     options: SendRawEmailRequest
-  ): Promise<{ data: SendEmailResponse | null; error: Error | null }> {
+  ): Promise<{ data: SendEmailResponse | null; error: InsForgeError | null }> {
     try {
       const data = await this.http.post<SendEmailResponse>(
         '/api/email/send-raw',
@@ -52,9 +53,16 @@ export class Emails {
       );
 
       return { data, error: null };
-    } catch (error: unknown) {
-      const normalizedError = error instanceof Error ? error : new Error(String(error));
-      return { data: null, error: normalizedError };
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') throw error;
+      return {
+        data: null,
+        error: error instanceof InsForgeError ? error : new InsForgeError(
+          error instanceof Error ? error.message : 'Email send failed',
+          500,
+          'EMAIL_ERROR'
+        ),
+      };
     }
   }
 }
