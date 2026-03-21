@@ -1,4 +1,5 @@
 import { HttpClient } from '../lib/http-client';
+import { InsForgeError } from '../types';
 
 export interface FunctionInvokeOptions {
   /**
@@ -71,7 +72,7 @@ export class Functions {
   async invoke<T = any>(
     slug: string,
     options: FunctionInvokeOptions = {}
-  ): Promise<{ data: T | null; error: Error | null }> {
+  ): Promise<{ data: T | null; error: InsForgeError | null }> {
     const { method = 'POST', body, headers = {} } = options;
 
     // Try direct subhosting URL first if configured
@@ -82,13 +83,21 @@ export class Functions {
           headers,
         });
         return { data, error: null };
-      } catch (error: any) {
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') throw error;
         // If 404, fall through to proxy
-        if (error?.statusCode === 404) {
+        if (error instanceof InsForgeError && error.statusCode === 404) {
           // Function not found on subhosting, try proxy
         } else {
           // Other errors, return immediately
-          return { data: null, error };
+          return {
+            data: null,
+            error: error instanceof InsForgeError ? error : new InsForgeError(
+              error instanceof Error ? error.message : 'Function invocation failed',
+              500,
+              'FUNCTION_ERROR'
+            ),
+          };
         }
       }
     }
@@ -98,8 +107,16 @@ export class Functions {
       const path = `/functions/${slug}`;
       const data = await this.http.request<T>(method, path, { body, headers });
       return { data, error: null };
-    } catch (error: any) {
-      return { data: null, error };
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') throw error;
+      return {
+        data: null,
+        error: error instanceof InsForgeError ? error : new InsForgeError(
+          error instanceof Error ? error.message : 'Function invocation failed',
+          500,
+          'FUNCTION_ERROR'
+        ),
+      };
     }
   }
 }

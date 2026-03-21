@@ -39,21 +39,11 @@ export interface InsForgeConfig {
   fetch?: typeof fetch;
 
   /**
-   * Storage adapter for persisting tokens
+   * Enable server-side auth mode (SSR/Node runtime)
+   * In this mode auth endpoints use `client_type=mobile` and refresh_token body flow.
+   * @default false
    */
-  storage?: TokenStorage;
-
-  /**
-   * Whether to automatically refresh tokens before they expire
-   * @default true
-   */
-  autoRefreshToken?: boolean;
-
-  /**
-   * Whether to persist session in storage
-   * @default true
-   */
-  persistSession?: boolean;
+  isServerMode?: boolean;
 
   /**
    * Custom headers to include with every request
@@ -67,12 +57,31 @@ export interface InsForgeConfig {
    * @default false
    */
   debug?: boolean | ((message: string, ...args: any[]) => void);
-}
 
-export interface TokenStorage {
-  getItem(key: string): string | null | Promise<string | null>;
-  setItem(key: string, value: string): void | Promise<void>;
-  removeItem(key: string): void | Promise<void>;
+  /**
+   * Request timeout in milliseconds.
+   * Requests that exceed this duration will be aborted.
+   * Set to 0 to disable timeout.
+   * @default 30000
+   */
+  timeout?: number;
+
+  /**
+   * Maximum number of retry attempts for failed requests.
+   * Retries are triggered on network errors and server errors (5xx).
+   * Client errors (4xx) are never retried.
+   * Set to 0 to disable retries.
+   * @default 3
+   */
+  retryCount?: number;
+
+  /**
+   * Initial delay in milliseconds before the first retry.
+   * The delay doubles with each subsequent attempt (exponential backoff)
+   * with ±15% jitter to prevent thundering herd.
+   * @default 500
+   */
+  retryDelay?: number;
 }
 
 export interface AuthSession {
