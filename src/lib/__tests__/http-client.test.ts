@@ -606,7 +606,7 @@ describe('HttpClient', () => {
 
       // Only one refresh call should have been made (call index 2, after the two 401s)
       const refreshCalls = mockFetch.mock.calls.filter(
-        ([url]: [string]) => url.includes('/auth/refresh'),
+        ([url]: [string]) => url.includes('/api/auth/sessions/current'),
       );
       expect(refreshCalls).toHaveLength(1);
     });

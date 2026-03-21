@@ -51,11 +51,11 @@ export class HttpClient {
    */
   constructor(
     config: InsForgeConfig,
-    tokenManager: TokenManager,
+    tokenManager?: TokenManager,
     logger?: Logger,
   ) {
     this.baseUrl = config.baseUrl || 'http://localhost:7130';
-    this.autoRefreshToken = true;
+    this.autoRefreshToken = config.autoRefreshToken ?? true;
     // Properly bind fetch to maintain its context
     this.fetch =
       config.fetch ||
@@ -66,7 +66,7 @@ export class HttpClient {
     this.defaultHeaders = {
       ...config.headers,
     };
-    this.tokenManager = tokenManager;
+    this.tokenManager = tokenManager ?? new TokenManager();
     this.logger = logger || new Logger(false);
     this.timeout = config.timeout ?? 30_000;
     this.retryCount = config.retryCount ?? 3;

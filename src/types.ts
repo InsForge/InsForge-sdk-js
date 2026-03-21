@@ -82,6 +82,13 @@ export interface InsForgeConfig {
    * @default 500
    */
   retryDelay?: number;
+
+  /**
+   * Automatically refresh the access token when a request fails with 401 INVALID_TOKEN.
+   * When true, the SDK will attempt a token refresh and retry the original request.
+   * @default true
+   */
+  autoRefreshToken?: boolean;
 }
 
 export interface AuthSession {

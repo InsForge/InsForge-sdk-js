@@ -237,6 +237,7 @@ export class Auth {
 
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
+      this.http.setRefreshToken(null);
       if (!this.isServerMode()) {
         clearCsrfToken();
       }
