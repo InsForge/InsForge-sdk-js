@@ -4,8 +4,13 @@
  */
 
 import { HttpClient } from '../../lib/http-client';
-import { TokenManager, getCsrfToken, setCsrfToken, clearCsrfToken } from '../../lib/token-manager';
-import { AuthSession, InsForgeError } from '../../types';
+import {
+  TokenManager,
+  getCsrfToken,
+  setCsrfToken,
+  clearCsrfToken,
+} from '../../lib/token-manager';
+import { AuthRefreshResponse, AuthSession, InsForgeError } from '../../types';
 import {
   generateCodeVerifier,
   generateCodeChallenge,
@@ -45,7 +50,7 @@ export class Auth {
   constructor(
     private http: HttpClient,
     private tokenManager: TokenManager,
-    private options: AuthOptions = {}
+    private options: AuthOptions = {},
   ) {
     this.authCallbackHandled = this.detectAuthCallback();
   }
@@ -59,7 +64,11 @@ export class Auth {
    * Handles token storage, CSRF token, and HTTP auth header
    */
   private saveSessionFromResponse(
-    response: CreateUserResponse | CreateSessionResponse | VerifyEmailResponse | RefreshSessionResponse
+    response:
+      | CreateUserResponse
+      | CreateSessionResponse
+      | VerifyEmailResponse
+      | RefreshSessionResponse,
   ): boolean {
     if (!response.accessToken || !response.user) {
       return false;
@@ -79,6 +88,7 @@ export class Auth {
       this.tokenManager.saveSession(session);
     }
     this.http.setAuthToken(response.accessToken);
+    this.http.setRefreshToken(response.refreshToken ?? null);
     return true;
   }
 
@@ -143,7 +153,13 @@ export class Auth {
 
         this.tokenManager.saveSession(session);
         this.http.setAuthToken(accessToken);
-        cleanUrlParams('access_token', 'user_id', 'email', 'name', 'csrf_token');
+        cleanUrlParams(
+          'access_token',
+          'user_id',
+          'email',
+          'name',
+          'csrf_token',
+        );
       }
     } catch (error) {
       console.debug('OAuth callback detection skipped:', error);
@@ -160,13 +176,18 @@ export class Auth {
   }> {
     try {
       const response = await this.http.post<CreateUserResponse>(
-        this.isServerMode() ? '/api/auth/users?client_type=mobile' : '/api/auth/users',
+        this.isServerMode()
+          ? '/api/auth/users?client_type=mobile'
+          : '/api/auth/users',
         request,
-        { credentials: 'include' }
+        { credentials: 'include' },
       );
 
       if (response.accessToken && response.user) {
         this.saveSessionFromResponse(response);
+      }
+      if (response.refreshToken) {
+        this.http.setRefreshToken(response.refreshToken);
       }
 
       return { data: response, error: null };
@@ -181,12 +202,18 @@ export class Auth {
   }> {
     try {
       const response = await this.http.post<CreateSessionResponse>(
-        this.isServerMode() ? '/api/auth/sessions?client_type=mobile' : '/api/auth/sessions',
+        this.isServerMode()
+          ? '/api/auth/sessions?client_type=mobile'
+          : '/api/auth/sessions',
         request,
-        { credentials: 'include' }
+        { credentials: 'include' },
       );
 
       this.saveSessionFromResponse(response);
+      if (response.refreshToken) {
+        this.http.setRefreshToken(response.refreshToken);
+      }
+
       return { data: response, error: null };
     } catch (error) {
       return wrapError(error, 'An unexpected error occurred during sign in');
@@ -198,9 +225,11 @@ export class Auth {
       // Try backend logout first
       try {
         await this.http.post(
-          this.isServerMode() ? '/api/auth/logout?client_type=mobile' : '/api/auth/logout',
+          this.isServerMode()
+            ? '/api/auth/logout?client_type=mobile'
+            : '/api/auth/logout',
           undefined,
-          { credentials: 'include' }
+          { credentials: 'include' },
         );
       } catch {
         // Ignore backend logout failure so local state is still cleared
@@ -208,13 +237,16 @@ export class Auth {
 
       this.tokenManager.clearSession();
       this.http.setAuthToken(null);
+      this.http.setRefreshToken(null);
       if (!this.isServerMode()) {
         clearCsrfToken();
       }
 
       return { error: null };
     } catch {
-      return { error: new InsForgeError('Failed to sign out', 500, 'SIGNOUT_ERROR') };
+      return {
+        error: new InsForgeError('Failed to sign out', 500, 'SIGNOUT_ERROR'),
+      };
     }
   }
 
@@ -244,15 +276,21 @@ export class Auth {
       const params: Record<string, string> = { code_challenge: codeChallenge };
       if (redirectTo) params.redirect_uri = redirectTo;
       const isBuiltInProvider = oAuthProvidersSchema.options.includes(
-        providerKey as OAuthProvidersSchema
+        providerKey as OAuthProvidersSchema,
       );
       const oauthPath = isBuiltInProvider
         ? `/api/auth/oauth/${providerKey}`
         : `/api/auth/oauth/custom/${providerKey}`;
 
-      const response = await this.http.get<GetOauthUrlResponse>(oauthPath, { params });
+      const response = await this.http.get<GetOauthUrlResponse>(oauthPath, {
+        params,
+      });
 
-      if (!this.isServerMode() && typeof window !== 'undefined' && !skipBrowserRedirect) {
+      if (
+        !this.isServerMode() &&
+        typeof window !== 'undefined' &&
+        !skipBrowserRedirect
+      ) {
         window.location.href = response.authUrl;
         return { data: {}, error: null };
       }
@@ -270,7 +308,7 @@ export class Auth {
         error: new InsForgeError(
           'An unexpected error occurred during OAuth initialization',
           500,
-          'UNEXPECTED_ERROR'
+          'UNEXPECTED_ERROR',
         ),
       };
     }
@@ -282,9 +320,14 @@ export class Auth {
    */
   async exchangeOAuthCode(
     code: string,
-    codeVerifier?: string
+    codeVerifier?: string,
   ): Promise<{
-    data: { accessToken: string; refreshToken?: string; user: UserSchema; redirectTo?: string } | null;
+    data: {
+      accessToken: string;
+      refreshToken?: string;
+      user: UserSchema;
+      redirectTo?: string;
+    } | null;
     error: InsForgeError | null;
   }> {
     try {
@@ -296,18 +339,21 @@ export class Auth {
           error: new InsForgeError(
             'PKCE code verifier not found. Ensure signInWithOAuth was called in the same browser session.',
             400,
-            'PKCE_VERIFIER_MISSING'
+            'PKCE_VERIFIER_MISSING',
           ),
         };
       }
 
-      const request: OAuthCodeExchangeRequest = { code, code_verifier: verifier };
+      const request: OAuthCodeExchangeRequest = {
+        code,
+        code_verifier: verifier,
+      };
       const response = await this.http.post<CreateSessionResponse>(
         this.isServerMode()
           ? '/api/auth/oauth/exchange?client_type=mobile'
           : '/api/auth/oauth/exchange',
         request,
-        { credentials: 'include' }
+        { credentials: 'include' },
       );
 
       this.saveSessionFromResponse(response);
@@ -322,7 +368,10 @@ export class Auth {
         error: null,
       };
     } catch (error) {
-      return wrapError(error, 'An unexpected error occurred during OAuth code exchange');
+      return wrapError(
+        error,
+        'An unexpected error occurred during OAuth code exchange',
+      );
     }
   }
 
@@ -337,7 +386,11 @@ export class Auth {
     provider: 'google';
     token: string;
   }): Promise<{
-    data: { accessToken: string; refreshToken?: string; user: UserSchema } | null;
+    data: {
+      accessToken: string;
+      refreshToken?: string;
+      user: UserSchema;
+    } | null;
     error: InsForgeError | null;
   }> {
     try {
@@ -346,10 +399,13 @@ export class Auth {
       const response = await this.http.post<CreateSessionResponse>(
         '/api/auth/id-token?client_type=mobile',
         { provider, token },
-        { credentials: 'include' }
+        { credentials: 'include' },
       );
 
       this.saveSessionFromResponse(response);
+      if (response.refreshToken) {
+        this.http.setRefreshToken(response.refreshToken);
+      }
 
       return {
         data: {
@@ -360,7 +416,10 @@ export class Auth {
         error: null,
       };
     } catch (error) {
-      return wrapError(error, 'An unexpected error occurred during ID token sign in');
+      return wrapError(
+        error,
+        'An unexpected error occurred during ID token sign in',
+      );
     }
   }
 
@@ -388,7 +447,7 @@ export class Auth {
           error: new InsForgeError(
             'refreshToken is required when refreshing session in server mode',
             400,
-            'REFRESH_TOKEN_REQUIRED'
+            'REFRESH_TOKEN_REQUIRED',
           ),
         };
       }
@@ -396,12 +455,16 @@ export class Auth {
       const csrfToken = !this.isServerMode() ? getCsrfToken() : null;
 
       const response = await this.http.post<RefreshSessionResponse>(
-        this.isServerMode() ? '/api/auth/refresh?client_type=mobile' : '/api/auth/refresh',
-        this.isServerMode() ? { refresh_token: options?.refreshToken } : undefined,
+        this.isServerMode()
+          ? '/api/auth/refresh?client_type=mobile'
+          : '/api/auth/refresh',
+        this.isServerMode()
+          ? { refresh_token: options?.refreshToken }
+          : undefined,
         {
           headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
           credentials: 'include',
-        }
+        },
       );
 
       if (response.accessToken) {
@@ -410,7 +473,10 @@ export class Auth {
 
       return { data: response, error: null };
     } catch (error) {
-      return wrapError(error, 'An unexpected error occurred during session refresh');
+      return wrapError(
+        error,
+        'An unexpected error occurred during session refresh',
+      );
     }
   }
 
@@ -429,7 +495,9 @@ export class Auth {
         if (!accessToken) return { data: { user: null }, error: null };
 
         this.http.setAuthToken(accessToken);
-        const response = await this.http.get<{ user: UserSchema }>('/api/auth/sessions/current');
+        const response = await this.http.get<{ user: UserSchema }>(
+          '/api/auth/sessions/current',
+        );
         const user = response.user ?? null;
         return { data: { user }, error: null };
       }
@@ -443,7 +511,8 @@ export class Auth {
 
       // Try refresh via httpOnly cookie (browser only)
       if (typeof window !== 'undefined') {
-        const { data: refreshed, error: refreshError } = await this.refreshSession();
+        const { data: refreshed, error: refreshError } =
+          await this.refreshSession();
         if (refreshError) {
           return { data: { user: null }, error: refreshError };
         }
@@ -462,7 +531,7 @@ export class Auth {
         error: new InsForgeError(
           'An unexpected error occurred while getting user',
           500,
-          'UNEXPECTED_ERROR'
+          'UNEXPECTED_ERROR',
         ),
       };
     }
@@ -477,10 +546,15 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.get<GetProfileResponse>(`/api/auth/profiles/${userId}`);
+      const response = await this.http.get<GetProfileResponse>(
+        `/api/auth/profiles/${userId}`,
+      );
       return { data: response, error: null };
     } catch (error) {
-      return wrapError(error, 'An unexpected error occurred while fetching user profile');
+      return wrapError(
+        error,
+        'An unexpected error occurred while fetching user profile',
+      );
     }
   }
 
@@ -489,18 +563,31 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.patch<GetProfileResponse>('/api/auth/profiles/current', {
-        profile,
-      });
+      const response = await this.http.patch<GetProfileResponse>(
+        '/api/auth/profiles/current',
+        {
+          profile,
+        },
+      );
 
       const currentUser = this.tokenManager.getUser();
-      if (!this.isServerMode() && currentUser && response.profile !== undefined) {
-        this.tokenManager.setUser({ ...currentUser, profile: response.profile });
+      if (
+        !this.isServerMode() &&
+        currentUser &&
+        response.profile !== undefined
+      ) {
+        this.tokenManager.setUser({
+          ...currentUser,
+          profile: response.profile,
+        });
       }
 
       return { data: response, error: null };
     } catch (error) {
-      return wrapError(error, 'An unexpected error occurred while updating user profile');
+      return wrapError(
+        error,
+        'An unexpected error occurred while updating user profile',
+      );
     }
   }
 
@@ -508,18 +595,23 @@ export class Auth {
   // Email Verification
   // ============================================================================
 
-  async resendVerificationEmail(request: SendVerificationEmailRequest): Promise<{
+  async resendVerificationEmail(
+    request: SendVerificationEmailRequest,
+  ): Promise<{
     data: { success: boolean; message: string } | null;
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{ success: boolean; message: string }>(
-        '/api/auth/email/send-verification',
-        request
-      );
+      const response = await this.http.post<{
+        success: boolean;
+        message: string;
+      }>('/api/auth/email/send-verification', request);
       return { data: response, error: null };
     } catch (error) {
-      return wrapError(error, 'An unexpected error occurred while sending verification code');
+      return wrapError(
+        error,
+        'An unexpected error occurred while sending verification code',
+      );
     }
   }
 
@@ -538,13 +630,19 @@ export class Auth {
           ? '/api/auth/email/verify?client_type=mobile'
           : '/api/auth/email/verify',
         request,
-        { credentials: 'include' }
+        { credentials: 'include' },
       );
 
       this.saveSessionFromResponse(response);
+      if (response.refreshToken) {
+        this.http.setRefreshToken(response.refreshToken);
+      }
       return { data: response, error: null };
     } catch (error) {
-      return wrapError(error, 'An unexpected error occurred while verifying email');
+      return wrapError(
+        error,
+        'An unexpected error occurred while verifying email',
+      );
     }
   }
 
@@ -552,33 +650,43 @@ export class Auth {
   // Password Reset
   // ============================================================================
 
-  async sendResetPasswordEmail(request: SendResetPasswordEmailRequest): Promise<{
+  async sendResetPasswordEmail(
+    request: SendResetPasswordEmailRequest,
+  ): Promise<{
     data: { success: boolean; message: string } | null;
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{ success: boolean; message: string }>(
-        '/api/auth/email/send-reset-password',
-        request
-      );
+      const response = await this.http.post<{
+        success: boolean;
+        message: string;
+      }>('/api/auth/email/send-reset-password', request);
       return { data: response, error: null };
     } catch (error) {
-      return wrapError(error, 'An unexpected error occurred while sending password reset code');
+      return wrapError(
+        error,
+        'An unexpected error occurred while sending password reset code',
+      );
     }
   }
 
-  async exchangeResetPasswordToken(request: ExchangeResetPasswordTokenRequest): Promise<{
+  async exchangeResetPasswordToken(
+    request: ExchangeResetPasswordTokenRequest,
+  ): Promise<{
     data: { token: string; expiresAt: string } | null;
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{ token: string; expiresAt: string }>(
-        '/api/auth/email/exchange-reset-password-token',
-        request
-      );
+      const response = await this.http.post<{
+        token: string;
+        expiresAt: string;
+      }>('/api/auth/email/exchange-reset-password-token', request);
       return { data: response, error: null };
     } catch (error) {
-      return wrapError(error, 'An unexpected error occurred while verifying reset code');
+      return wrapError(
+        error,
+        'An unexpected error occurred while verifying reset code',
+      );
     }
   }
 
@@ -587,13 +695,16 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{ message: string; redirectTo?: string }>(
-        '/api/auth/email/reset-password',
-        request
-      );
+      const response = await this.http.post<{
+        message: string;
+        redirectTo?: string;
+      }>('/api/auth/email/reset-password', request);
       return { data: response, error: null };
     } catch (error) {
-      return wrapError(error, 'An unexpected error occurred while resetting password');
+      return wrapError(
+        error,
+        'An unexpected error occurred while resetting password',
+      );
     }
   }
 
@@ -606,10 +717,15 @@ export class Auth {
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.get<GetPublicAuthConfigResponse>('/api/auth/public-config');
+      const response = await this.http.get<GetPublicAuthConfigResponse>(
+        '/api/auth/public-config',
+      );
       return { data: response, error: null };
     } catch (error) {
-      return wrapError(error, 'An unexpected error occurred while fetching auth configuration');
+      return wrapError(
+        error,
+        'An unexpected error occurred while fetching auth configuration',
+      );
     }
   }
 }

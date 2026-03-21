@@ -1,8 +1,21 @@
-import { InsForgeConfig, ApiError, InsForgeError } from '../types';
+import {
+  InsForgeConfig,
+  ApiError,
+  InsForgeError,
+  AuthRefreshResponse,
+} from '../types';
 import { Logger } from './logger';
+import {
+  clearCsrfToken,
+  getCsrfToken,
+  setCsrfToken,
+  TokenManager,
+} from './token-manager';
 
-export interface RequestOptions extends RequestInit {
+type JsonRequestBody = Record<string, unknown> | unknown[] | null;
+export interface RequestOptions extends Omit<RequestInit, 'body'> {
   params?: Record<string, string>;
+  body?: RequestInit['body'] | JsonRequestBody;
   /** Allow retrying non-idempotent requests (POST, PATCH). Off by default to prevent duplicate writes. */
   idempotent?: boolean;
 }
@@ -21,6 +34,11 @@ export class HttpClient {
   private anonKey: string | undefined;
   private userToken: string | null = null;
   private logger: Logger;
+  private autoRefreshToken: boolean = true;
+  private isRefreshing: boolean = false;
+  private refreshPromise: Promise<AuthRefreshResponse> | null = null;
+  private tokenManager: TokenManager;
+  private refreshToken: string | null = null;
   private timeout: number;
   private retryCount: number;
   private retryDelay: number;
@@ -28,16 +46,27 @@ export class HttpClient {
   /**
    * Creates a new HttpClient instance.
    * @param config - SDK configuration including baseUrl, timeout, retry settings, and fetch implementation.
+   * @param tokenManager - Token manager for session persistence.
    * @param logger - Optional logger instance for request/response debugging.
    */
-  constructor(config: InsForgeConfig, logger?: Logger) {
+  constructor(
+    config: InsForgeConfig,
+    tokenManager?: TokenManager,
+    logger?: Logger,
+  ) {
     this.baseUrl = config.baseUrl || 'http://localhost:7130';
+    this.autoRefreshToken = config.autoRefreshToken ?? true;
     // Properly bind fetch to maintain its context
-    this.fetch = config.fetch || (globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined as any);
+    this.fetch =
+      config.fetch ||
+      (globalThis.fetch
+        ? globalThis.fetch.bind(globalThis)
+        : (undefined as any));
     this.anonKey = config.anonKey;
     this.defaultHeaders = {
       ...config.headers,
     };
+    this.tokenManager = tokenManager ?? new TokenManager();
     this.logger = logger || new Logger(false);
     this.timeout = config.timeout ?? 30_000;
     this.retryCount = config.retryCount ?? 3;
@@ -45,7 +74,7 @@ export class HttpClient {
 
     if (!this.fetch) {
       throw new Error(
-        'Fetch is not available. Please provide a fetch implementation in the config.'
+        'Fetch is not available. Please provide a fetch implementation in the config.',
       );
     }
   }
@@ -61,20 +90,13 @@ export class HttpClient {
         // For select parameter, preserve the exact formatting by normalizing whitespace
         // This ensures PostgREST relationship queries work correctly
         if (key === 'select') {
-          // Normalize multiline select strings for PostgREST:
-          // 1. Replace all whitespace (including newlines) with single space
-          // 2. Remove spaces inside parentheses for proper PostgREST syntax
-          // 3. Keep spaces after commas at the top level for readability
           let normalizedValue = value.replace(/\s+/g, ' ').trim();
-
-          // Fix spaces around parentheses and inside them
           normalizedValue = normalizedValue
-            .replace(/\s*\(\s*/g, '(')  // Remove spaces around opening parens
-            .replace(/\s*\)\s*/g, ')')  // Remove spaces around closing parens
-            .replace(/\(\s+/g, '(')     // Remove spaces after opening parens
-            .replace(/\s+\)/g, ')')     // Remove spaces before closing parens
+            .replace(/\s*\(\s*/g, '(') // Remove spaces around opening parens
+            .replace(/\s*\)\s*/g, ')') // Remove spaces around closing parens
+            .replace(/\(\s+/g, '(') // Remove spaces after opening parens
+            .replace(/\s+\)/g, ')') // Remove spaces before closing parens
             .replace(/,\s+(?=[^()]*\))/g, ','); // Remove spaces after commas inside parens
-          
           url.searchParams.append(key, normalizedValue);
         } else {
           url.searchParams.append(key, value);
@@ -110,16 +132,24 @@ export class HttpClient {
    * @returns Parsed response data.
    * @throws {InsForgeError} On timeout, network failure, or HTTP error responses.
    */
-  async request<T>(
+  private async handleRequest<T>(
     method: string,
     path: string,
-    options: RequestOptions = {}
+    options: RequestOptions = {},
   ): Promise<T> {
-    const { params, headers = {}, body, signal: callerSignal, ...fetchOptions } = options as RequestOptions & { signal?: AbortSignal };
+    const {
+      params,
+      headers = {},
+      body,
+      signal: callerSignal,
+      ...fetchOptions
+    } = options as RequestOptions & { signal?: AbortSignal };
 
     const url = this.buildUrl(path, params);
     const startTime = Date.now();
-    const canRetry = IDEMPOTENT_METHODS.has(method.toUpperCase()) || options.idempotent === true;
+    const canRetry =
+      IDEMPOTENT_METHODS.has(method.toUpperCase()) ||
+      options.idempotent === true;
     const maxAttempts = canRetry ? this.retryCount : 0;
 
     const requestHeaders: Record<string, string> = {
@@ -150,9 +180,13 @@ export class HttpClient {
 
     // Normalize HeadersInit (Headers | [string,string][] | Record) to plain object
     if (headers instanceof Headers) {
-      headers.forEach((value, key) => { requestHeaders[key] = value; });
+      headers.forEach((value, key) => {
+        requestHeaders[key] = value;
+      });
     } else if (Array.isArray(headers)) {
-      headers.forEach(([key, value]) => { requestHeaders[key] = value; });
+      headers.forEach(([key, value]) => {
+        requestHeaders[key] = value;
+      });
     } else {
       Object.assign(requestHeaders, headers);
     }
@@ -164,13 +198,19 @@ export class HttpClient {
     for (let attempt = 0; attempt <= maxAttempts; attempt++) {
       if (attempt > 0) {
         const delay = this.computeRetryDelay(attempt);
-        this.logger.warn(`Retry ${attempt}/${maxAttempts} for ${method} ${url} in ${delay}ms`);
+        this.logger.warn(
+          `Retry ${attempt}/${maxAttempts} for ${method} ${url} in ${delay}ms`,
+        );
         // Abortable backoff sleep — respects caller cancellation
         if (callerSignal?.aborted) throw callerSignal.reason;
         await new Promise<void>((resolve, reject) => {
-          const onAbort = () => { clearTimeout(timer); reject(callerSignal!.reason); };
+          const onAbort = () => {
+            clearTimeout(timer);
+            reject(callerSignal!.reason);
+          };
           const timer = setTimeout(() => {
-            if (callerSignal) callerSignal.removeEventListener('abort', onAbort);
+            if (callerSignal)
+              callerSignal.removeEventListener('abort', onAbort);
             resolve();
           }, delay);
           if (callerSignal) {
@@ -195,11 +235,17 @@ export class HttpClient {
             controller.abort(callerSignal.reason);
           } else {
             const onCallerAbort = () => controller!.abort(callerSignal!.reason);
-            callerSignal.addEventListener('abort', onCallerAbort, { once: true });
-            // Clean up listener after fetch completes (timeout or success) to prevent accumulation
-            controller.signal.addEventListener('abort', () => {
-              callerSignal!.removeEventListener('abort', onCallerAbort);
-            }, { once: true });
+            callerSignal.addEventListener('abort', onCallerAbort, {
+              once: true,
+            });
+            // Clean up listener after fetch completes to prevent accumulation
+            controller.signal.addEventListener(
+              'abort',
+              () => {
+                callerSignal!.removeEventListener('abort', onCallerAbort);
+              },
+              { once: true },
+            );
           }
         }
       }
@@ -221,7 +267,7 @@ export class HttpClient {
           lastError = new InsForgeError(
             `Server error: ${response.status} ${response.statusText}`,
             response.status,
-            'SERVER_ERROR'
+            'SERVER_ERROR',
           );
           continue;
         }
@@ -249,7 +295,7 @@ export class HttpClient {
           throw new InsForgeError(
             `Failed to parse response body: ${parseErr?.message || 'Unknown error'}`,
             response.status,
-            response.ok ? 'PARSE_ERROR' : 'REQUEST_FAILED'
+            response.ok ? 'PARSE_ERROR' : 'REQUEST_FAILED',
           );
         }
 
@@ -258,7 +304,13 @@ export class HttpClient {
 
         // Handle errors
         if (!response.ok) {
-          this.logger.logResponse(method, url, response.status, Date.now() - startTime, data);
+          this.logger.logResponse(
+            method,
+            url,
+            response.status,
+            Date.now() - startTime,
+            data,
+          );
           if (data && typeof data === 'object' && 'error' in data) {
             // Add the HTTP status code if not already in the data
             if (!data.statusCode && !data.status) {
@@ -266,8 +318,12 @@ export class HttpClient {
             }
             const error = InsForgeError.fromApiError(data as ApiError);
             // Preserve all additional fields from the error response
-            Object.keys(data).forEach(key => {
-              if (key !== 'error' && key !== 'message' && key !== 'statusCode') {
+            Object.keys(data).forEach((key) => {
+              if (
+                key !== 'error' &&
+                key !== 'message' &&
+                key !== 'statusCode'
+              ) {
                 (error as any)[key] = data[key];
               }
             });
@@ -276,22 +332,33 @@ export class HttpClient {
           throw new InsForgeError(
             `Request failed: ${response.statusText}`,
             response.status,
-            'REQUEST_FAILED'
+            'REQUEST_FAILED',
           );
         }
 
-        this.logger.logResponse(method, url, response.status, Date.now() - startTime, data);
+        this.logger.logResponse(
+          method,
+          url,
+          response.status,
+          Date.now() - startTime,
+          data,
+        );
         return data as T;
       } catch (err: any) {
         if (timer !== undefined) clearTimeout(timer);
 
         // Determine if this was an SDK timeout or a caller abort
         if (err?.name === 'AbortError') {
-          if (controller && controller.signal.aborted && this.timeout > 0 && !callerSignal?.aborted) {
+          if (
+            controller &&
+            controller.signal.aborted &&
+            this.timeout > 0 &&
+            !callerSignal?.aborted
+          ) {
             throw new InsForgeError(
               `Request timed out after ${this.timeout}ms`,
               408,
-              'REQUEST_TIMEOUT'
+              'REQUEST_TIMEOUT',
             );
           }
           // Caller-initiated abort — propagate as-is
@@ -312,17 +379,57 @@ export class HttpClient {
         throw new InsForgeError(
           `Network request failed: ${err?.message || 'Unknown error'}`,
           0,
-          'NETWORK_ERROR'
+          'NETWORK_ERROR',
         );
       }
     }
 
     // Should not normally reach here, but safety net after exhausting retries
-    throw lastError || new InsForgeError(
-      'Request failed after all retry attempts',
-      0,
-      'NETWORK_ERROR'
+    throw (
+      lastError ||
+      new InsForgeError(
+        'Request failed after all retry attempts',
+        0,
+        'NETWORK_ERROR',
+      )
     );
+  }
+
+  async request<T>(
+    method: string,
+    path: string,
+    options: RequestOptions = {},
+  ): Promise<T> {
+    try {
+      return await this.handleRequest<T>(method, path, { ...options });
+    } catch (error) {
+      if (
+        error instanceof InsForgeError &&
+        error.statusCode === 401 &&
+        error.error === 'INVALID_TOKEN' &&
+        this.autoRefreshToken
+      ) {
+        try {
+          const newTokenData = await this.handleTokenRefresh();
+          this.setAuthToken(newTokenData.accessToken);
+          this.tokenManager!.saveSession(newTokenData);
+          if (newTokenData.csrfToken) {
+            setCsrfToken(newTokenData.csrfToken);
+          }
+          if (newTokenData.refreshToken) {
+            this.setRefreshToken(newTokenData.refreshToken);
+          }
+          return await this.handleRequest<T>(method, path, { ...options });
+        } catch (error) {
+          this.tokenManager.clearSession();
+          this.userToken = null;
+          this.refreshToken = null;
+          clearCsrfToken();
+          throw error;
+        }
+      }
+      throw error;
+    }
   }
 
   /** Performs a GET request. */
@@ -355,16 +462,51 @@ export class HttpClient {
     this.userToken = token;
   }
 
+  setRefreshToken(token: string | null) {
+    this.refreshToken = token;
+  }
+
   /** Returns the current default headers including the authorization header if set. */
   getHeaders(): Record<string, string> {
     const headers = { ...this.defaultHeaders };
-    
+
     // Include Authorization header if token is available (same logic as request method)
     const authToken = this.userToken || this.anonKey;
     if (authToken) {
       headers['Authorization'] = `Bearer ${authToken}`;
     }
-    
+
     return headers;
+  }
+
+  async handleTokenRefresh(): Promise<AuthRefreshResponse> {
+    if (this.isRefreshing) {
+      return this.refreshPromise!;
+    }
+
+    this.isRefreshing = true;
+    this.refreshPromise = (async () => {
+      try {
+        const csrfToken = getCsrfToken();
+        const body = this.refreshToken
+          ? { refreshToken: this.refreshToken }
+          : undefined;
+        const response = await this.handleRequest<AuthRefreshResponse>(
+          'POST',
+          '/api/auth/sessions/current',
+          {
+            body,
+            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+            credentials: 'include',
+          },
+        );
+        return response;
+      } finally {
+        this.isRefreshing = false;
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
   }
 }
