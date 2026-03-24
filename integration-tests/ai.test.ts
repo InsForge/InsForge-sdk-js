@@ -23,6 +23,21 @@ const EMBEDDINGS_MODEL = 'openai/text-embedding-3-small';
 const CHAT_MODEL = 'openai/gpt-4o-mini';
 const IMAGE_MODEL = 'openai/dall-e-3';
 
+/** Check if an error indicates the model is unavailable/disabled (not a real failure). */
+function isModelUnavailable(err: any): boolean {
+  const msg = (err?.message || '').toLowerCase();
+  const code = err?.code || err?.error || '';
+  return (
+    code === 'model_not_found' ||
+    msg.includes('not available') ||
+    msg.includes('unavailable') ||
+    msg.includes('disabled') ||
+    msg.includes('not enabled') ||
+    msg.includes('not found') ||
+    msg.includes('not supported')
+  );
+}
+
 describe('AI Module', () => {
   let client: InsForgeClient;
 
@@ -45,6 +60,7 @@ describe('AI Module', () => {
           input: 'Hello world',
         });
       } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
         console.warn('Embeddings model not available:', err.message);
         return;
       }
@@ -69,6 +85,7 @@ describe('AI Module', () => {
           input: ['Hello world', 'Goodbye world', 'Testing embeddings'],
         });
       } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
         console.warn('Embeddings model not available:', err.message);
         return;
       }
@@ -94,6 +111,7 @@ describe('AI Module', () => {
           dimensions: 256,
         });
       } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
         console.warn('Embeddings model not available:', err.message);
         return;
       }
@@ -115,6 +133,7 @@ describe('AI Module', () => {
           messages: [{ role: 'user', content: 'Reply with exactly the word: pong' }],
         });
       } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
         console.warn('Chat model not available:', err.message);
         return;
       }
@@ -143,6 +162,7 @@ describe('AI Module', () => {
           ],
         });
       } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
         console.warn('Chat model not available:', err.message);
         return;
       }
@@ -162,6 +182,7 @@ describe('AI Module', () => {
           ],
         });
       } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
         console.warn('Chat model not available:', err.message);
         return;
       }
@@ -184,6 +205,7 @@ describe('AI Module', () => {
           stream: true,
         });
       } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
         console.warn('Streaming not available:', err.message);
         return;
       }
@@ -225,11 +247,18 @@ describe('AI Module', () => {
     };
 
     it('should return tool_calls when tools are provided', async () => {
-      const response = await client.ai.chat.completions.create({
-        model: CHAT_MODEL,
-        messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
-        tools: [weatherTool],
-      });
+      let response: any;
+      try {
+        response = await client.ai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
+          tools: [weatherTool],
+        });
+      } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
+        console.warn('Chat model not available:', err.message);
+        return;
+      }
 
       expect(response.choices).toHaveLength(1);
       const msg = response.choices[0].message;
@@ -254,6 +283,7 @@ describe('AI Module', () => {
           toolChoice: 'none',
         });
       } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
         console.warn('Chat model not available:', err.message);
         return;
       }
@@ -278,7 +308,7 @@ describe('AI Module', () => {
           webSearch: { enabled: true, maxResults: 3 },
         });
       } catch (err: any) {
-        // Web search may not be enabled
+        if (!isModelUnavailable(err)) throw err;
         console.warn('Web search not available:', err.message);
         return;
       }
@@ -303,6 +333,7 @@ describe('AI Module', () => {
           prompt: 'A simple blue circle on white background',
         });
       } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
         console.warn('Image generation not available:', err.message);
         return;
       }

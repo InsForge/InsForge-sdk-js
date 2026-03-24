@@ -97,18 +97,13 @@ export { TEST_PASSWORD };
 /**
  * Sign up a fresh user and return an authenticated client.
  * Re-usable across every test file that needs an auth context.
+ *
+ * Delegates to signUpAndSignIn() to ensure the returned client
+ * has a valid session (signUp alone may not persist a session
+ * when the response doesn't include an accessToken).
  */
 export async function signUpFreshUser() {
-  const client = createClient();
-  const email = uniqueEmail();
-
-  const { data, error } = await client.auth.signUp({
-    email,
-    password: TEST_PASSWORD,
-    name: 'SDK Integration Test',
-  });
-
-  return { client, email, password: TEST_PASSWORD, data, error };
+  return signUpAndSignIn();
 }
 
 /**

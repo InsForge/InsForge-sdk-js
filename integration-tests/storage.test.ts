@@ -100,8 +100,8 @@ describe('Storage Module', () => {
         expect(error).toBeNull();
         expect(data).toBeDefined();
       } else {
-        // Bucket doesn't exist – API may return an error or empty result
-        expect(data !== null || error !== null || (data === null && error === null)).toBe(true);
+        // Bucket doesn't exist – expect either a structured error or a valid data response
+        expect(error !== null || (data !== null && typeof data === 'object')).toBe(true);
       }
     });
 
@@ -205,10 +205,7 @@ describe('Storage Module', () => {
 
       // Upload
       const { error: upErr } = await client.storage.from(BUCKET).upload(path, blob);
-      if (upErr) {
-        console.log('Upload failed, skipping download test:', upErr.message);
-        return;
-      }
+      expect(upErr).toBeNull();
 
       // Download
       const { data, error } = await client.storage.from(BUCKET).download(path);
