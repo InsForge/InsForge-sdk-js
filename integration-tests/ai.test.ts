@@ -26,14 +26,14 @@ const IMAGE_MODEL = 'openai/dall-e-3';
 /** Check if an error indicates the model is unavailable/disabled (not a real failure). */
 function isModelUnavailable(err: any): boolean {
   const msg = (err?.message || '').toLowerCase();
-  const code = err?.code || err?.error || '';
+  const code = (err?.code || err?.error || '').toLowerCase();
   return (
     code === 'model_not_found' ||
     msg.includes('not available') ||
     msg.includes('unavailable') ||
     msg.includes('disabled') ||
     msg.includes('not enabled') ||
-    msg.includes('not found') ||
+    msg.includes('model not found') ||
     msg.includes('not supported')
   );
 }
