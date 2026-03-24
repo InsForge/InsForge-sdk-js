@@ -82,12 +82,26 @@ export interface InsForgeConfig {
    * @default 500
    */
   retryDelay?: number;
+
+  /**
+   * Automatically refresh the access token when a request fails with 401 INVALID_TOKEN.
+   * When true, the SDK will attempt a token refresh and retry the original request.
+   * @default true
+   */
+  autoRefreshToken?: boolean;
 }
 
 export interface AuthSession {
   user: UserSchema;
   accessToken: string;
   expiresAt?: Date;
+}
+
+export interface AuthRefreshResponse {
+  user: UserSchema;
+  accessToken: string;
+  csrfToken?: string;
+  refreshToken?: string;
 }
 
 export interface ApiError {
@@ -102,7 +116,12 @@ export class InsForgeError extends Error {
   public error: string;
   public nextActions?: string;
 
-  constructor(message: string, statusCode: number, error: string, nextActions?: string) {
+  constructor(
+    message: string,
+    statusCode: number,
+    error: string,
+    nextActions?: string,
+  ) {
     super(message);
     this.name = 'InsForgeError';
     this.statusCode = statusCode;
@@ -115,7 +134,7 @@ export class InsForgeError extends Error {
       apiError.message,
       apiError.statusCode,
       apiError.error,
-      apiError.nextActions
+      apiError.nextActions,
     );
   }
 }
