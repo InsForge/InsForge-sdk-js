@@ -49,11 +49,54 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:run -- --coverage
-      - uses: actions/upload-artifact@v4
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
         if: matrix.node-version == 20
         with:
           name: coverage
           path: coverage/
+      - name: Generate coverage summary
+        if: matrix.node-version == 20
+        id: coverage-summary
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            echo "COVERAGE<<EOF" >> $GITHUB_OUTPUT
+            npx -y coverage-summary-to-text coverage/coverage-summary.json >> $GITHUB_OUTPUT 2>/dev/null || \
+            node -e "
+              const s = require('./coverage/coverage-summary.json').total;
+              const fmt = (m) => m.pct + '%';
+              console.log('Coverage Summary');
+              console.log('================');
+              console.log('Statements: ' + fmt(s.statements));
+              console.log('Branches:   ' + fmt(s.branches));
+              console.log('Functions:  ' + fmt(s.functions));
+              console.log('Lines:      ' + fmt(s.lines));
+            " >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "COVERAGE=Coverage report not generated" >> $GITHUB_OUTPUT
+          fi
+      - name: Email coverage report to maintainer
+        if: matrix.node-version == 20 && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SMTP_HOST }}
+          server_port: ${{ secrets.MAIL_SMTP_PORT }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[${{ github.repository }}] Coverage Report – ${{ github.sha }}"
+          to: ${{ secrets.MAINTAINER_EMAIL }}
+          from: ${{ secrets.MAIL_FROM || 'CI Bot <ci@insforge.dev>' }}
+          body: |
+            Coverage report for ${{ github.repository }}
+            Commit: ${{ github.sha }}
+            Branch: ${{ github.ref_name }}
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            ${{ steps.coverage-summary.outputs.COVERAGE }}
+
+            Full HTML report is available as a build artifact.
+          attachments: coverage/lcov.info
 
   integration-tests:
     name: Integration Tests
