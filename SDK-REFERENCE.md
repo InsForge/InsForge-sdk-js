@@ -69,12 +69,21 @@ const { data } = await insforge.auth.getCurrentUser();
 await insforge.auth.signUp({
   email: 'user@example.com',
   password: 'password123',
-  name: 'John Doe'  // optional
+  name: 'John Doe',  // optional
+  redirectTo: 'http://localhost:3000/verify-email' // optional, for link-based verification
 })
 // Response: { data: { user, accessToken }, error }
 // user: { id, email, name, emailVerified, createdAt, updatedAt }
 // accessToken: JWT token string
 ```
+
+If the backend uses link-based email verification, the emailed link opens:
+
+```text
+GET /api/auth/email/verify-link?token=...
+```
+
+InsForge validates the token first, then redirects the browser to your `redirectTo` URL.
 
 ### `signInWithPassword()`
 ```javascript
@@ -147,6 +156,55 @@ await insforge.auth.getPublicAuthConfig()
 // Response: { data: GetPublicAuthConfigResponse, error }
 // data: both OAuth providers and email authentication settings in one request
 // This is a public endpoint that doesn't require authentication
+```
+
+### `resendVerificationEmail()`
+```javascript
+await insforge.auth.resendVerificationEmail({
+  email: 'user@example.com',
+  redirectTo: 'http://localhost:3000/verify-email' // optional, for link-based verification
+})
+// Response: { data: { success, message }, error }
+```
+
+### `verifyEmail()`
+```javascript
+await insforge.auth.verifyEmail({
+  email: 'user@example.com',
+  otp: '123456'
+})
+// Response: { data: { user, accessToken, csrfToken?, refreshToken? }, error }
+// POST /api/auth/email/verify is code-only
+// Browser link verification uses GET /api/auth/email/verify-link
+```
+
+### `sendResetPasswordEmail()`
+```javascript
+await insforge.auth.sendResetPasswordEmail({
+  email: 'user@example.com',
+  redirectTo: 'http://localhost:3000/reset-password' // optional, for link-based reset
+})
+// Response: { data: { success, message }, error }
+```
+
+### `exchangeResetPasswordToken()`
+```javascript
+await insforge.auth.exchangeResetPasswordToken({
+  email: 'user@example.com',
+  code: '123456'
+})
+// Response: { data: { token, expiresAt }, error }
+```
+
+### `resetPassword()`
+```javascript
+await insforge.auth.resetPassword({
+  newPassword: 'newSecurePassword123',
+  otp: 'reset-token'
+})
+// Response: { data: { message }, error }
+// Browser reset links use GET /api/auth/email/reset-password-link first,
+// then your app submits the new password with POST /api/auth/email/reset-password.
 ```
 
 ## Error Handling

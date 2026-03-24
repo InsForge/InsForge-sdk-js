@@ -46,7 +46,8 @@ const insforge = createClient({
 const { data, error } = await insforge.auth.signUp({
   email: 'user@example.com',
   password: 'securePassword123',
-  name: 'John Doe' // optional
+  name: 'John Doe', // optional
+  redirectTo: 'http://localhost:3000/verify-email' // optional, for link-based verification
 });
 
 // Sign in with email/password
@@ -77,6 +78,47 @@ const { data: updatedProfile, error } = await insforge.auth.setProfile({
 // Sign out
 await insforge.auth.signOut();
 ```
+
+### Email Verification And Password Reset
+
+```javascript
+// Resend a verification email
+await insforge.auth.resendVerificationEmail({
+  email: 'user@example.com',
+  redirectTo: 'http://localhost:3000/verify-email' // optional, for link-based verification
+});
+
+// Verify email with a 6-digit code
+await insforge.auth.verifyEmail({
+  email: 'user@example.com',
+  otp: '123456'
+});
+
+// Send password reset email
+await insforge.auth.sendResetPasswordEmail({
+  email: 'user@example.com',
+  redirectTo: 'http://localhost:3000/reset-password' // optional, for link-based reset
+});
+
+// Code-based reset flow: exchange the code, then reset the password
+const { data: resetToken } = await insforge.auth.exchangeResetPasswordToken({
+  email: 'user@example.com',
+  code: '123456'
+});
+
+if (resetToken) {
+  await insforge.auth.resetPassword({
+    newPassword: 'newSecurePassword123',
+    otp: resetToken.token
+  });
+}
+```
+
+For link-based verification and password reset, users click the emailed browser links:
+- `GET /api/auth/email/verify-link`
+- `GET /api/auth/email/reset-password-link`
+
+Those backend endpoints validate the token first, then redirect the browser to your `redirectTo` URL.
 
 ### Database Operations
 
@@ -201,14 +243,14 @@ const insforge = createClient({
 The SDK is written in TypeScript and provides full type definitions:
 
 ```typescript
-import { createClient, InsForgeClient, User, Session } from '@insforge/sdk';
+import { createClient, InsForgeClient } from '@insforge/sdk';
 
 const insforge: InsForgeClient = createClient({
   baseUrl: 'http://localhost:7130'
 });
 
 // Type-safe API calls
-const response: { data: User | null; error: Error | null } =
+const response =
   await insforge.auth.getCurrentUser();
 ```
 

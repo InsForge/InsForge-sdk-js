@@ -557,7 +557,7 @@ export class Auth {
     } catch (error) {
       return wrapError(
         error,
-        'An unexpected error occurred while sending verification code',
+        'An unexpected error occurred while sending verification email',
       );
     }
   }
@@ -607,7 +607,7 @@ export class Auth {
     } catch (error) {
       return wrapError(
         error,
-        'An unexpected error occurred while sending password reset code',
+        'An unexpected error occurred while sending password reset email',
       );
     }
   }
