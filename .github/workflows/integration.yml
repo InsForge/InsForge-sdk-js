@@ -1,0 +1,38 @@
+name: Integration Tests (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      base-url:
+        description: 'InsForge project URL (overrides repo variable)'
+        required: false
+        type: string
+      test-filter:
+        description: 'Filter tests by name (e.g. "auth", "database", "ai")'
+        required: false
+        type: string
+  schedule:
+    # Run daily at 06:00 UTC to catch regressions
+    - cron: '0 6 * * *'
+
+jobs:
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run integration tests
+        run: |
+          if [ -n "${{ inputs.test-filter }}" ]; then
+            npx vitest run --config vitest.integration.config.ts -t "${{ inputs.test-filter }}"
+          else
+            npm run test:integration:ci
+          fi
+        env:
+          INSFORGE_INTEGRATION_BASE_URL: ${{ inputs.base-url || vars.INSFORGE_INTEGRATION_BASE_URL }}
+          INSFORGE_INTEGRATION_ANON_KEY: ${{ secrets.INSFORGE_INTEGRATION_ANON_KEY }}
