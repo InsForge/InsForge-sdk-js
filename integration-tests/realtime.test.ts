@@ -74,15 +74,18 @@ describe('Realtime Module', () => {
       try {
         await client.realtime.connect();
         realtimeAvailable = true;
-        expect(client.realtime.isConnected).toBe(true);
-        expect(client.realtime.connectionState).toBe('connected');
-        expect(client.realtime.socketId).toBeDefined();
       } catch (err: any) {
         realtimeAvailable = false;
         // Connection may fail (server down, not configured)
         expect(err.message).toBeDefined();
         console.warn('⚠ Realtime not available:', err.message);
+        return;
       }
+
+      // Assertions outside try/catch so failures are not masked
+      expect(client.realtime.isConnected).toBe(true);
+      expect(client.realtime.connectionState).toBe('connected');
+      expect(client.realtime.socketId).toBeDefined();
     });
   });
 
@@ -132,10 +135,9 @@ describe('Realtime Module', () => {
       const response = await client.realtime.subscribe(channel);
 
       expect(response).toBeDefined();
-      if (response.ok) {
-        expect(response.channel).toBe(channel);
-        expect(client.realtime.getSubscribedChannels()).toContain(channel);
-      }
+      expect(response.ok).toBe(true);
+      expect(response.channel).toBe(channel);
+      expect(client.realtime.getSubscribedChannels()).toContain(channel);
     });
 
     it('should return success for duplicate subscribe', async () => {

@@ -147,9 +147,18 @@ export async function signUpAndSignIn() {
   });
 
   if (error) {
-    // If sign-in fails (e.g. email verification required), return the client
-    // with just the anon key. All modules work with anon key via HttpClient.
-    return { client, email, password: TEST_PASSWORD, data: signUpData, error: null };
+    // Only treat email-verification-required as a non-error (expected in many projects)
+    const msg = (error.message || '').toLowerCase();
+    const isVerificationRequired =
+      msg.includes('verify') || msg.includes('confirm') || msg.includes('verification');
+
+    if (isVerificationRequired) {
+      // Return the client with just the anon key – all modules work via HttpClient
+      return { client, email, password: TEST_PASSWORD, data: signUpData, error: null };
+    }
+
+    // Propagate unexpected sign-in errors so tests fail fast
+    return { client, email, password: TEST_PASSWORD, data: null, error };
   }
 
   return { client, email, password: TEST_PASSWORD, data, error };

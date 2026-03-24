@@ -28,11 +28,12 @@ jobs:
       - run: npm ci
       - name: Run integration tests
         run: |
-          if [ -n "${{ inputs.test-filter }}" ]; then
-            npx vitest run --config vitest.integration.config.ts -t "${{ inputs.test-filter }}"
+          if [ -n "$TEST_FILTER" ]; then
+            npx vitest run --config vitest.integration.config.ts -t "$TEST_FILTER"
           else
             npm run test:integration:ci
           fi
         env:
           INSFORGE_INTEGRATION_BASE_URL: ${{ inputs.base-url || vars.INSFORGE_INTEGRATION_BASE_URL }}
           INSFORGE_INTEGRATION_ANON_KEY: ${{ secrets.INSFORGE_INTEGRATION_ANON_KEY }}
+          TEST_FILTER: ${{ inputs.test-filter }}

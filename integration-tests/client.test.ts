@@ -101,8 +101,8 @@ describe('InsForgeClient', () => {
       expect(headers['Authorization']).toBe(`Bearer ${fakeToken}`);
     });
 
-    it('should accept a custom functionsUrl', () => {
-      const functionsUrl = 'https://myapp.functions.insforge.app';
+    it('should accept a custom functionsUrl', async () => {
+      const functionsUrl = 'https://custom-functions-host.example.com';
       const client = new InsForgeClient({
         baseUrl: env.baseUrl,
         anonKey: env.anonKey,
@@ -111,6 +111,21 @@ describe('InsForgeClient', () => {
 
       expect(client).toBeInstanceOf(InsForgeClient);
       expect(client.functions).toBeDefined();
+
+      // Invoke a function – the SDK should attempt the custom functionsUrl first.
+      // Since the host doesn't exist, we expect a network/connection error whose
+      // message references the custom domain, proving the URL was applied.
+      const { error } = await client.functions.invoke('test-fn');
+      expect(error).not.toBeNull();
+      // The error should come from trying to reach the custom host
+      const errMsg = (error!.message || '').toLowerCase();
+      expect(
+        errMsg.includes('custom-functions-host') ||
+        errMsg.includes('enotfound') ||
+        errMsg.includes('fetch failed') ||
+        errMsg.includes('network') ||
+        error!.statusCode === 500
+      ).toBe(true);
     });
   });
 

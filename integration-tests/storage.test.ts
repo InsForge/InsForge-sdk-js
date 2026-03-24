@@ -34,14 +34,15 @@ describe('Storage Module', () => {
     client = result.client;
 
     // Probe the bucket – try a small upload to confirm it exists and accepts writes
+    const probeKey = `_sdk_probe_${Date.now()}.txt`;
     const probe = new Blob(['probe'], { type: 'text/plain' });
-    const { error } = await client.storage.from(BUCKET).upload(`_sdk_probe_${Date.now()}.txt`, probe);
+    const { error } = await client.storage.from(BUCKET).upload(probeKey, probe);
     if (error) {
       bucketAvailable = false;
       console.warn(`⚠ Bucket "${BUCKET}" not available – storage tests will verify error handling only.`);
     } else {
       // Clean up probe file (best-effort)
-      await client.storage.from(BUCKET).remove(`_sdk_probe_${Date.now()}.txt`).catch(() => {});
+      await client.storage.from(BUCKET).remove(probeKey).catch(() => {});
     }
   });
 

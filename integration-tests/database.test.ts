@@ -38,8 +38,15 @@ describe('Database Module', () => {
     // Probe the table
     const { error } = await client.database.from(TABLE).select('id').limit(1);
     if (error) {
-      tableAvailable = false;
-      console.warn(`⚠ Table "${TABLE}" not found – database tests will verify error handling only.`);
+      // Only downgrade for table-not-found errors; fail fast on auth/network/other issues
+      const msg = (error.message || '').toLowerCase();
+      const code = (error as any).code || '';
+      if (code === '42P01' || msg.includes('relation') || msg.includes('not found') || msg.includes('does not exist')) {
+        tableAvailable = false;
+        console.warn(`⚠ Table "${TABLE}" not found – database tests will verify error handling only.`);
+      } else {
+        throw new Error(`Unexpected database error during probe: ${error.message} (code: ${code})`);
+      }
     }
   });
 
@@ -199,11 +206,10 @@ describe('Database Module', () => {
         .select()
         .single();
 
-      if (!error) {
-        expect(data).toBeDefined();
-        expect(data.name).toBe(tag);
-        insertedIds.push(data.id);
-      }
+      expect(error).toBeNull();
+      expect(data).toBeDefined();
+      expect(data.name).toBe(tag);
+      insertedIds.push(data.id);
     });
   });
 
