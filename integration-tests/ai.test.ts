@@ -1,438 +1,349 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import { InsForgeClient } from "../src/client";
+import { describe, it, expect, beforeAll } from 'vitest';
+import { signUpAndSignIn } from './setup';
+import type { InsForgeClient } from '../src/client';
 
-// Test configuration - connect to local server
-const TEST_CONFIG = {
-  baseUrl: "http://localhost:7130",
-  anonKey: "your_anon_key_here",
-};
+/**
+ * AI module integration tests.
+ *
+ * Public API tested:
+ *   ai.embeddings.create(params)
+ *   ai.chat.completions.create(params)          – non-streaming
+ *   ai.chat.completions.create(params, stream)   – streaming
+ *   ai.chat.completions.create(params, tools)     – tool calling
+ *   ai.chat.completions.create(params, webSearch) – web search
+ *   ai.images.generate(params)
+ *
+ * NOTE: AI features require models to be enabled on the test project.
+ * When a model is unavailable the API throws an error – those tests
+ * catch only the request error and skip assertions rather than masking
+ * assertion failures.
+ */
 
-describe("AI Module - Integration Tests", () => {
+const EMBEDDINGS_MODEL = 'openai/text-embedding-3-small';
+const CHAT_MODEL = 'openai/gpt-4o-mini';
+const IMAGE_MODEL = 'openai/dall-e-3';
+
+/** Check if an error indicates the model is unavailable/disabled (not a real failure). */
+function isModelUnavailable(err: any): boolean {
+  const msg = (err?.message || '').toLowerCase();
+  const code = (err?.code || err?.error || '').toLowerCase();
+  return (
+    code === 'model_not_found' ||
+    msg.includes('not available') ||
+    msg.includes('unavailable') ||
+    msg.includes('disabled') ||
+    msg.includes('not enabled') ||
+    msg.includes('model not found') ||
+    msg.includes('not supported')
+  );
+}
+
+describe('AI Module', () => {
   let client: InsForgeClient;
 
-  beforeAll(() => {
-    client = new InsForgeClient(TEST_CONFIG);
+  beforeAll(async () => {
+    const result = await signUpAndSignIn();
+    expect(result.error).toBeNull();
+    client = result.client;
   });
 
-  describe("Embeddings", () => {
-    describe.skip("create", () => {
-      it("should create embeddings for single text input", async () => {
-        const response = await client.ai.embeddings.create({
-          model: "openai/text-embedding-3-small",
-          input: "Hello world",
+  // ================================================================
+  // Embeddings
+  // ================================================================
+
+  describe('embeddings.create()', () => {
+    it('should create embeddings for a single string input', async () => {
+      let response: any;
+      try {
+        response = await client.ai.embeddings.create({
+          model: EMBEDDINGS_MODEL,
+          input: 'Hello world',
         });
+      } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
+        console.warn('Embeddings model not available:', err.message);
+        return;
+      }
 
-        // Verify response format
-        expect(response.object).toBe("list");
-        expect(response.data).toHaveLength(1);
-        expect(response.data[0].object).toBe("embedding");
-        expect(Array.isArray(response.data[0].embedding)).toBe(true);
-        expect(response.data[0].embedding.length).toBeGreaterThan(0);
-        expect(response.data[0].index).toBe(0);
-        expect(response.model).toBeDefined();
-        expect(response.usage).toBeDefined();
-        expect(response.usage.prompt_tokens).toBeGreaterThanOrEqual(0);
-        expect(response.usage.total_tokens).toBeGreaterThanOrEqual(0);
+      expect(response.object).toBe('list');
+      expect(response.data).toHaveLength(1);
+      expect(response.data[0].object).toBe('embedding');
+      expect(Array.isArray(response.data[0].embedding)).toBe(true);
+      expect(response.data[0].embedding.length).toBeGreaterThan(0);
+      expect(response.data[0].index).toBe(0);
+      expect(response.model).toBeDefined();
+      expect(response.usage).toBeDefined();
+      expect(response.usage.prompt_tokens).toBeGreaterThanOrEqual(0);
+      expect(response.usage.total_tokens).toBeGreaterThanOrEqual(0);
+    });
 
-        console.log("Single input embedding dimensions:", response.data[0].embedding.length);
-        console.log("Model used:", response.model);
-        console.log("Token usage:", response.usage);
-      });
-
-      it("should create embeddings for multiple text inputs", async () => {
-        const response = await client.ai.embeddings.create({
-          model: "openai/text-embedding-3-small",
-          input: ["Hello world", "Goodbye world"],
+    it('should create embeddings for multiple string inputs', async () => {
+      let response: any;
+      try {
+        response = await client.ai.embeddings.create({
+          model: EMBEDDINGS_MODEL,
+          input: ['Hello world', 'Goodbye world', 'Testing embeddings'],
         });
+      } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
+        console.warn('Embeddings model not available:', err.message);
+        return;
+      }
 
-        // Verify response format
-        expect(response.object).toBe("list");
-        expect(response.data).toHaveLength(2);
+      expect(response.object).toBe('list');
+      expect(response.data).toHaveLength(3);
+      expect(response.data[0].index).toBe(0);
+      expect(response.data[1].index).toBe(1);
+      expect(response.data[2].index).toBe(2);
 
-        // First embedding
-        expect(response.data[0].object).toBe("embedding");
-        expect(Array.isArray(response.data[0].embedding)).toBe(true);
-        expect(response.data[0].index).toBe(0);
+      // All embeddings should have the same dimensions
+      const dim = response.data[0].embedding.length;
+      expect(response.data[1].embedding.length).toBe(dim);
+      expect(response.data[2].embedding.length).toBe(dim);
+    });
 
-        // Second embedding
-        expect(response.data[1].object).toBe("embedding");
-        expect(Array.isArray(response.data[1].embedding)).toBe(true);
-        expect(response.data[1].index).toBe(1);
-
-        // Both should have same dimensions
-        expect(response.data[0].embedding.length).toBe(response.data[1].embedding.length);
-
-        console.log("Multiple inputs - embedding count:", response.data.length);
-        console.log("Embedding dimensions:", response.data[0].embedding.length);
-      });
-
-      it("should support custom dimensions parameter", async () => {
-        const customDimensions = 256;
-
-        const response = await client.ai.embeddings.create({
-          model: "openai/text-embedding-3-small",
-          input: "Hello world",
-          dimensions: customDimensions,
+    it('should support custom dimensions parameter', async () => {
+      let response: any;
+      try {
+        response = await client.ai.embeddings.create({
+          model: EMBEDDINGS_MODEL,
+          input: 'Test custom dimensions',
+          dimensions: 256,
         });
+      } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
+        console.warn('Embeddings model not available:', err.message);
+        return;
+      }
 
-        // Verify embedding has requested dimensions
-        expect(response.data[0].embedding.length).toBe(customDimensions);
-
-        console.log("Custom dimensions requested:", customDimensions);
-        console.log("Actual dimensions returned:", response.data[0].embedding.length);
-      });
-
-      it("should work with different embedding models", async () => {
-        // Test with a different model (if available)
-        const response = await client.ai.embeddings.create({
-          model: "openai/text-embedding-3-large",
-          input: "Test embedding with large model",
-        });
-
-        expect(response.object).toBe("list");
-        expect(response.data).toHaveLength(1);
-        expect(Array.isArray(response.data[0].embedding)).toBe(true);
-
-        console.log("Large model embedding dimensions:", response.data[0].embedding.length);
-      });
+      expect(response.data[0].embedding.length).toBe(256);
     });
   });
 
-  // Note: ChatCompletions and Images tests are skipped by default
-  // because they require specific models to be enabled on the server.
-  // Uncomment and configure the model names to run these tests.
+  // ================================================================
+  // Chat Completions – non-streaming
+  // ================================================================
 
-  describe("ChatCompletions", () => {
-    // Skip these tests if models are not enabled on your server
-    // Change the model names to match your server configuration
-    const CHAT_MODEL = "openai/gpt-4o"; // Change this to an enabled model
-    const THINKING_MODEL = "anthropic/claude-sonnet-4"; // Change this to an enabled Anthropic model
-
-    describe.skip("create with basic request", () => {
-      it("should create a chat completion", async () => {
-        const response = await client.ai.chat.completions.create({
+  describe('chat.completions.create() – non-streaming', () => {
+    it('should create a chat completion with standard response shape', async () => {
+      let response: any;
+      try {
+        response = await client.ai.chat.completions.create({
           model: CHAT_MODEL,
-          messages: [{ role: "user", content: "Say hello in one word" }],
+          messages: [{ role: 'user', content: 'Reply with exactly the word: pong' }],
         });
+      } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
+        console.warn('Chat model not available:', err.message);
+        return;
+      }
 
-        expect(response.object).toBe("chat.completion");
-        expect(response.choices).toHaveLength(1);
-        expect(response.choices[0].message.role).toBe("assistant");
-        expect(response.choices[0].message.content).toBeDefined();
-        expect(response.choices[0].finish_reason).toBe("stop");
-
-        console.log("Chat response:", response.choices[0].message.content);
-      });
+      expect(response.id).toBeDefined();
+      expect(response.object).toBe('chat.completion');
+      expect(response.created).toBeDefined();
+      expect(response.model).toBeDefined();
+      expect(response.choices).toHaveLength(1);
+      expect(response.choices[0].index).toBe(0);
+      expect(response.choices[0].message.role).toBe('assistant');
+      expect(response.choices[0].message.content).toBeDefined();
+      expect(response.choices[0].message.content.length).toBeGreaterThan(0);
+      expect(response.choices[0].finish_reason).toBe('stop');
+      expect(response.usage).toBeDefined();
     });
 
-    describe.skip("create with webSearch", () => {
-      it("should perform web search and return annotations", async () => {
-        const response = await client.ai.chat.completions.create({
+    it('should support system messages', async () => {
+      let response: any;
+      try {
+        response = await client.ai.chat.completions.create({
           model: CHAT_MODEL,
           messages: [
-            { role: "user", content: "What is the current weather in Beijing today?" },
+            { role: 'system', content: 'You are a calculator. Reply with only numbers.' },
+            { role: 'user', content: 'What is 2 + 2?' },
           ],
+        });
+      } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
+        console.warn('Chat model not available:', err.message);
+        return;
+      }
+
+      expect(response.choices[0].message.content).toBeDefined();
+    });
+
+    it('should support multi-turn conversations', async () => {
+      let response: any;
+      try {
+        response = await client.ai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [
+            { role: 'user', content: 'My name is SDK-Test.' },
+            { role: 'assistant', content: 'Hello SDK-Test!' },
+            { role: 'user', content: 'What did I say my name is? Reply in one word.' },
+          ],
+        });
+      } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
+        console.warn('Chat model not available:', err.message);
+        return;
+      }
+
+      expect(response.choices[0].message.content).toBeDefined();
+    });
+  });
+
+  // ================================================================
+  // Chat Completions – streaming
+  // ================================================================
+
+  describe('chat.completions.create() – streaming', () => {
+    it('should stream chunks and accumulate content', async () => {
+      let stream: any;
+      try {
+        stream = await client.ai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [{ role: 'user', content: 'Count from 1 to 5, separated by commas.' }],
+          stream: true,
+        });
+      } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
+        console.warn('Streaming not available:', err.message);
+        return;
+      }
+
+      let content = '';
+      let chunkCount = 0;
+
+      for await (const chunk of stream) {
+        expect(chunk.object).toBe('chat.completion.chunk');
+        chunkCount++;
+        if (chunk.choices[0]?.delta?.content) {
+          content += chunk.choices[0].delta.content;
+        }
+      }
+
+      expect(chunkCount).toBeGreaterThan(0);
+      expect(content.length).toBeGreaterThan(0);
+    });
+  });
+
+  // ================================================================
+  // Chat Completions – tool calling
+  // ================================================================
+
+  describe('chat.completions.create() – tool calling', () => {
+    const weatherTool = {
+      type: 'function' as const,
+      function: {
+        name: 'get_weather',
+        description: 'Get the current weather for a given city',
+        parameters: {
+          type: 'object',
+          properties: {
+            city: { type: 'string', description: 'City name' },
+          },
+          required: ['city'],
+        },
+      },
+    };
+
+    it('should return tool_calls when tools are provided', async () => {
+      let response: any;
+      try {
+        response = await client.ai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
+          tools: [weatherTool],
+        });
+      } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
+        console.warn('Chat model not available:', err.message);
+        return;
+      }
+
+      expect(response.choices).toHaveLength(1);
+      const msg = response.choices[0].message;
+
+      expect(msg.tool_calls).toBeDefined();
+      expect(msg.tool_calls!.length).toBeGreaterThan(0);
+      expect(msg.tool_calls![0].type).toBe('function');
+      expect(msg.tool_calls![0].function.name).toBe('get_weather');
+      expect(msg.tool_calls![0].id).toBeDefined();
+      const args = JSON.parse(msg.tool_calls![0].function.arguments);
+      expect(args.city).toBeDefined();
+      expect(response.choices[0].finish_reason).toBe('tool_calls');
+    });
+
+    it('should respect toolChoice "none"', async () => {
+      let response: any;
+      try {
+        response = await client.ai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
+          tools: [weatherTool],
+          toolChoice: 'none',
+        });
+      } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
+        console.warn('Chat model not available:', err.message);
+        return;
+      }
+
+      // With toolChoice none, the model should reply with text
+      expect(response.choices[0].message.content).toBeDefined();
+      expect(response.choices[0].finish_reason).toBe('stop');
+    });
+  });
+
+  // ================================================================
+  // Chat Completions – web search
+  // ================================================================
+
+  describe('chat.completions.create() – webSearch', () => {
+    it('should support web search option', async () => {
+      let response: any;
+      try {
+        response = await client.ai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: [{ role: 'user', content: 'What is the population of Tokyo?' }],
           webSearch: { enabled: true, maxResults: 3 },
         });
+      } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
+        console.warn('Web search not available:', err.message);
+        return;
+      }
 
-        expect(response.choices[0].message.content).toBeDefined();
-
-        // Web search should include annotations with citations
-        if (response.choices[0].message.annotations) {
-          console.log("Web search annotations count:", response.choices[0].message.annotations.length);
-          response.choices[0].message.annotations.forEach((annotation: any, i: number) => {
-            if (annotation.type === "url_citation") {
-              console.log(`Citation ${i + 1}:`, annotation.urlCitation?.url);
-            }
-          });
-        }
-
-        console.log("Web search response:", response.choices[0].message.content.substring(0, 200) + "...");
-      });
-    });
-
-    describe.skip("create with thinking mode", () => {
-      it("should use thinking/reasoning mode", async () => {
-        const response = await client.ai.chat.completions.create({
-          model: THINKING_MODEL,
-          messages: [
-            { role: "user", content: "What is 15 * 17? Show your reasoning." },
-          ],
-          thinking: true,
-        });
-
-        expect(response.choices[0].message.content).toBeDefined();
-        // The response should contain the calculation result (255)
-        expect(response.choices[0].message.content).toContain("255");
-
-        console.log("Thinking mode response:", response.choices[0].message.content);
-      });
-    });
-
-    describe.skip("create with fileParser (PDF)", () => {
-      const PDF_URL = "https://pdfco-test-files.s3.us-west-2.amazonaws.com/pdf-to-csv/sample.pdf";
-
-      it("should parse PDF and summarize content using pdf-text engine", async () => {
-        const response = await client.ai.chat.completions.create({
-          model: CHAT_MODEL,
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: "Please summarize the content of this PDF document." },
-                {
-                  type: "file",
-                  file: {
-                    filename: "sample.pdf",
-                    file_data: PDF_URL,
-                  },
-                },
-              ],
-            },
-          ],
-          fileParser: {
-            enabled: true,
-            pdf: {
-              engine: "pdf-text",
-            },
-          },
-        });
-
-        expect(response.object).toBe("chat.completion");
-        expect(response.choices).toHaveLength(1);
-        expect(response.choices[0].message.content).toBeDefined();
-        expect(response.choices[0].message.content.length).toBeGreaterThan(0);
-
-        console.log("PDF summary response:", response.choices[0].message.content);
-      }, 30000); // 30 second timeout for PDF processing
-
-      it("should parse PDF using mistral-ocr engine", async () => {
-        const response = await client.ai.chat.completions.create({
-          model: CHAT_MODEL,
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: "What information can you extract from this PDF?" },
-                {
-                  type: "file",
-                  file: {
-                    filename: "sample.pdf",
-                    file_data: PDF_URL,
-                  },
-                },
-              ],
-            },
-          ],
-          fileParser: {
-            enabled: true,
-            pdf: {
-              engine: "mistral-ocr",
-            },
-          },
-        });
-
-        expect(response.object).toBe("chat.completion");
-        expect(response.choices[0].message.content).toBeDefined();
-
-        console.log("PDF OCR response:", response.choices[0].message.content);
-      }, 60000); // 60 second timeout for OCR processing
-    });
-
-    describe.skip("create with streaming", () => {
-      it("should stream chat completion chunks", async () => {
-        const stream = await client.ai.chat.completions.create({
-          model: CHAT_MODEL,
-          messages: [{ role: "user", content: "Count from 1 to 5" }],
-          stream: true,
-        });
-
-        let fullContent = "";
-        let chunkCount = 0;
-
-        for await (const chunk of stream) {
-          chunkCount++;
-          if (chunk.choices[0]?.delta?.content) {
-            fullContent += chunk.choices[0].delta.content;
-          }
-        }
-
-        expect(chunkCount).toBeGreaterThan(0);
-        expect(fullContent).toBeDefined();
-        expect(fullContent.length).toBeGreaterThan(0);
-
-        console.log("Stream chunks received:", chunkCount);
-        console.log("Full streamed content:", fullContent);
-      });
-    });
-
-    describe.skip("create with tool calling", () => {
-      const weatherTool = {
-        type: "function" as const,
-        function: {
-          name: "get_weather",
-          description: "Get current weather for a city",
-          parameters: {
-            type: "object",
-            properties: {
-              city: { type: "string", description: "City name" },
-            },
-            required: ["city"],
-          },
-        },
-      };
-
-      it("should return tool_calls when tools are provided", async () => {
-        const response = await client.ai.chat.completions.create({
-          model: CHAT_MODEL,
-          messages: [
-            { role: "user", content: "What is the weather in Tokyo?" },
-          ],
-          tools: [weatherTool],
-        });
-
-        expect(response.object).toBe("chat.completion");
-        expect(response.choices).toHaveLength(1);
-
-        const message = response.choices[0].message;
-        expect(message.tool_calls).toBeDefined();
-        expect(message.tool_calls.length).toBeGreaterThan(0);
-
-        const toolCall = message.tool_calls[0];
-        expect(toolCall.id).toBeDefined();
-        expect(toolCall.type).toBe("function");
-        expect(toolCall.function.name).toBe("get_weather");
-
-        const args = JSON.parse(toolCall.function.arguments);
-        expect(args.city).toBeDefined();
-
-        expect(response.choices[0].finish_reason).toBe("tool_calls");
-
-        console.log("Tool call:", toolCall.function.name, toolCall.function.arguments);
-      });
-
-      it("should complete multi-turn tool calling conversation", async () => {
-        // Step 1: Send request with tools
-        const firstResponse = await client.ai.chat.completions.create({
-          model: CHAT_MODEL,
-          messages: [
-            { role: "user", content: "What is the weather in Tokyo?" },
-          ],
-          tools: [weatherTool],
-        });
-
-        const toolCall = firstResponse.choices[0].message.tool_calls[0];
-        expect(toolCall).toBeDefined();
-
-        // Step 2: Send tool result back
-        const finalResponse = await client.ai.chat.completions.create({
-          model: CHAT_MODEL,
-          messages: [
-            { role: "user", content: "What is the weather in Tokyo?" },
-            {
-              role: "assistant",
-              content: null,
-              tool_calls: [toolCall],
-            },
-            {
-              role: "tool",
-              content: JSON.stringify({ temp: "22°C", condition: "sunny" }),
-              tool_call_id: toolCall.id,
-            },
-          ],
-        });
-
-        // Final response should have text content, no more tool_calls
-        expect(finalResponse.choices[0].message.content).toBeDefined();
-        expect(finalResponse.choices[0].message.content.length).toBeGreaterThan(0);
-        expect(finalResponse.choices[0].finish_reason).toBe("stop");
-
-        console.log("Final response:", finalResponse.choices[0].message.content);
-      });
-
-      it("should handle tool_choice 'none' (no tool calls)", async () => {
-        const response = await client.ai.chat.completions.create({
-          model: CHAT_MODEL,
-          messages: [
-            { role: "user", content: "What is the weather in Tokyo?" },
-          ],
-          tools: [weatherTool],
-          toolChoice: "none",
-        });
-
-        // With toolChoice: 'none', model should respond with text, not tool calls
-        expect(response.choices[0].message.content).toBeDefined();
-        expect(response.choices[0].message.content.length).toBeGreaterThan(0);
-        expect(response.choices[0].message.tool_calls).toBeUndefined();
-        expect(response.choices[0].finish_reason).toBe("stop");
-
-        console.log("No-tool response:", response.choices[0].message.content);
-      });
-
-      it("should stream tool_calls in streaming mode", async () => {
-        const stream = await client.ai.chat.completions.create({
-          model: CHAT_MODEL,
-          messages: [
-            { role: "user", content: "What is the weather in Tokyo?" },
-          ],
-          tools: [weatherTool],
-          stream: true,
-        });
-
-        let toolCalls: any = null;
-
-        for await (const chunk of stream) {
-          if (chunk.choices[0]?.delta?.tool_calls) {
-            toolCalls = chunk.choices[0].delta.tool_calls;
-          }
-        }
-
-        expect(toolCalls).toBeDefined();
-        expect(toolCalls.length).toBeGreaterThan(0);
-        expect(toolCalls[0].function.name).toBe("get_weather");
-
-        console.log("Streamed tool call:", toolCalls[0].function.name, toolCalls[0].function.arguments);
-      });
-    });
-
-    describe.skip("create without tools (backward compatibility)", () => {
-      it("should work normally without any tool fields", async () => {
-        const response = await client.ai.chat.completions.create({
-          model: CHAT_MODEL,
-          messages: [{ role: "user", content: "Say hello" }],
-        });
-
-        expect(response.object).toBe("chat.completion");
-        expect(response.choices[0].message.content).toBeDefined();
-        expect(response.choices[0].message.tool_calls).toBeUndefined();
-        expect(response.choices[0].finish_reason).toBe("stop");
-      });
+      expect(response.choices[0].message.content).toBeDefined();
+      if (response.choices[0].message.annotations) {
+        expect(Array.isArray(response.choices[0].message.annotations)).toBe(true);
+      }
     });
   });
 
-  describe("Images", () => {
-    const IMAGE_MODEL = "openai/dall-e-3"; // Change this to an enabled image model
+  // ================================================================
+  // Images
+  // ================================================================
 
-    describe.skip("generate", () => {
-      it("should generate an image from text prompt", async () => {
-        const response = await client.ai.images.generate({
+  describe('images.generate()', () => {
+    it('should generate an image or return structured error', async () => {
+      let response: any;
+      try {
+        response = await client.ai.images.generate({
           model: IMAGE_MODEL,
-          prompt: "A simple red circle on white background",
+          prompt: 'A simple blue circle on white background',
         });
+      } catch (err: any) {
+        if (!isModelUnavailable(err)) throw err;
+        console.warn('Image generation not available:', err.message);
+        return;
+      }
 
-        expect(response.created).toBeDefined();
-        expect(response.data).toBeDefined();
-        expect(response.data.length).toBeGreaterThan(0);
+      expect(response.created).toBeDefined();
+      expect(response.data).toBeDefined();
+      expect(response.data.length).toBeGreaterThan(0);
 
-        // Check if we got image data (b64_json) or URL
-        const firstImage = response.data[0];
-        expect(firstImage.b64_json || firstImage.content).toBeDefined();
-
-        console.log("Image generated successfully");
-        if (firstImage.b64_json) {
-          console.log("Image data (base64) length:", firstImage.b64_json.length);
-        }
-      }, 60000); // 60 second timeout for image generation
-    });
+      const img = response.data[0];
+      expect(img.b64_json || img.content).toBeDefined();
+    }, 60000); // Image generation can be slow
   });
 });

@@ -50,3 +50,6 @@ yarn.lock
 # OS generated files
 Thumbs.db
 Desktop.ini
+
+# Claude
+.claude/
