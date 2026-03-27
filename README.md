@@ -47,7 +47,7 @@ const { data, error } = await insforge.auth.signUp({
   email: 'user@example.com',
   password: 'securePassword123',
   name: 'John Doe', // optional
-  redirectTo: 'http://localhost:3000/verify-email' // optional, for link-based verification
+  redirectTo: 'http://localhost:3000/sign-in' // optional, recommended for link-based verification
 });
 
 // Sign in with email/password
@@ -62,8 +62,8 @@ await insforge.auth.signInWithOAuth({
   redirectTo: 'http://localhost:3000/dashboard'
 });
 
-// Get current user
-const { data: user } = await insforge.auth.getCurrentUser();
+// Get current user (call this during browser app startup)
+const { data: currentUser } = await insforge.auth.getCurrentUser();
 
 // Get any user's profile by ID (public endpoint)
 const { data: profile, error } = await insforge.auth.getProfile('user-id-here');
@@ -85,7 +85,7 @@ await insforge.auth.signOut();
 // Resend a verification email
 await insforge.auth.resendVerificationEmail({
   email: 'user@example.com',
-  redirectTo: 'http://localhost:3000/verify-email' // optional, for link-based verification
+  redirectTo: 'http://localhost:3000/sign-in' // optional, recommended for link-based verification
 });
 
 // Verify email with a 6-digit code
@@ -97,7 +97,7 @@ await insforge.auth.verifyEmail({
 // Send password reset email
 await insforge.auth.sendResetPasswordEmail({
   email: 'user@example.com',
-  redirectTo: 'http://localhost:3000/reset-password' // optional, for link-based reset
+  redirectTo: 'http://localhost:3000/reset-password' // optional, recommended for link-based reset
 });
 
 // Code-based reset flow: exchange the code, then reset the password
@@ -119,6 +119,10 @@ For link-based verification and password reset, users click the emailed browser 
 - `GET /api/auth/email/reset-password-link`
 
 Those backend endpoints validate the token first, then redirect the browser to your `redirectTo` URL.
+
+- Verification links redirect with `insforge_status=success|error`, `insforge_type=verify_email`, and optional `insforge_error`
+- Recommended: use your sign-in page as the verification `redirectTo`, then show a confirmation message and ask the user to sign in with email and password
+- Reset links redirect with `token` when ready, plus `insforge_status=ready|error`, `insforge_type=reset_password`, and optional `insforge_error`
 
 ### Database Operations
 

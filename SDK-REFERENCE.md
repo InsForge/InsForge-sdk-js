@@ -40,9 +40,9 @@ The SDK automatically detects and handles OAuth callback parameters when initial
 
 **How it works:**
 1. User calls `signInWithOAuth()` and is redirected to OAuth provider
-2. After authentication, provider redirects back to your app with tokens in URL
-3. SDK automatically detects these parameters on initialization
-4. Session is saved and URL is cleaned - no manual handling needed!
+2. After authentication, InsForge redirects back to your app with an `insforge_code` in the URL
+3. SDK automatically exchanges that code for a session on initialization
+4. Session is saved and the URL is cleaned - no manual handling needed
 
 **Example:**
 ```javascript
@@ -52,11 +52,12 @@ const insforge = createClient({
 });
 
 // If the URL contains OAuth callback parameters like:
-// ?access_token=xxx&user_id=yyy&email=user@example.com&name=John
+// ?insforge_code=...
 // The SDK will:
+// - Exchange the code for a session
 // - Save the session in memory
 // - Set the auth token for API calls
-// - Clean the URL (remove sensitive parameters)
+// - Clean the URL
 
 // You can then immediately use authenticated methods:
 const { data } = await insforge.auth.getCurrentUser();
@@ -70,7 +71,7 @@ await insforge.auth.signUp({
   email: 'user@example.com',
   password: 'password123',
   name: 'John Doe',  // optional
-  redirectTo: 'http://localhost:3000/verify-email' // optional, for link-based verification
+  redirectTo: 'http://localhost:3000/sign-in' // optional, recommended for link-based verification
 })
 // Response: { data: { user, accessToken }, error }
 // user: { id, email, name, emailVerified, createdAt, updatedAt }
@@ -84,6 +85,7 @@ GET /api/auth/email/verify-link?token=...
 ```
 
 InsForge validates the token first, then redirects the browser to your `redirectTo` URL.
+Recommended: use your sign-in page as `redirectTo`, then show a success message and ask the user to sign in with email and password.
 
 ### `signInWithPassword()`
 ```javascript
@@ -108,9 +110,10 @@ await insforge.auth.signInWithOAuth({
 
 // AUTOMATIC OAuth Callback Detection (v0.0.14+):
 // When users are redirected back from OAuth provider, the SDK automatically:
-// 1. Detects OAuth parameters (access_token, user_id, email, name) in URL
-// 2. Saves the session in memory
-// 3. Cleans the URL of sensitive parameters
+// 1. Detects insforge_code in the URL
+// 2. Exchanges the code for a session
+// 3. Saves the session in memory
+// 4. Cleans the URL
 // No manual handling needed - just initialize the client!
 ```
 
@@ -124,11 +127,14 @@ await insforge.auth.signOut()
 ### `getCurrentUser()`
 ```javascript
 await insforge.auth.getCurrentUser()
-// Response: { data: { user, profile }, error }
-// user: { id, email, role }  // Auth info from API
-// profile: { id, nickname, avatar_url, bio, birthday, ... }  // Profile from users table
+// Response: { data: { user }, error }
+// user: { id, email, emailVerified, providers, createdAt, updatedAt, profile, metadata }
 // Returns null if not authenticated
 ```
+
+For browser apps, call `getCurrentUser()` during startup. The SDK will use the httpOnly refresh cookie automatically when it can refresh the session.
+
+For `isServerMode: true`, call `refreshSession({ refreshToken })` explicitly when you need to refresh an expired access token.
 
 ### `getProfile()`
 ```javascript
@@ -162,7 +168,7 @@ await insforge.auth.getPublicAuthConfig()
 ```javascript
 await insforge.auth.resendVerificationEmail({
   email: 'user@example.com',
-  redirectTo: 'http://localhost:3000/verify-email' // optional, for link-based verification
+  redirectTo: 'http://localhost:3000/sign-in' // optional, recommended for link-based verification
 })
 // Response: { data: { success, message }, error }
 ```
@@ -176,13 +182,17 @@ await insforge.auth.verifyEmail({
 // Response: { data: { user, accessToken, csrfToken?, refreshToken? }, error }
 // POST /api/auth/email/verify is code-only
 // Browser link verification uses GET /api/auth/email/verify-link
+// Verification redirect params:
+// - insforge_status=success|error
+// - insforge_type=verify_email
+// - insforge_error (only on error)
 ```
 
 ### `sendResetPasswordEmail()`
 ```javascript
 await insforge.auth.sendResetPasswordEmail({
   email: 'user@example.com',
-  redirectTo: 'http://localhost:3000/reset-password' // optional, for link-based reset
+  redirectTo: 'http://localhost:3000/reset-password' // optional, recommended for link-based reset
 })
 // Response: { data: { success, message }, error }
 ```
@@ -205,6 +215,11 @@ await insforge.auth.resetPassword({
 // Response: { data: { message }, error }
 // Browser reset links use GET /api/auth/email/reset-password-link first,
 // then your app submits the new password with POST /api/auth/email/reset-password.
+// Reset redirect params:
+// - token (present only when ready)
+// - insforge_status=ready|error
+// - insforge_type=reset_password
+// - insforge_error (only on error)
 ```
 
 ## Error Handling
