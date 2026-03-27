@@ -10,7 +10,7 @@ import {
   setCsrfToken,
   clearCsrfToken,
 } from '../../lib/token-manager';
-import { AuthRefreshResponse, AuthSession, InsForgeError } from '../../types';
+import { AuthSession, InsForgeError } from '../../types';
 import {
   generateCodeVerifier,
   generateCodeChallenge,
@@ -31,9 +31,11 @@ import type {
   SendVerificationEmailRequest,
   SendResetPasswordEmailRequest,
   ExchangeResetPasswordTokenRequest,
+  ExchangeResetPasswordTokenResponse,
   VerifyEmailRequest,
   VerifyEmailResponse,
   RefreshSessionResponse,
+  ResetPasswordResponse,
   UserSchema,
   GetProfileResponse,
   OAuthCodeExchangeRequest,
@@ -98,7 +100,7 @@ export class Auth {
 
   /**
    * Detect and handle OAuth callback parameters in URL
-   * Supports PKCE flow (insforge_code) and legacy flow (access_token in URL)
+   * Supports PKCE flow (insforge_code)
    */
   private async detectAuthCallback(): Promise<void> {
     if (this.isServerMode() || typeof window === 'undefined') return;
@@ -123,43 +125,6 @@ export class Auth {
           console.debug('OAuth code exchange failed:', exchangeError.message);
         }
         return;
-      }
-
-      // Legacy flow: tokens directly in URL (backward compatible)
-      const accessToken = params.get('access_token');
-      const userId = params.get('user_id');
-      const email = params.get('email');
-
-      if (accessToken && userId && email) {
-        const csrfToken = params.get('csrf_token');
-        const name = params.get('name');
-
-        if (csrfToken) {
-          setCsrfToken(csrfToken);
-        }
-
-        const session: AuthSession = {
-          accessToken,
-          user: {
-            id: userId,
-            email,
-            profile: { name: name || '' },
-            metadata: null,
-            emailVerified: false,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        };
-
-        this.tokenManager.saveSession(session);
-        this.http.setAuthToken(accessToken);
-        cleanUrlParams(
-          'access_token',
-          'user_id',
-          'email',
-          'name',
-          'csrf_token',
-        );
       }
     } catch (error) {
       console.debug('OAuth callback detection skipped:', error);
@@ -322,12 +287,7 @@ export class Auth {
     code: string,
     codeVerifier?: string,
   ): Promise<{
-    data: {
-      accessToken: string;
-      refreshToken?: string;
-      user: UserSchema;
-      redirectTo?: string;
-    } | null;
+    data: CreateSessionResponse | null;
     error: InsForgeError | null;
   }> {
     try {
@@ -359,12 +319,7 @@ export class Auth {
       this.saveSessionFromResponse(response);
 
       return {
-        data: {
-          accessToken: response.accessToken,
-          refreshToken: response.refreshToken,
-          user: response.user,
-          redirectTo: response.redirectTo,
-        },
+        data: response,
         error: null,
       };
     } catch (error) {
@@ -386,11 +341,7 @@ export class Auth {
     provider: 'google';
     token: string;
   }): Promise<{
-    data: {
-      accessToken: string;
-      refreshToken?: string;
-      user: UserSchema;
-    } | null;
+    data: CreateSessionResponse | null;
     error: InsForgeError | null;
   }> {
     try {
@@ -408,11 +359,7 @@ export class Auth {
       }
 
       return {
-        data: {
-          accessToken: response.accessToken,
-          refreshToken: response.refreshToken,
-          user: response.user,
-        },
+        data: response,
         error: null,
       };
     } catch (error) {
@@ -610,14 +557,9 @@ export class Auth {
     } catch (error) {
       return wrapError(
         error,
-        'An unexpected error occurred while sending verification code',
+        'An unexpected error occurred while sending verification email',
       );
     }
-  }
-
-  /** @deprecated Use `resendVerificationEmail` instead */
-  async sendVerificationEmail(request: SendVerificationEmailRequest) {
-    return this.resendVerificationEmail(request);
   }
 
   async verifyEmail(request: VerifyEmailRequest): Promise<{
@@ -665,7 +607,7 @@ export class Auth {
     } catch (error) {
       return wrapError(
         error,
-        'An unexpected error occurred while sending password reset code',
+        'An unexpected error occurred while sending password reset email',
       );
     }
   }
@@ -673,14 +615,14 @@ export class Auth {
   async exchangeResetPasswordToken(
     request: ExchangeResetPasswordTokenRequest,
   ): Promise<{
-    data: { token: string; expiresAt: string } | null;
+    data: ExchangeResetPasswordTokenResponse | null;
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{
-        token: string;
-        expiresAt: string;
-      }>('/api/auth/email/exchange-reset-password-token', request);
+      const response = await this.http.post<ExchangeResetPasswordTokenResponse>(
+        '/api/auth/email/exchange-reset-password-token',
+        request,
+      );
       return { data: response, error: null };
     } catch (error) {
       return wrapError(
@@ -691,14 +633,14 @@ export class Auth {
   }
 
   async resetPassword(request: { newPassword: string; otp: string }): Promise<{
-    data: { message: string; redirectTo?: string } | null;
+    data: ResetPasswordResponse | null;
     error: InsForgeError | null;
   }> {
     try {
-      const response = await this.http.post<{
-        message: string;
-        redirectTo?: string;
-      }>('/api/auth/email/reset-password', request);
+      const response = await this.http.post<ResetPasswordResponse>(
+        '/api/auth/email/reset-password',
+        request,
+      );
       return { data: response, error: null };
     } catch (error) {
       return wrapError(
