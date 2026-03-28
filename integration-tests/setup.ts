@@ -94,67 +94,60 @@ const TEST_PASSWORD = 'Test_P@ssword_123!';
 
 export { TEST_PASSWORD };
 
-/**
- * Sign up a fresh user and return an authenticated client.
- * Re-usable across every test file that needs an auth context.
- *
- * Delegates to signUpAndSignIn() to ensure the returned client
- * has a valid session (signUp alone may not persist a session
- * when the response doesn't include an accessToken).
- */
-export async function signUpFreshUser() {
-  return signUpAndSignIn();
+// ---------------------------------------------------------------------------
+// Fixed test account (pre-verified, for authenticated tests)
+// ---------------------------------------------------------------------------
+
+function getFixedTestAccount() {
+  const email = process.env.INSFORGE_INTEGRATION_TEST_EMAIL || '';
+  const password = process.env.INSFORGE_INTEGRATION_TEST_PASSWORD || '';
+
+  if (!email || !password) {
+    throw new Error(
+      'Missing INSFORGE_INTEGRATION_TEST_EMAIL or INSFORGE_INTEGRATION_TEST_PASSWORD.\n' +
+        'These must be a pre-verified account for authenticated integration tests.'
+    );
+  }
+
+  return { email, password };
 }
 
 /**
- * Sign up and get an authenticated client.
+ * Sign in with a fixed pre-verified account and return an authenticated client.
  *
- * Many InsForge projects require email verification before signIn works.
- * In that case signUp still returns an accessToken (set on the client
- * automatically), so we use that token directly rather than requiring
- * a separate signInWithPassword call.
- *
- * Falls back to signIn if signUp doesn't return an accessToken.
+ * Used by most test files (ai, database, storage, realtime, email) that
+ * need a valid auth session. Since email verification is enabled,
+ * freshly signed-up users cannot authenticate — use this instead.
  */
 export async function signUpAndSignIn() {
+  const { email, password } = getFixedTestAccount();
+  const client = createClient();
+
+  const { data, error } = await client.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    return { client, email, password, data: null, error };
+  }
+
+  return { client, email, password, data, error: null };
+}
+
+/**
+ * Sign up a fresh (unverified) user. Used by auth tests that specifically
+ * test the registration flow, profile updates, verification, etc.
+ *
+ * The returned client may NOT have a valid auth session (email verification
+ * required). Callers should handle this accordingly.
+ */
+export async function signUpFreshUser() {
   const email = uniqueEmail();
   const client = createClient();
 
-  const { data: signUpData, error: signUpError } = await client.auth.signUp({
+  const { data, error } = await client.auth.signUp({
     email,
     password: TEST_PASSWORD,
     name: 'SDK Integration Test',
   });
-
-  if (signUpError) {
-    return { client, email, password: TEST_PASSWORD, data: null, error: signUpError };
-  }
-
-  // signUp already sets the token on the client if accessToken is present
-  if (signUpData?.accessToken) {
-    return { client, email, password: TEST_PASSWORD, data: signUpData, error: null };
-  }
-
-  // Fallback: try explicit sign-in (works when email verification is disabled)
-  const { data, error } = await client.auth.signInWithPassword({
-    email,
-    password: TEST_PASSWORD,
-  });
-
-  if (error) {
-    // Only treat email-verification-required as a non-error (expected in many projects)
-    const msg = (error.message || '').toLowerCase();
-    const isVerificationRequired =
-      msg.includes('verify') || msg.includes('confirm') || msg.includes('verification');
-
-    if (isVerificationRequired) {
-      // Return the client with just the anon key – all modules work via HttpClient
-      return { client, email, password: TEST_PASSWORD, data: signUpData, error: null };
-    }
-
-    // Propagate unexpected sign-in errors so tests fail fast
-    return { client, email, password: TEST_PASSWORD, data: null, error };
-  }
 
   return { client, email, password: TEST_PASSWORD, data, error };
 }

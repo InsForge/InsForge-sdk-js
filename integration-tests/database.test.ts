@@ -8,8 +8,8 @@ import type { InsForgeClient } from '../src/client';
  * Exercises the postgrest-js query builder through the InsForge SDK.
  * Full request path: SDK → HttpClient → InsForge API → PostgREST.
  *
- * Prerequisite: a table `_sdk_test` must exist on the test project.
- *   CREATE TABLE _sdk_test (
+ * Prerequisite: a table `sdk_test` must exist on the test project.
+ *   CREATE TABLE sdk_test (
  *     id         serial PRIMARY KEY,
  *     name       text NOT NULL,
  *     value      text,
@@ -21,7 +21,7 @@ import type { InsForgeClient } from '../src/client';
  * surfaces backend errors (and log a warning).
  */
 
-const TABLE = '_sdk_test';
+const TABLE = 'sdk_test';
 
 // Track whether the table is available so later describes can skip early
 let tableAvailable = true;
