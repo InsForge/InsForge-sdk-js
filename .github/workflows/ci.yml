@@ -77,8 +77,10 @@ jobs:
             echo "COVERAGE=Coverage report not generated" >> $GITHUB_OUTPUT
           fi
       - name: Email coverage report to maintainer
-        if: matrix.node-version == 20 && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: matrix.node-version == 20 && github.event_name == 'push' && github.ref == 'refs/heads/main' && env.MAIL_SMTP_HOST != ''
         uses: dawidd6/action-send-mail@v3
+        env:
+          MAIL_SMTP_HOST: ${{ secrets.MAIL_SMTP_HOST }}
         with:
           server_address: ${{ secrets.MAIL_SMTP_HOST }}
           server_port: ${{ secrets.MAIL_SMTP_PORT }}
