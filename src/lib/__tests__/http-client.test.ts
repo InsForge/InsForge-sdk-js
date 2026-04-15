@@ -628,10 +628,17 @@ describe('serializeBody', () => {
     expect(headers['Content-Type']).toBe('application/json;charset=UTF-8');
   });
 
-  it('JSON-stringifies but does NOT set content-type for GET', () => {
+  it('returns undefined for GET regardless of body', () => {
     const headers: Record<string, string> = {};
     const result = serializeBody('GET', { a: 1 }, headers);
-    expect(result).toBe('{"a":1}');
+    expect(result).toBeUndefined();
+    expect(headers['Content-Type']).toBeUndefined();
+  });
+
+  it('returns undefined for HEAD regardless of body', () => {
+    const headers: Record<string, string> = {};
+    const result = serializeBody('HEAD', { a: 1 }, headers);
+    expect(result).toBeUndefined();
     expect(headers['Content-Type']).toBeUndefined();
   });
 

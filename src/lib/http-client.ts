@@ -26,11 +26,12 @@ const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']);
 /**
  * Serialize a request body into something fetch (or a Request constructor) accepts.
  * - undefined → no body, no content-type set
+ * - GET/HEAD → no body returned regardless of input (WHATWG Fetch forbids bodies on GET/HEAD)
  * - FormData → pass-through, content-type left to runtime (multipart boundary)
- * - anything else → JSON.stringify; sets Content-Type to application/json for non-GET
+ * - anything else → JSON.stringify; unconditionally sets Content-Type to application/json
  *
  * Mutates the provided `headers` object to set Content-Type when applicable.
- * Returns the serialized body, or undefined if input was undefined.
+ * Returns the serialized body, or undefined if input was undefined or method is GET/HEAD.
  */
 export function serializeBody(
   method: string,
@@ -38,12 +39,11 @@ export function serializeBody(
   headers: Record<string, string>,
 ): BodyInit | undefined {
   if (body === undefined) return undefined;
+  if (method === 'GET' || method === 'HEAD') return undefined;
   if (typeof FormData !== 'undefined' && body instanceof FormData) {
     return body;
   }
-  if (method !== 'GET') {
-    headers['Content-Type'] = 'application/json;charset=UTF-8';
-  }
+  headers['Content-Type'] = 'application/json;charset=UTF-8';
   return JSON.stringify(body);
 }
 
