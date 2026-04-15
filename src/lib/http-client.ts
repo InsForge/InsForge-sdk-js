@@ -48,6 +48,57 @@ export function serializeBody(
 }
 
 /**
+ * Parse a fetch Response into typed data, mapping non-2xx to InsForgeError.
+ * - 204 → undefined
+ * - JSON content-type → parsed JSON
+ * - other content-type → text
+ * - body parse failure → InsForgeError(PARSE_ERROR | REQUEST_FAILED)
+ * - non-2xx with `{ error, message }` body → InsForgeError.fromApiError, all extra fields preserved
+ * - non-2xx without that shape → InsForgeError(REQUEST_FAILED)
+ */
+export async function parseResponse<T>(response: Response): Promise<T> {
+  if (response.status === 204) return undefined as T;
+
+  let data: any;
+  const contentType = response.headers.get('content-type');
+  try {
+    if (contentType?.includes('json')) {
+      data = await response.json();
+    } else {
+      data = await response.text();
+    }
+  } catch (parseErr: any) {
+    throw new InsForgeError(
+      `Failed to parse response body: ${parseErr?.message || 'Unknown error'}`,
+      response.status,
+      response.ok ? 'PARSE_ERROR' : 'REQUEST_FAILED',
+    );
+  }
+
+  if (!response.ok) {
+    if (data && typeof data === 'object' && 'error' in data) {
+      if (!data.statusCode && !data.status) {
+        data.statusCode = response.status;
+      }
+      const error = InsForgeError.fromApiError(data as ApiError);
+      Object.keys(data).forEach((key) => {
+        if (key !== 'error' && key !== 'message' && key !== 'statusCode') {
+          (error as any)[key] = data[key];
+        }
+      });
+      throw error;
+    }
+    throw new InsForgeError(
+      `Request failed: ${response.statusText}`,
+      response.status,
+      'REQUEST_FAILED',
+    );
+  }
+
+  return data as T;
+}
+
+/**
  * HTTP client with built-in retry, timeout, and exponential backoff support.
  * Handles authentication, request serialization, and error normalization.
  */
@@ -282,70 +333,25 @@ export class HttpClient {
           continue;
         }
 
-        // Handle 204 No Content
-        if (response.status === 204) {
-          if (timer !== undefined) clearTimeout(timer);
-          return undefined as T;
-        }
-
-        // Parse response body (keep timeout active to cover body reads)
-        let data: any;
-        const contentType = response.headers.get('content-type');
+        // Parse body via shared helper; logger fires after either way
+        let data: T;
         try {
-          // Check for any JSON content type (including PostgREST's vnd.pgrst.object+json)
-          if (contentType?.includes('json')) {
-            data = await response.json();
-          } else {
-            // For non-JSON responses, return text
-            data = await response.text();
-          }
-        } catch (parseErr: any) {
+          data = await parseResponse<T>(response);
+        } catch (err) {
           if (timer !== undefined) clearTimeout(timer);
-          // Body parse error (e.g. malformed JSON on a 4xx) — not retryable
-          throw new InsForgeError(
-            `Failed to parse response body: ${parseErr?.message || 'Unknown error'}`,
-            response.status,
-            response.ok ? 'PARSE_ERROR' : 'REQUEST_FAILED',
-          );
-        }
-
-        // Clear timeout after body is fully read
-        if (timer !== undefined) clearTimeout(timer);
-
-        // Handle errors
-        if (!response.ok) {
-          this.logger.logResponse(
-            method,
-            url,
-            response.status,
-            Date.now() - startTime,
-            data,
-          );
-          if (data && typeof data === 'object' && 'error' in data) {
-            // Add the HTTP status code if not already in the data
-            if (!data.statusCode && !data.status) {
-              data.statusCode = response.status;
-            }
-            const error = InsForgeError.fromApiError(data as ApiError);
-            // Preserve all additional fields from the error response
-            Object.keys(data).forEach((key) => {
-              if (
-                key !== 'error' &&
-                key !== 'message' &&
-                key !== 'statusCode'
-              ) {
-                (error as any)[key] = data[key];
-              }
-            });
-            throw error;
+          if (err instanceof InsForgeError) {
+            this.logger.logResponse(
+              method,
+              url,
+              err.statusCode || response.status,
+              Date.now() - startTime,
+              err,
+            );
           }
-          throw new InsForgeError(
-            `Request failed: ${response.statusText}`,
-            response.status,
-            'REQUEST_FAILED',
-          );
+          throw err;
         }
 
+        if (timer !== undefined) clearTimeout(timer);
         this.logger.logResponse(
           method,
           url,
@@ -353,7 +359,7 @@ export class HttpClient {
           Date.now() - startTime,
           data,
         );
-        return data as T;
+        return data;
       } catch (err: any) {
         if (timer !== undefined) clearTimeout(timer);
 
