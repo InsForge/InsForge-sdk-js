@@ -96,9 +96,16 @@ export class Functions {
   ): Promise<{ data: T | null; error: InsForgeError | null }> {
     const { method = 'POST', body, headers = {} } = options;
 
-    // 1. In-process dispatch (same Deno deployment as the router)
+    // 1. In-process dispatch (same Deno deployment as the router).
+    // Only short-circuit when the target is the local derived subhosting URL —
+    // otherwise we'd misroute cross-deployment calls to the local router.
     const dispatch = globalThis.__insforge_dispatch__;
-    if (typeof dispatch === 'function') {
+    const localFunctionsUrl = Functions.deriveSubhostingUrl(this.http.baseUrl);
+    if (
+      typeof dispatch === 'function' &&
+      !!localFunctionsUrl &&
+      this.functionsUrl === localFunctionsUrl
+    ) {
       try {
         const req = this.buildInProcessRequest(slug, method, body, headers);
         const res = await dispatch(req);

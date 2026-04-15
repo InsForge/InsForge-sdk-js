@@ -25,6 +25,18 @@ function makeHttp(fetchFn: ReturnType<typeof vi.fn>) {
   );
 }
 
+function makeInsforgeHttp(fetchFn: ReturnType<typeof vi.fn> = vi.fn()) {
+  return new HttpClient(
+    {
+      baseUrl: 'https://app.us-west.insforge.app',
+      fetch: fetchFn as any,
+      retryCount: 0,
+      timeout: 0,
+    },
+    makeTokenManager(),
+  );
+}
+
 function jsonRes(status: number, body: any, statusText = 'OK'): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -75,7 +87,15 @@ describe('Functions.invoke', () => {
   describe('in-process path (global present)', () => {
     it('calls dispatch and returns parsed JSON without using fetch', async () => {
       const fetchFn = vi.fn();
-      const http = makeHttp(fetchFn);
+      const http = new HttpClient(
+        {
+          baseUrl: 'https://app.us-west.insforge.app',
+          fetch: fetchFn as any,
+          retryCount: 0,
+          timeout: 0,
+        },
+        makeTokenManager(),
+      );
       const fns = new Functions(http, 'https://app.functions.insforge.app');
       const dispatch = vi.fn().mockResolvedValue(jsonRes(200, { ok: 1 }));
       (globalThis as any).__insforge_dispatch__ = dispatch;
@@ -88,7 +108,7 @@ describe('Functions.invoke', () => {
     });
 
     it('maps non-2xx JSON error to InsForgeError', async () => {
-      const http = makeHttp(vi.fn());
+      const http = makeInsforgeHttp();
       const fns = new Functions(http);
       (globalThis as any).__insforge_dispatch__ = vi
         .fn()
@@ -104,7 +124,7 @@ describe('Functions.invoke', () => {
     });
 
     it('wraps a thrown dispatch error as InsForgeError(500, FUNCTION_ERROR)', async () => {
-      const http = makeHttp(vi.fn());
+      const http = makeInsforgeHttp();
       const fns = new Functions(http);
       (globalThis as any).__insforge_dispatch__ = vi
         .fn()
@@ -120,7 +140,7 @@ describe('Functions.invoke', () => {
     });
 
     it('sends body as JSON with application/json content-type', async () => {
-      const http = makeHttp(vi.fn());
+      const http = makeInsforgeHttp();
       const fns = new Functions(http);
       const dispatch = vi.fn().mockResolvedValue(jsonRes(200, {}));
       (globalThis as any).__insforge_dispatch__ = dispatch;
@@ -133,7 +153,7 @@ describe('Functions.invoke', () => {
     });
 
     it('forwards caller-provided headers (caller wins on conflict)', async () => {
-      const http = makeHttp(vi.fn());
+      const http = makeInsforgeHttp();
       const fns = new Functions(http);
       const dispatch = vi.fn().mockResolvedValue(jsonRes(200, {}));
       (globalThis as any).__insforge_dispatch__ = dispatch;
@@ -149,7 +169,7 @@ describe('Functions.invoke', () => {
     });
 
     it('passes slug subpath through as request pathname', async () => {
-      const http = makeHttp(vi.fn());
+      const http = makeInsforgeHttp();
       const fns = new Functions(http);
       const dispatch = vi.fn().mockResolvedValue(jsonRes(200, {}));
       (globalThis as any).__insforge_dispatch__ = dispatch;
@@ -161,7 +181,7 @@ describe('Functions.invoke', () => {
     });
 
     it('uses GET without setting JSON content-type when method is GET', async () => {
-      const http = makeHttp(vi.fn());
+      const http = makeInsforgeHttp();
       const fns = new Functions(http);
       const dispatch = vi.fn().mockResolvedValue(jsonRes(200, {}));
       (globalThis as any).__insforge_dispatch__ = dispatch;
@@ -174,7 +194,7 @@ describe('Functions.invoke', () => {
     });
 
     it('returns { data: undefined, error: null } when dispatch returns 204', async () => {
-      const http = makeHttp(vi.fn());
+      const http = makeInsforgeHttp();
       const fns = new Functions(http);
       (globalThis as any).__insforge_dispatch__ = vi
         .fn()
@@ -183,6 +203,31 @@ describe('Functions.invoke', () => {
       const result = await fns.invoke('hello');
 
       expect(result).toEqual({ data: undefined, error: null });
+    });
+
+    it('does NOT short-circuit when functionsUrl points to a foreign deployment', async () => {
+      const fetchFn = vi.fn().mockResolvedValue(jsonRes(200, { remote: true }));
+      const http = new HttpClient(
+        {
+          baseUrl: 'https://app-a.us-west.insforge.app',
+          fetch: fetchFn as any,
+          retryCount: 0,
+          timeout: 0,
+        },
+        makeTokenManager(),
+      );
+      const fns = new Functions(http, 'https://app-b.functions.insforge.app');
+      const dispatch = vi.fn();
+      (globalThis as any).__insforge_dispatch__ = dispatch;
+
+      const result = await fns.invoke('hello');
+
+      expect(result).toEqual({ data: { remote: true }, error: null });
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(fetchFn).toHaveBeenCalledOnce();
+      expect(String(fetchFn.mock.calls[0][0])).toBe(
+        'https://app-b.functions.insforge.app/hello',
+      );
     });
   });
 });
