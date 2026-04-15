@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { HttpClient } from '../http-client';
+import { HttpClient, serializeBody } from '../http-client';
 import { InsForgeError } from '../../types';
 import { TokenManager } from '../token-manager';
 import * as tokenManagerModule from '../token-manager';
@@ -610,5 +610,37 @@ describe('HttpClient', () => {
       );
       expect(refreshCalls).toHaveLength(1);
     });
+  });
+});
+
+describe('serializeBody', () => {
+  it('returns no body and no content-type when input is undefined', () => {
+    const headers: Record<string, string> = {};
+    const result = serializeBody('POST', undefined, headers);
+    expect(result).toBeUndefined();
+    expect(headers['Content-Type']).toBeUndefined();
+  });
+
+  it('JSON-stringifies a plain object and sets content-type for non-GET', () => {
+    const headers: Record<string, string> = {};
+    const result = serializeBody('POST', { a: 1 }, headers);
+    expect(result).toBe('{"a":1}');
+    expect(headers['Content-Type']).toBe('application/json;charset=UTF-8');
+  });
+
+  it('JSON-stringifies but does NOT set content-type for GET', () => {
+    const headers: Record<string, string> = {};
+    const result = serializeBody('GET', { a: 1 }, headers);
+    expect(result).toBe('{"a":1}');
+    expect(headers['Content-Type']).toBeUndefined();
+  });
+
+  it('passes FormData through unchanged and does not set content-type', () => {
+    const headers: Record<string, string> = {};
+    const fd = new FormData();
+    fd.append('k', 'v');
+    const result = serializeBody('POST', fd, headers);
+    expect(result).toBe(fd);
+    expect(headers['Content-Type']).toBeUndefined();
   });
 });

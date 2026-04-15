@@ -24,6 +24,30 @@ const RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504]);
 const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']);
 
 /**
+ * Serialize a request body into something fetch (or a Request constructor) accepts.
+ * - undefined → no body, no content-type set
+ * - FormData → pass-through, content-type left to runtime (multipart boundary)
+ * - anything else → JSON.stringify; sets Content-Type to application/json for non-GET
+ *
+ * Mutates the provided `headers` object to set Content-Type when applicable.
+ * Returns the serialized body, or undefined if input was undefined.
+ */
+export function serializeBody(
+  method: string,
+  body: unknown,
+  headers: Record<string, string>,
+): BodyInit | undefined {
+  if (body === undefined) return undefined;
+  if (typeof FormData !== 'undefined' && body instanceof FormData) {
+    return body;
+  }
+  if (method !== 'GET') {
+    headers['Content-Type'] = 'application/json;charset=UTF-8';
+  }
+  return JSON.stringify(body);
+}
+
+/**
  * HTTP client with built-in retry, timeout, and exponential backoff support.
  * Handles authentication, request serialization, and error normalization.
  */
@@ -162,21 +186,7 @@ export class HttpClient {
       requestHeaders['Authorization'] = `Bearer ${authToken}`;
     }
 
-    // Handle body serialization
-    let processedBody: any;
-    if (body !== undefined) {
-      // Check if body is FormData (for file uploads)
-      if (typeof FormData !== 'undefined' && body instanceof FormData) {
-        // Don't set Content-Type for FormData, let browser set it with boundary
-        processedBody = body;
-      } else {
-        // JSON body
-        if (method !== 'GET') {
-          requestHeaders['Content-Type'] = 'application/json;charset=UTF-8';
-        }
-        processedBody = JSON.stringify(body);
-      }
-    }
+    const processedBody = serializeBody(method, body, requestHeaders);
 
     // Normalize HeadersInit (Headers | [string,string][] | Record) to plain object
     if (headers instanceof Headers) {
