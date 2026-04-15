@@ -77,9 +77,7 @@ export async function parseResponse<T>(response: Response): Promise<T> {
 
   if (!response.ok) {
     if (data && typeof data === 'object' && 'error' in data) {
-      if (!data.statusCode && !data.status) {
-        data.statusCode = response.status;
-      }
+      data.statusCode ??= data.status ?? response.status;
       const error = InsForgeError.fromApiError(data as ApiError);
       Object.keys(data).forEach((key) => {
         if (key !== 'error' && key !== 'message' && key !== 'statusCode') {

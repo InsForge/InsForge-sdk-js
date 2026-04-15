@@ -770,4 +770,15 @@ describe('parseResponse', () => {
       error: 'REQUEST_FAILED',
     });
   });
+
+  it('promotes data.status to statusCode when statusCode is missing', async () => {
+    const res = makeResponse({
+      status: 400,
+      contentType: 'application/json',
+      jsonValue: { error: 'X', message: 'm', status: 404 },
+    });
+    const err = await parseResponse(res).catch((e) => e);
+    expect(err).toBeInstanceOf(InsForgeError);
+    expect((err as any).statusCode).toBe(404);
+  });
 });
