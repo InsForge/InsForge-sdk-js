@@ -6,7 +6,7 @@ InsForge functions run on Deno Subhosting under a single-project, multi-function
 
 When function B (running inside that deployment) uses the SDK to invoke function A, the SDK currently calls `https://{appKey}.functions.insforge.app/A`. Deno Subhosting detects this as a recursive request to the same deployment and returns:
 
-```
+```text
 508 Loop Detected — Recursive requests to the same deployment cannot be processed.
 ```
 
@@ -20,7 +20,7 @@ The trigger is the presence of `globalThis.__insforge_dispatch__`, which the aut
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │ Deno deployment ({appKey}.functions.insforge.app)       │
 │                                                         │
