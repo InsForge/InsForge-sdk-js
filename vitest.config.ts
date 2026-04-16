@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  ssr: {
+    noExternal: ['@insforge/shared-schemas'],
+  },
   test: {
     globals: true,
     environment: 'node',

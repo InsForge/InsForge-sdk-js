@@ -77,7 +77,7 @@ export class InsForgeClient {
     }
 
     this.auth = new Auth(this.http, this.tokenManager, {
-      isServerMode: config.isServerMode ?? false,
+      isServerMode: config.isServerMode ?? !!config.edgeFunctionToken,
     });
     this.database = new Database(this.http, this.tokenManager);
     this.storage = new Storage(this.http);
