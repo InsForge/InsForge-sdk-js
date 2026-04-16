@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { HttpClient } from '../http-client';
+import { HttpClient, serializeBody, parseResponse } from '../http-client';
 import { InsForgeError } from '../../types';
 import { TokenManager } from '../token-manager';
 import * as tokenManagerModule from '../token-manager';
@@ -610,5 +610,175 @@ describe('HttpClient', () => {
       );
       expect(refreshCalls).toHaveLength(1);
     });
+  });
+});
+
+describe('serializeBody', () => {
+  it('returns no body and no content-type when input is undefined', () => {
+    const headers: Record<string, string> = {};
+    const result = serializeBody('POST', undefined, headers);
+    expect(result).toBeUndefined();
+    expect(headers['Content-Type']).toBeUndefined();
+  });
+
+  it('JSON-stringifies a plain object and sets content-type for non-GET', () => {
+    const headers: Record<string, string> = {};
+    const result = serializeBody('POST', { a: 1 }, headers);
+    expect(result).toBe('{"a":1}');
+    expect(headers['Content-Type']).toBe('application/json;charset=UTF-8');
+  });
+
+  it('returns undefined for GET regardless of body', () => {
+    const headers: Record<string, string> = {};
+    const result = serializeBody('GET', { a: 1 }, headers);
+    expect(result).toBeUndefined();
+    expect(headers['Content-Type']).toBeUndefined();
+  });
+
+  it('returns undefined for HEAD regardless of body', () => {
+    const headers: Record<string, string> = {};
+    const result = serializeBody('HEAD', { a: 1 }, headers);
+    expect(result).toBeUndefined();
+    expect(headers['Content-Type']).toBeUndefined();
+  });
+
+  it('passes FormData through unchanged and does not set content-type', () => {
+    const headers: Record<string, string> = {};
+    const fd = new FormData();
+    fd.append('k', 'v');
+    const result = serializeBody('POST', fd, headers);
+    expect(result).toBe(fd);
+    expect(headers['Content-Type']).toBeUndefined();
+  });
+});
+
+function makeResponse(init: {
+  status: number;
+  statusText?: string;
+  contentType?: string | null;
+  bodyText?: string;
+  jsonValue?: unknown;
+  jsonThrows?: boolean;
+}): Response {
+  const headers = new Headers();
+  if (init.contentType) headers.set('content-type', init.contentType);
+  return {
+    ok: init.status >= 200 && init.status < 300,
+    status: init.status,
+    statusText: init.statusText ?? '',
+    headers,
+    json: () =>
+      init.jsonThrows
+        ? Promise.reject(new Error('bad json'))
+        : Promise.resolve(init.jsonValue),
+    text: () => Promise.resolve(init.bodyText ?? ''),
+  } as Response;
+}
+
+describe('parseResponse', () => {
+  it('returns undefined for 204', async () => {
+    const res = makeResponse({ status: 204 });
+    expect(await parseResponse(res)).toBeUndefined();
+  });
+
+  it('parses JSON body for 2xx with json content-type', async () => {
+    const res = makeResponse({
+      status: 200,
+      contentType: 'application/json',
+      jsonValue: { a: 1 },
+    });
+    expect(await parseResponse(res)).toEqual({ a: 1 });
+  });
+
+  it('parses PostgREST vnd.pgrst.object+json content-type as JSON', async () => {
+    const res = makeResponse({
+      status: 200,
+      contentType: 'application/vnd.pgrst.object+json',
+      jsonValue: { id: 1 },
+    });
+    expect(await parseResponse(res)).toEqual({ id: 1 });
+  });
+
+  it('returns text body when content-type is not JSON', async () => {
+    const res = makeResponse({
+      status: 200,
+      contentType: 'text/plain',
+      bodyText: 'hello',
+    });
+    expect(await parseResponse(res)).toBe('hello');
+  });
+
+  it('throws InsForgeError mapped from { error, message } body on non-2xx', async () => {
+    const res = makeResponse({
+      status: 400,
+      statusText: 'Bad Request',
+      contentType: 'application/json',
+      jsonValue: { error: 'INVALID_INPUT', message: 'name required' },
+    });
+    await expect(parseResponse(res)).rejects.toMatchObject({
+      statusCode: 400,
+      error: 'INVALID_INPUT',
+      message: 'name required',
+    });
+  });
+
+  it('preserves extra fields on InsForgeError from error body', async () => {
+    const res = makeResponse({
+      status: 400,
+      contentType: 'application/json',
+      jsonValue: { error: 'X', message: 'm', requestId: 'r-1', detail: 'd' },
+    });
+    const err = await parseResponse(res).catch((e) => e);
+    expect(err).toBeInstanceOf(InsForgeError);
+    expect((err as any).requestId).toBe('r-1');
+    expect((err as any).detail).toBe('d');
+  });
+
+  it('throws generic InsForgeError on non-2xx without error body', async () => {
+    const res = makeResponse({
+      status: 503,
+      statusText: 'Service Unavailable',
+      contentType: 'application/json',
+      jsonValue: {},
+    });
+    await expect(parseResponse(res)).rejects.toMatchObject({
+      statusCode: 503,
+      error: 'REQUEST_FAILED',
+    });
+  });
+
+  it('throws PARSE_ERROR on 2xx with invalid JSON', async () => {
+    const res = makeResponse({
+      status: 200,
+      contentType: 'application/json',
+      jsonThrows: true,
+    });
+    await expect(parseResponse(res)).rejects.toMatchObject({
+      statusCode: 200,
+      error: 'PARSE_ERROR',
+    });
+  });
+
+  it('throws REQUEST_FAILED when JSON parse fails on a non-2xx response', async () => {
+    const res = makeResponse({
+      status: 500,
+      contentType: 'application/json',
+      jsonThrows: true,
+    });
+    await expect(parseResponse(res)).rejects.toMatchObject({
+      statusCode: 500,
+      error: 'REQUEST_FAILED',
+    });
+  });
+
+  it('promotes data.status to statusCode when statusCode is missing', async () => {
+    const res = makeResponse({
+      status: 400,
+      contentType: 'application/json',
+      jsonValue: { error: 'X', message: 'm', status: 404 },
+    });
+    const err = await parseResponse(res).catch((e) => e);
+    expect(err).toBeInstanceOf(InsForgeError);
+    expect((err as any).statusCode).toBe(404);
   });
 });
