@@ -105,6 +105,38 @@ export class InsForgeClient {
   }
 
   /**
+   * Set the access token used by every SDK surface. Updates both the HTTP
+   * client (database / storage / functions / AI / emails) and the realtime
+   * token manager (which fires `onTokenChange` to reconnect the WebSocket
+   * with the new bearer). Pass `null` to clear.
+   *
+   * Use this when an external auth provider (Better Auth, Clerk, Auth0,
+   * WorkOS, Kinde, Stytch, …) issues the JWT and you need to keep the
+   * long-lived InsForge client in sync. Without this, you'd have to call
+   * `client.getHttpClient().setAuthToken(token)` AND reach into the private
+   * `client.realtime.tokenManager.setAccessToken(token)` separately —
+   * forgetting the second one silently breaks realtime auth.
+   *
+   * @example
+   * ```typescript
+   * // Refresh a third-party-issued JWT periodically
+   * const { token } = await fetch('/api/insforge-token').then((r) => r.json());
+   * client.setAccessToken(token);
+   *
+   * // Sign-out
+   * client.setAccessToken(null);
+   * ```
+   */
+  setAccessToken(token: string | null): void {
+    this.http.setAuthToken(token);
+    if (token === null) {
+      this.tokenManager.clearSession();
+    } else {
+      this.tokenManager.setAccessToken(token);
+    }
+  }
+
+  /**
    * Future modules will be added here:
    * - database: Database operations
    * - storage: File storage operations
