@@ -9,6 +9,7 @@ import { AI } from './modules/ai';
 import { Functions } from './modules/functions';
 import { Realtime } from './modules/realtime';
 import { Emails } from './modules/email';
+import { Payments } from './modules/payments';
 
 /**
  * Main InsForge SDK Client
@@ -64,6 +65,7 @@ export class InsForgeClient {
   public readonly functions: Functions;
   public readonly realtime: Realtime;
   public readonly emails: Emails;
+  public readonly payments: Payments;
 
   constructor(config: InsForgeConfig = {}) {
     const logger = new Logger(config.debug);
@@ -89,6 +91,7 @@ export class InsForgeClient {
       config.anonKey,
     );
     this.emails = new Emails(this.http);
+    this.payments = new Payments(this.http);
   }
 
   /**
