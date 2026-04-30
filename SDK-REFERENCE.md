@@ -252,6 +252,54 @@ await insforge.auth.resetPassword({
 - **Browser**: in-memory (per client instance)
 - **Node.js**: in-memory (per request/client instance)
 
+## Payments Methods
+
+Payments methods are intended for generated app frontends. They call runtime-safe backend routes using the current user token or anon key. Admin-only Stripe key, product, price, sync, and webhook configuration APIs are intentionally not exposed through this frontend SDK surface.
+
+### `createCheckoutSession()`
+```javascript
+const { data, error } = await insforge.payments.createCheckoutSession({
+  environment: 'test',
+  mode: 'payment',
+  lineItems: [{ stripePriceId: 'price_123', quantity: 1 }],
+  successUrl: 'https://example.com/success',
+  cancelUrl: 'https://example.com/pricing',
+  idempotencyKey: 'cart_123' // optional, recommended for retry-safe checkout creation
+});
+
+if (!error && data?.checkoutSession.url) {
+  window.location.assign(data.checkoutSession.url);
+}
+```
+
+For one-time payments, `subject` is optional. For subscription checkout, `subject` is required because subscriptions represent ongoing entitlement for an app-defined billing owner.
+
+```javascript
+await insforge.payments.createCheckoutSession({
+  environment: 'test',
+  mode: 'subscription',
+  subject: { type: 'team', id: 'team_123' },
+  lineItems: [{ stripePriceId: 'price_monthly_123', quantity: 1 }],
+  successUrl: 'https://example.com/billing/success',
+  cancelUrl: 'https://example.com/billing'
+});
+```
+
+### `createCustomerPortalSession()`
+```javascript
+const { data, error } = await insforge.payments.createCustomerPortalSession({
+  environment: 'test',
+  subject: { type: 'team', id: 'team_123' },
+  returnUrl: 'https://example.com/billing'
+});
+
+if (!error && data?.customerPortalSession.url) {
+  window.location.assign(data.customerPortalSession.url);
+}
+```
+
+Customer portal sessions require an authenticated user and an existing Stripe customer mapping for the billing subject.
+
 ## Database Methods
 
 **Note:** Database operations use [@supabase/postgrest-js](https://github.com/supabase/postgrest-js) under the hood, providing full PostgREST compatibility including advanced features like OR conditions, complex joins, and aggregations.

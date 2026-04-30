@@ -12,6 +12,7 @@ Official TypeScript/JavaScript SDK for [InsForge](https://github.com/InsForge/In
 - **Storage** - File upload and management with S3-compatible storage
 - **Edge Functions** - Serverless function invocation
 - **AI Integration** - Built-in AI capabilities
+- **Payments** - Stripe Checkout and Billing Portal session helpers
 - **TypeScript** - Full TypeScript support with type definitions
 - **Automatic OAuth Handling** - Seamless OAuth callback detection
 
@@ -185,6 +186,49 @@ const { data, error } = await insforge.storage
 const { data, error } = await insforge.functions.invoke('my-function', {
   body: { key: 'value' }
 });
+```
+
+### Payments
+
+```javascript
+// Create and redirect to a Stripe Checkout Session
+const { data, error } = await insforge.payments.createCheckoutSession({
+  environment: 'test',
+  mode: 'payment',
+  lineItems: [{ stripePriceId: 'price_123', quantity: 1 }],
+  successUrl: `${window.location.origin}/success`,
+  cancelUrl: `${window.location.origin}/pricing`,
+  idempotencyKey: 'cart_123'
+});
+
+if (!error && data?.checkoutSession.url) {
+  window.location.assign(data.checkoutSession.url);
+}
+
+// Create a subscription checkout for an app billing subject
+const { data: subscriptionCheckout } = await insforge.payments.createCheckoutSession({
+  environment: 'test',
+  mode: 'subscription',
+  subject: { type: 'team', id: 'team_123' },
+  lineItems: [{ stripePriceId: 'price_monthly_123', quantity: 1 }],
+  successUrl: `${window.location.origin}/billing/success`,
+  cancelUrl: `${window.location.origin}/billing`
+});
+
+if (subscriptionCheckout?.checkoutSession.url) {
+  window.location.assign(subscriptionCheckout.checkoutSession.url);
+}
+
+// Let an authenticated customer manage their subscription in Stripe Billing Portal
+const { data: portal } = await insforge.payments.createCustomerPortalSession({
+  environment: 'test',
+  subject: { type: 'team', id: 'team_123' },
+  returnUrl: `${window.location.origin}/billing`
+});
+
+if (portal?.customerPortalSession.url) {
+  window.location.assign(portal.customerPortalSession.url);
+}
 ```
 
 ### AI Integration

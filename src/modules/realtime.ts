@@ -229,7 +229,7 @@ export class Realtime {
   async subscribe(channel: string): Promise<SubscribeResponse> {
     // Already subscribed, return success
     if (this.subscribedChannels.has(channel)) {
-      return { ok: true, channel };
+      return { ok: true, channel, presence: { members: [] } };
     }
 
     // Auto-connect if not connected
