@@ -33,10 +33,10 @@ yarn add @insforge/sdk
 ### Initialize the Client
 
 ```javascript
-import { createClient } from '@insforge/sdk';
+import { createClient } from "@insforge/sdk";
 
 const insforge = createClient({
-  baseUrl: 'http://localhost:7130' // Your InsForge backend URL
+  baseUrl: "http://localhost:7130", // Your InsForge backend URL
 });
 ```
 
@@ -45,35 +45,35 @@ const insforge = createClient({
 ```javascript
 // Sign up a new user
 const { data, error } = await insforge.auth.signUp({
-  email: 'user@example.com',
-  password: 'securePassword123',
-  name: 'John Doe', // optional
-  redirectTo: 'http://localhost:3000/sign-in' // optional, recommended for link-based verification
+  email: "user@example.com",
+  password: "securePassword123",
+  name: "John Doe", // optional
+  redirectTo: "http://localhost:3000/sign-in", // optional, recommended for link-based verification
 });
 
 // Sign in with email/password
 const { data, error } = await insforge.auth.signInWithPassword({
-  email: 'user@example.com',
-  password: 'securePassword123'
+  email: "user@example.com",
+  password: "securePassword123",
 });
 
 // OAuth authentication (built-in or custom provider key)
 await insforge.auth.signInWithOAuth({
-  provider: 'google', // e.g. built-in: "google", custom: "auth0-acme"
-  redirectTo: 'http://localhost:3000/dashboard'
+  provider: "google", // e.g. built-in: "google", custom: "auth0-acme"
+  redirectTo: "http://localhost:3000/dashboard",
 });
 
 // Get current user (call this during browser app startup)
 const { data: currentUser } = await insforge.auth.getCurrentUser();
 
 // Get any user's profile by ID (public endpoint)
-const { data: profile, error } = await insforge.auth.getProfile('user-id-here');
+const { data: profile, error } = await insforge.auth.getProfile("user-id-here");
 
 // Update current user's profile (requires authentication)
 const { data: updatedProfile, error } = await insforge.auth.setProfile({
-  displayName: 'John Doe',
-  bio: 'Software developer',
-  avatarUrl: 'https://example.com/avatar.jpg'
+  displayName: "John Doe",
+  bio: "Software developer",
+  avatarUrl: "https://example.com/avatar.jpg",
 });
 
 // Sign out
@@ -85,37 +85,38 @@ await insforge.auth.signOut();
 ```javascript
 // Resend a verification email
 await insforge.auth.resendVerificationEmail({
-  email: 'user@example.com',
-  redirectTo: 'http://localhost:3000/sign-in' // optional, recommended for link-based verification
+  email: "user@example.com",
+  redirectTo: "http://localhost:3000/sign-in", // optional, recommended for link-based verification
 });
 
 // Verify email with a 6-digit code
 await insforge.auth.verifyEmail({
-  email: 'user@example.com',
-  otp: '123456'
+  email: "user@example.com",
+  otp: "123456",
 });
 
 // Send password reset email
 await insforge.auth.sendResetPasswordEmail({
-  email: 'user@example.com',
-  redirectTo: 'http://localhost:3000/reset-password' // optional, recommended for link-based reset
+  email: "user@example.com",
+  redirectTo: "http://localhost:3000/reset-password", // optional, recommended for link-based reset
 });
 
 // Code-based reset flow: exchange the code, then reset the password
 const { data: resetToken } = await insforge.auth.exchangeResetPasswordToken({
-  email: 'user@example.com',
-  code: '123456'
+  email: "user@example.com",
+  code: "123456",
 });
 
 if (resetToken) {
   await insforge.auth.resetPassword({
-    newPassword: 'newSecurePassword123',
-    otp: resetToken.token
+    newPassword: "newSecurePassword123",
+    otp: resetToken.token,
   });
 }
 ```
 
 For link-based verification and password reset, users click the emailed browser links:
+
 - `GET /api/auth/email/verify-link`
 - `GET /api/auth/email/reset-password-link`
 
@@ -130,28 +131,26 @@ Those backend endpoints validate the token first, then redirect the browser to y
 ```javascript
 // Insert data
 const { data, error } = await insforge.database
-  .from('posts')
-  .insert([
-    { title: 'My First Post', content: 'Hello World!' }
-  ]);
+  .from("posts")
+  .insert([{ title: "My First Post", content: "Hello World!" }]);
 
 // Query data
 const { data, error } = await insforge.database
-  .from('posts')
-  .select('*')
-  .eq('author_id', userId);
+  .from("posts")
+  .select("*")
+  .eq("author_id", userId);
 
 // Update data
 const { data, error } = await insforge.database
-  .from('posts')
-  .update({ title: 'Updated Title' })
-  .eq('id', postId);
+  .from("posts")
+  .update({ title: "Updated Title" })
+  .eq("id", postId);
 
 // Delete data
 const { data, error } = await insforge.database
-  .from('posts')
+  .from("posts")
   .delete()
-  .eq('id', postId);
+  .eq("id", postId);
 ```
 
 ### File Storage
@@ -159,32 +158,28 @@ const { data, error } = await insforge.database
 ```javascript
 // Upload a file
 const file = document.querySelector('input[type="file"]').files[0];
-const { data, error } = await insforge.storage
-  .from('avatars')
-  .upload(file);
+const { data, error } = await insforge.storage.from("avatars").upload(file);
 
 // Download a file
 const { data, error } = await insforge.storage
-  .from('avatars')
-  .download('user-avatar.png');
+  .from("avatars")
+  .download("user-avatar.png");
 
 // Delete a file
 const { data, error } = await insforge.storage
-  .from('avatars')
-  .remove(['user-avatar.png']);
+  .from("avatars")
+  .remove(["user-avatar.png"]);
 
 // List files
-const { data, error } = await insforge.storage
-  .from('avatars')
-  .list();
+const { data, error } = await insforge.storage.from("avatars").list();
 ```
 
 ### Edge Functions
 
 ```javascript
 // Invoke an edge function
-const { data, error } = await insforge.functions.invoke('my-function', {
-  body: { key: 'value' }
+const { data, error } = await insforge.functions.invoke("my-function", {
+  body: { key: "value" },
 });
 ```
 
@@ -192,13 +187,12 @@ const { data, error } = await insforge.functions.invoke('my-function', {
 
 ```javascript
 // Create and redirect to a Stripe Checkout Session
-const { data, error } = await insforge.payments.createCheckoutSession({
-  environment: 'test',
-  mode: 'payment',
-  lineItems: [{ stripePriceId: 'price_123', quantity: 1 }],
+const { data, error } = await insforge.payments.createCheckoutSession("test", {
+  mode: "payment",
+  lineItems: [{ stripePriceId: "price_123", quantity: 1 }],
   successUrl: `${window.location.origin}/success`,
   cancelUrl: `${window.location.origin}/pricing`,
-  idempotencyKey: 'cart_123'
+  idempotencyKey: "cart_123",
 });
 
 if (!error && data?.checkoutSession.url) {
@@ -206,25 +200,27 @@ if (!error && data?.checkoutSession.url) {
 }
 
 // Create a subscription checkout for an app billing subject
-const { data: subscriptionCheckout } = await insforge.payments.createCheckoutSession({
-  environment: 'test',
-  mode: 'subscription',
-  subject: { type: 'team', id: 'team_123' },
-  lineItems: [{ stripePriceId: 'price_monthly_123', quantity: 1 }],
-  successUrl: `${window.location.origin}/billing/success`,
-  cancelUrl: `${window.location.origin}/billing`
-});
+const { data: subscriptionCheckout } =
+  await insforge.payments.createCheckoutSession("test", {
+    mode: "subscription",
+    subject: { type: "team", id: "team_123" },
+    lineItems: [{ stripePriceId: "price_monthly_123", quantity: 1 }],
+    successUrl: `${window.location.origin}/billing/success`,
+    cancelUrl: `${window.location.origin}/billing`,
+  });
 
 if (subscriptionCheckout?.checkoutSession.url) {
   window.location.assign(subscriptionCheckout.checkoutSession.url);
 }
 
 // Let an authenticated customer manage their subscription in Stripe Billing Portal
-const { data: portal } = await insforge.payments.createCustomerPortalSession({
-  environment: 'test',
-  subject: { type: 'team', id: 'team_123' },
-  returnUrl: `${window.location.origin}/billing`
-});
+const { data: portal } = await insforge.payments.createCustomerPortalSession(
+  "test",
+  {
+    subject: { type: "team", id: "team_123" },
+    returnUrl: `${window.location.origin}/billing`,
+  },
+);
 
 if (portal?.customerPortalSession.url) {
   window.location.assign(portal.customerPortalSession.url);
@@ -236,14 +232,14 @@ if (portal?.customerPortalSession.url) {
 ```javascript
 // Generate text completion
 const { data, error } = await insforge.ai.completion({
-  model: 'gpt-3.5-turbo',
-  prompt: 'Write a hello world program'
+  model: "gpt-3.5-turbo",
+  prompt: "Write a hello world program",
 });
 
 // Analyze an image
 const { data, error } = await insforge.ai.vision({
-  imageUrl: 'https://example.com/image.jpg',
-  prompt: 'Describe this image'
+  imageUrl: "https://example.com/image.jpg",
+  prompt: "Describe this image",
 });
 ```
 
@@ -260,9 +256,9 @@ The SDK supports the following configuration options:
 
 ```javascript
 const insforge = createClient({
-  baseUrl: 'http://localhost:7130', // Your InsForge backend URL
-  anonKey: 'your-anon-key',         // Optional
-  isServerMode: false               // Optional (set true in SSR/server runtime)
+  baseUrl: "http://localhost:7130", // Your InsForge backend URL
+  anonKey: "your-anon-key", // Optional
+  isServerMode: false, // Optional (set true in SSR/server runtime)
 });
 ```
 
@@ -276,7 +272,7 @@ Read your access token from cookies in Next.js and pass it as `edgeFunctionToken
 Your app should write/update cookies itself after login/refresh.
 
 ```typescript
-import { createClient } from '@insforge/sdk';
+import { createClient } from "@insforge/sdk";
 const accessToken = /* read access token from request cookies */ null;
 
 const insforge = createClient({
@@ -291,15 +287,14 @@ const insforge = createClient({
 The SDK is written in TypeScript and provides full type definitions:
 
 ```typescript
-import { createClient, InsForgeClient } from '@insforge/sdk';
+import { createClient, InsForgeClient } from "@insforge/sdk";
 
 const insforge: InsForgeClient = createClient({
-  baseUrl: 'http://localhost:7130'
+  baseUrl: "http://localhost:7130",
 });
 
 // Type-safe API calls
-const response =
-  await insforge.auth.getCurrentUser();
+const response = await insforge.auth.getCurrentUser();
 ```
 
 ## Error Handling
@@ -320,6 +315,7 @@ if (error) {
 ## Browser Support
 
 The SDK works in all modern browsers that support:
+
 - ES6+ features
 - Fetch API
 - Cookies (for refresh token flow)
