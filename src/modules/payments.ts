@@ -1,12 +1,13 @@
-import { HttpClient } from '../lib/http-client';
-import { wrapError } from './auth/helpers';
-import type { InsForgeError } from '../types';
+import { HttpClient } from "../lib/http-client";
+import { wrapError } from "./auth/helpers";
+import type { InsForgeError } from "../types";
 import type {
-  CreateCheckoutSessionRequest,
+  CreateCheckoutSessionBody,
   CreateCheckoutSessionResponse,
-  CreateCustomerPortalSessionRequest,
+  CreateCustomerPortalSessionBody,
   CreateCustomerPortalSessionResponse,
-} from '@insforge/shared-schemas';
+  StripeEnvironment,
+} from "@insforge/shared-schemas";
 
 export type {
   BillingSubject,
@@ -14,15 +15,15 @@ export type {
   CheckoutSession,
   CheckoutSessionPaymentStatus,
   CheckoutSessionStatus,
+  CreateCheckoutSessionBody,
   CreateCheckoutSessionLineItem,
-  CreateCheckoutSessionRequest,
   CreateCheckoutSessionResponse,
-  CreateCustomerPortalSessionRequest,
+  CreateCustomerPortalSessionBody,
   CreateCustomerPortalSessionResponse,
   CustomerPortalSession,
   CustomerPortalSessionStatus,
   StripeEnvironment,
-} from '@insforge/shared-schemas';
+} from "@insforge/shared-schemas";
 
 export interface PaymentsResponse<T> {
   data: T | null;
@@ -44,8 +45,7 @@ export class Payments {
    *
    * @example
    * ```typescript
-   * const { data, error } = await client.payments.createCheckoutSession({
-   *   environment: 'test',
+   * const { data, error } = await client.payments.createCheckoutSession('test', {
    *   mode: 'payment',
    *   lineItems: [{ stripePriceId: 'price_123', quantity: 1 }],
    *   successUrl: `${window.location.origin}/success`,
@@ -58,11 +58,12 @@ export class Payments {
    * ```
    */
   async createCheckoutSession(
-    request: CreateCheckoutSessionRequest,
+    environment: StripeEnvironment,
+    request: CreateCheckoutSessionBody,
   ): Promise<PaymentsResponse<CreateCheckoutSessionResponse>> {
     try {
       const data = await this.http.post<CreateCheckoutSessionResponse>(
-        '/api/payments/checkout-sessions',
+        `/api/payments/${encodeURIComponent(environment)}/checkout-sessions`,
         request,
         { idempotent: !!request.idempotencyKey },
       );
@@ -71,7 +72,7 @@ export class Payments {
     } catch (error) {
       return wrapError<CreateCheckoutSessionResponse>(
         error,
-        'Checkout session creation failed',
+        "Checkout session creation failed",
       );
     }
   }
@@ -80,11 +81,12 @@ export class Payments {
    * Create a Stripe Billing Portal Session for a mapped billing subject.
    */
   async createCustomerPortalSession(
-    request: CreateCustomerPortalSessionRequest,
+    environment: StripeEnvironment,
+    request: CreateCustomerPortalSessionBody,
   ): Promise<PaymentsResponse<CreateCustomerPortalSessionResponse>> {
     try {
       const data = await this.http.post<CreateCustomerPortalSessionResponse>(
-        '/api/payments/customer-portal-sessions',
+        `/api/payments/${encodeURIComponent(environment)}/customer-portal-sessions`,
         request,
       );
 
@@ -92,7 +94,7 @@ export class Payments {
     } catch (error) {
       return wrapError<CreateCustomerPortalSessionResponse>(
         error,
-        'Customer portal session creation failed',
+        "Customer portal session creation failed",
       );
     }
   }
