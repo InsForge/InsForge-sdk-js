@@ -440,11 +440,11 @@ describe('HttpClient', () => {
   });
 
   describe('token refresh', () => {
-    it('should refresh token and retry on 401 INVALID_TOKEN', async () => {
+    it('should refresh token and retry on 401 AUTH_UNAUTHORIZED when a user token was sent', async () => {
       const tokenManager = createMockTokenManager();
       const mockFetch = vi.fn()
         .mockResolvedValueOnce(
-          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+          createJsonResponse(401, { error: 'AUTH_UNAUTHORIZED', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, { accessToken: 'new-token', user: { id: '1' } }),
@@ -454,6 +454,7 @@ describe('HttpClient', () => {
         );
 
       const client = createClient(mockFetch, {}, tokenManager);
+      client.setAuthToken('old-token');
       const result = await client.get('/api/protected');
 
       expect(result).toEqual({ data: 'secret' });
@@ -475,12 +476,44 @@ describe('HttpClient', () => {
       expect(mockFetch).toHaveBeenCalledOnce(); // No refresh attempt
     });
 
+    it('should NOT refresh AUTH_UNAUTHORIZED when no user token was sent', async () => {
+      const tokenManager = createMockTokenManager();
+      const mockFetch = vi.fn().mockResolvedValue(
+        createJsonResponse(401, { error: 'AUTH_UNAUTHORIZED', message: 'No token provided', statusCode: 401 }, 'Unauthorized'),
+      );
+
+      const client = createClient(mockFetch, {}, tokenManager);
+      const error = await client.get('/api/protected').catch((e: unknown) => e) as InsForgeError;
+
+      expect(error).toBeInstanceOf(InsForgeError);
+      expect(error.error).toBe('AUTH_UNAUTHORIZED');
+      expect(mockFetch).toHaveBeenCalledOnce();
+      expect(tokenManager.saveSession).not.toHaveBeenCalled();
+    });
+
+    it('should NOT refresh AUTH_UNAUTHORIZED when explicitly skipped', async () => {
+      const tokenManager = createMockTokenManager();
+      const mockFetch = vi.fn().mockResolvedValue(
+        createJsonResponse(401, { error: 'AUTH_UNAUTHORIZED', message: 'Invalid credentials', statusCode: 401 }, 'Unauthorized'),
+      );
+
+      const client = createClient(mockFetch, {}, tokenManager);
+      client.setAuthToken('old-token');
+      const error = await client.post('/api/auth/sessions', {}, { skipAuthRefresh: true }).catch((e: unknown) => e) as InsForgeError;
+
+      expect(error).toBeInstanceOf(InsForgeError);
+      expect(error.error).toBe('AUTH_UNAUTHORIZED');
+      expect(mockFetch).toHaveBeenCalledOnce();
+      expect(tokenManager.saveSession).not.toHaveBeenCalled();
+    });
+
     it('should NOT refresh token when autoRefreshToken is false', async () => {
       const mockFetch = vi.fn().mockResolvedValue(
-        createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+        createJsonResponse(401, { error: 'AUTH_UNAUTHORIZED', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
       );
 
       const client = createClient(mockFetch, { autoRefreshToken: false });
+      client.setAuthToken('old-token');
       const error = await client.get('/api/protected').catch((e: unknown) => e) as InsForgeError;
 
       expect(error).toBeInstanceOf(InsForgeError);
@@ -491,7 +524,7 @@ describe('HttpClient', () => {
       const tokenManager = createMockTokenManager();
       const mockFetch = vi.fn()
         .mockResolvedValueOnce(
-          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+          createJsonResponse(401, { error: 'AUTH_UNAUTHORIZED', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, { accessToken: 'fresh-token', user: { id: '1' } }),
@@ -513,7 +546,7 @@ describe('HttpClient', () => {
       const tokenManager = createMockTokenManager();
       const mockFetch = vi.fn()
         .mockResolvedValueOnce(
-          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+          createJsonResponse(401, { error: 'AUTH_UNAUTHORIZED', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, { accessToken: 'new-token', user: { id: '1' } }),
@@ -521,6 +554,7 @@ describe('HttpClient', () => {
         .mockResolvedValueOnce(createJsonResponse(200, {}));
 
       const client = createClient(mockFetch, {}, tokenManager);
+      client.setAuthToken('old-token');
       client.setRefreshToken('my-refresh-token');
       await client.get('/api/protected');
 
@@ -534,7 +568,7 @@ describe('HttpClient', () => {
 
       const mockFetch = vi.fn()
         .mockResolvedValueOnce(
-          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+          createJsonResponse(401, { error: 'AUTH_UNAUTHORIZED', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, { accessToken: 'new-token', user: { id: '1' } }),
@@ -542,6 +576,7 @@ describe('HttpClient', () => {
         .mockResolvedValueOnce(createJsonResponse(200, {}));
 
       const client = createClient(mockFetch, {}, tokenManager);
+      client.setAuthToken('old-token');
       await client.get('/api/protected');
 
       const refreshCallHeaders = mockFetch.mock.calls[1][1].headers;
@@ -552,7 +587,7 @@ describe('HttpClient', () => {
       const tokenManager = createMockTokenManager();
       const mockFetch = vi.fn()
         .mockResolvedValueOnce(
-          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+          createJsonResponse(401, { error: 'AUTH_UNAUTHORIZED', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, { accessToken: 'new-token', user: { id: '1' } }),
@@ -560,6 +595,7 @@ describe('HttpClient', () => {
         .mockResolvedValueOnce(createJsonResponse(200, {}));
 
       const client = createClient(mockFetch, {}, tokenManager);
+      client.setAuthToken('old-token');
       await client.get('/api/protected');
 
       expect(mockFetch.mock.calls[1][1].credentials).toBe('include');
@@ -569,13 +605,14 @@ describe('HttpClient', () => {
       const tokenManager = createMockTokenManager();
       const mockFetch = vi.fn()
         .mockResolvedValueOnce(
-          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+          createJsonResponse(401, { error: 'AUTH_UNAUTHORIZED', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
         )
         .mockResolvedValueOnce(
           createJsonResponse(401, { error: 'REFRESH_EXPIRED', message: 'Refresh token expired', statusCode: 401 }, 'Unauthorized'),
         );
 
       const client = createClient(mockFetch, {}, tokenManager);
+      client.setAuthToken('old-token');
       const error = await client.get('/api/protected').catch((e: unknown) => e) as InsForgeError;
 
       expect(error).toBeInstanceOf(InsForgeError);
@@ -587,10 +624,10 @@ describe('HttpClient', () => {
       const tokenManager = createMockTokenManager();
       const mockFetch = vi.fn()
         .mockResolvedValueOnce(
-          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+          createJsonResponse(401, { error: 'AUTH_UNAUTHORIZED', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
         )
         .mockResolvedValueOnce(
-          createJsonResponse(401, { error: 'INVALID_TOKEN', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
+          createJsonResponse(401, { error: 'AUTH_UNAUTHORIZED', message: 'Invalid token', statusCode: 401 }, 'Unauthorized'),
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, { accessToken: 'new-token', user: { id: '1' } }),
@@ -598,6 +635,7 @@ describe('HttpClient', () => {
         .mockResolvedValue(createJsonResponse(200, { ok: true }));
 
       const client = createClient(mockFetch, {}, tokenManager);
+      client.setAuthToken('old-token');
 
       await Promise.all([
         client.get('/api/a'),
@@ -606,7 +644,7 @@ describe('HttpClient', () => {
 
       // Only one refresh call should have been made (call index 2, after the two 401s)
       const refreshCalls = mockFetch.mock.calls.filter(
-        ([url]: [string]) => url.includes('/api/auth/sessions/current'),
+        ([url]: [string]) => url.includes('/api/auth/refresh'),
       );
       expect(refreshCalls).toHaveLength(1);
     });

@@ -18,10 +18,13 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: RequestInit['body'] | JsonRequestBody;
   /** Allow retrying non-idempotent requests (POST, PATCH). Off by default to prevent duplicate writes. */
   idempotent?: boolean;
+  /** Disable automatic access-token refresh for auth/control-flow requests. */
+  skipAuthRefresh?: boolean;
 }
 
 const RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504]);
 const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']);
+const REFRESHABLE_AUTH_ERROR_CODE = 'AUTH_UNAUTHORIZED';
 
 /**
  * Serialize a request body into something fetch (or a Request constructor) accepts.
@@ -214,6 +217,7 @@ export class HttpClient {
       params,
       headers = {},
       body,
+      skipAuthRefresh: _skipAuthRefresh,
       signal: callerSignal,
       ...fetchOptions
     } = options as RequestOptions & { signal?: AbortSignal };
@@ -423,28 +427,75 @@ export class HttpClient {
       if (
         error instanceof InsForgeError &&
         error.statusCode === 401 &&
-        error.error === 'INVALID_TOKEN' &&
-        this.autoRefreshToken
+        error.error === REFRESHABLE_AUTH_ERROR_CODE &&
+        this.autoRefreshToken &&
+        !options.skipAuthRefresh &&
+        this.userToken !== null
       ) {
         try {
-          const newTokenData = await this.handleTokenRefresh();
-          this.setAuthToken(newTokenData.accessToken);
-          this.tokenManager!.saveSession(newTokenData);
-          if (newTokenData.csrfToken) {
-            setCsrfToken(newTokenData.csrfToken);
-          }
-          if (newTokenData.refreshToken) {
-            this.setRefreshToken(newTokenData.refreshToken);
-          }
+          await this.refreshAndSaveSession();
           return await this.handleRequest<T>(method, path, { ...options });
         } catch (error) {
-          this.tokenManager.clearSession();
-          this.userToken = null;
-          this.refreshToken = null;
-          clearCsrfToken();
+          this.clearAuthSession();
           throw error;
         }
       }
+      throw error;
+    }
+  }
+
+  /**
+   * Performs an SDK-configured fetch and returns the raw Response.
+   * This is used by clients such as postgrest-js that need to own response
+   * parsing while still sharing SDK auth and refresh behavior.
+   */
+  async rawFetch(
+    input: RequestInfo | URL,
+    init?: RequestInit,
+    options: { skipAuthRefresh?: boolean } = {},
+  ): Promise<Response> {
+    const response = await this.fetch(input, init);
+    if (
+      response.status !== 401 ||
+      !this.autoRefreshToken ||
+      options.skipAuthRefresh ||
+      this.userToken === null
+    ) {
+      return response;
+    }
+
+    let errorCode: string | null = null;
+    try {
+      const data = await response.clone().json();
+      if (data && typeof data === 'object') {
+        const candidate =
+          (data as { error?: unknown; code?: unknown }).error ??
+          (data as { code?: unknown }).code;
+        if (typeof candidate === 'string') {
+          errorCode = candidate;
+        }
+      }
+    } catch {
+      // Return the original response when the body is not JSON.
+    }
+
+    if (errorCode !== REFRESHABLE_AUTH_ERROR_CODE) {
+      return response;
+    }
+
+    try {
+      const newTokenData = await this.refreshAndSaveSession();
+      const headers = new Headers(init?.headers);
+      headers.set('Authorization', `Bearer ${newTokenData.accessToken}`);
+      return await this.fetch(
+        input,
+        {
+          ...init,
+          headers,
+        },
+      );
+    } catch (error) {
+      this.clearAuthSession();
       throw error;
     }
   }
@@ -496,7 +547,7 @@ export class HttpClient {
     return headers;
   }
 
-  async handleTokenRefresh(): Promise<AuthRefreshResponse> {
+  async refreshAccessToken(): Promise<AuthRefreshResponse> {
     if (this.isRefreshing) {
       return this.refreshPromise!;
     }
@@ -510,7 +561,9 @@ export class HttpClient {
           : undefined;
         const response = await this.handleRequest<AuthRefreshResponse>(
           'POST',
-          '/api/auth/sessions/current',
+          this.refreshToken
+            ? '/api/auth/refresh?client_type=mobile'
+            : '/api/auth/refresh',
           {
             body,
             headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
@@ -526,4 +579,25 @@ export class HttpClient {
 
     return this.refreshPromise;
   }
+
+  private async refreshAndSaveSession(): Promise<AuthRefreshResponse> {
+    const newTokenData = await this.refreshAccessToken();
+    this.setAuthToken(newTokenData.accessToken);
+    this.tokenManager.saveSession(newTokenData);
+    if (newTokenData.csrfToken) {
+      setCsrfToken(newTokenData.csrfToken);
+    }
+    if (newTokenData.refreshToken) {
+      this.setRefreshToken(newTokenData.refreshToken);
+    }
+    return newTokenData;
+  }
+
+  private clearAuthSession(): void {
+    this.tokenManager.clearSession();
+    this.userToken = null;
+    this.refreshToken = null;
+    clearCsrfToken();
+  }
+
 }
