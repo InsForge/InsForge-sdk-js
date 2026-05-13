@@ -74,18 +74,18 @@ export class Database {
    *   .from('posts')
    *   .select('*', { count: 'exact' })
    *   .range(0, 9);
-   * 
+   *
    * // Just get count, no data
    * const { count } = await client.database
    *   .from('posts')
    *   .select('*', { count: 'exact', head: true });
-   * 
+   *
    * // Complex queries with OR
    * const { data } = await client.database
    *   .from('posts')
    *   .select('*, users!inner(*)')
    *   .or('status.eq.active,status.eq.pending');
-   * 
+   *
    * // All features work:
    * - Nested selects
    * - Foreign key expansion

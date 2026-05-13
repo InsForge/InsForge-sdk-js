@@ -106,11 +106,11 @@ export async function parseResponse<T>(response: Response): Promise<T> {
 export class HttpClient {
   public readonly baseUrl: string;
   public readonly fetch: typeof fetch;
+  private readonly config: InsForgeConfig;
   private defaultHeaders: Record<string, string>;
   private anonKey: string | undefined;
   private userToken: string | null = null;
   private logger: Logger;
-  private autoRefreshToken: boolean = true;
   private isRefreshing: boolean = false;
   private refreshPromise: Promise<AuthRefreshResponse> | null = null;
   private tokenManager: TokenManager;
@@ -130,8 +130,8 @@ export class HttpClient {
     tokenManager?: TokenManager,
     logger?: Logger,
   ) {
+    this.config = config;
     this.baseUrl = config.baseUrl || 'http://localhost:7130';
-    this.autoRefreshToken = config.autoRefreshToken ?? true;
     // Properly bind fetch to maintain its context
     this.fetch =
       config.fetch ||
@@ -198,6 +198,166 @@ export class HttpClient {
     return Math.round(jitter);
   }
 
+  private shouldRefreshAccessToken(
+    statusCode: number,
+    errorCode: string | null | undefined,
+    options: { skipAuthRefresh?: boolean } = {},
+  ): boolean {
+    return (
+      statusCode === 401 &&
+      errorCode === REFRESHABLE_AUTH_ERROR_CODE &&
+      !(this.config.isServerMode ?? !!this.config.edgeFunctionToken) &&
+      !options.skipAuthRefresh &&
+      this.userToken !== null
+    );
+  }
+
+  private async fetchWithRetry(args: {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    body?: BodyInit | null;
+    fetchOptions: Omit<RequestInit, 'body' | 'headers' | 'method' | 'signal'>;
+    callerSignal?: AbortSignal | null;
+    maxAttempts: number;
+  }): Promise<Response> {
+    const {
+      method,
+      url,
+      headers,
+      body,
+      fetchOptions,
+      callerSignal,
+      maxAttempts,
+    } = args;
+
+    let lastError: Error | undefined;
+
+    for (let attempt = 0; attempt <= maxAttempts; attempt++) {
+      if (attempt > 0) {
+        const delay = this.computeRetryDelay(attempt);
+        this.logger.warn(
+          `Retry ${attempt}/${maxAttempts} for ${method} ${url} in ${delay}ms`,
+        );
+        // Abortable backoff sleep - respects caller cancellation.
+        if (callerSignal?.aborted) throw callerSignal.reason;
+        await new Promise<void>((resolve, reject) => {
+          const onAbort = () => {
+            clearTimeout(timer);
+            reject(callerSignal!.reason);
+          };
+          const timer = setTimeout(() => {
+            if (callerSignal)
+              callerSignal.removeEventListener('abort', onAbort);
+            resolve();
+          }, delay);
+          if (callerSignal) {
+            callerSignal.addEventListener('abort', onAbort, { once: true });
+          }
+        });
+      }
+
+      let controller: AbortController | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+
+      // Compose SDK timeout signal with caller-provided signal.
+      if (this.timeout > 0 || callerSignal) {
+        controller = new AbortController();
+
+        if (this.timeout > 0) {
+          timer = setTimeout(() => controller!.abort(), this.timeout);
+        }
+
+        if (callerSignal) {
+          if (callerSignal.aborted) {
+            controller.abort(callerSignal.reason);
+          } else {
+            const onCallerAbort = () => controller!.abort(callerSignal.reason);
+            callerSignal.addEventListener('abort', onCallerAbort, {
+              once: true,
+            });
+            // Clean up listener after fetch completes to prevent accumulation.
+            controller.signal.addEventListener(
+              'abort',
+              () => {
+                callerSignal.removeEventListener('abort', onCallerAbort);
+              },
+              { once: true },
+            );
+          }
+        }
+      }
+
+      try {
+        const response = await this.fetch(url, {
+          method,
+          headers,
+          body,
+          ...fetchOptions,
+          ...(controller ? { signal: controller.signal } : {}),
+        });
+
+        // If server error and retries remaining, continue loop.
+        if (this.isRetryableStatus(response.status) && attempt < maxAttempts) {
+          if (timer !== undefined) clearTimeout(timer);
+          // Drain the body to free the connection before retrying.
+          await response.body?.cancel();
+          lastError = new InsForgeError(
+            `Server error: ${response.status} ${response.statusText}`,
+            response.status,
+            'SERVER_ERROR',
+          );
+          continue;
+        }
+
+        if (timer !== undefined) clearTimeout(timer);
+        return response;
+      } catch (err: any) {
+        if (timer !== undefined) clearTimeout(timer);
+
+        // Determine if this was an SDK timeout or a caller abort.
+        if (err?.name === 'AbortError') {
+          if (
+            controller &&
+            controller.signal.aborted &&
+            this.timeout > 0 &&
+            !callerSignal?.aborted
+          ) {
+            throw new InsForgeError(
+              `Request timed out after ${this.timeout}ms`,
+              408,
+              'REQUEST_TIMEOUT',
+            );
+          }
+          // Caller-initiated abort - propagate as-is.
+          throw err;
+        }
+
+        // Network error - retry if attempts remain.
+        if (attempt < maxAttempts) {
+          lastError = err;
+          continue;
+        }
+
+        throw new InsForgeError(
+          `Network request failed: ${err?.message || 'Unknown error'}`,
+          0,
+          'NETWORK_ERROR',
+        );
+      }
+    }
+
+    // Should not normally reach here, but safety net after exhausting retries.
+    throw (
+      lastError ||
+      new InsForgeError(
+        'Request failed after all retry attempts',
+        0,
+        'NETWORK_ERROR',
+      )
+    );
+  }
+
   /**
    * Performs an HTTP request with automatic retry and timeout handling.
    * Retries on network errors and 5xx server errors with exponential backoff.
@@ -256,164 +416,44 @@ export class HttpClient {
 
     this.logger.logRequest(method, url, requestHeaders, processedBody);
 
-    let lastError: Error | undefined;
+    const response = await this.fetchWithRetry({
+      method,
+      url,
+      headers: requestHeaders,
+      body: processedBody,
+      fetchOptions,
+      callerSignal,
+      maxAttempts,
+    });
 
-    for (let attempt = 0; attempt <= maxAttempts; attempt++) {
-      if (attempt > 0) {
-        const delay = this.computeRetryDelay(attempt);
-        this.logger.warn(
-          `Retry ${attempt}/${maxAttempts} for ${method} ${url} in ${delay}ms`,
-        );
-        // Abortable backoff sleep — respects caller cancellation
-        if (callerSignal?.aborted) throw callerSignal.reason;
-        await new Promise<void>((resolve, reject) => {
-          const onAbort = () => {
-            clearTimeout(timer);
-            reject(callerSignal!.reason);
-          };
-          const timer = setTimeout(() => {
-            if (callerSignal)
-              callerSignal.removeEventListener('abort', onAbort);
-            resolve();
-          }, delay);
-          if (callerSignal) {
-            callerSignal.addEventListener('abort', onAbort, { once: true });
-          }
-        });
-      }
-
-      let controller: AbortController | undefined;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-
-      // Compose SDK timeout signal with caller-provided signal
-      if (this.timeout > 0 || callerSignal) {
-        controller = new AbortController();
-
-        if (this.timeout > 0) {
-          timer = setTimeout(() => controller!.abort(), this.timeout);
-        }
-
-        if (callerSignal) {
-          if (callerSignal.aborted) {
-            controller.abort(callerSignal.reason);
-          } else {
-            const onCallerAbort = () => controller!.abort(callerSignal!.reason);
-            callerSignal.addEventListener('abort', onCallerAbort, {
-              once: true,
-            });
-            // Clean up listener after fetch completes to prevent accumulation
-            controller.signal.addEventListener(
-              'abort',
-              () => {
-                callerSignal!.removeEventListener('abort', onCallerAbort);
-              },
-              { once: true },
-            );
-          }
-        }
-      }
-
-      try {
-        const response = await this.fetch(url, {
-          method,
-          headers: requestHeaders,
-          body: processedBody,
-          ...fetchOptions,
-          ...(controller ? { signal: controller.signal } : {}),
-        });
-
-        // If server error and retries remaining, continue loop
-        if (this.isRetryableStatus(response.status) && attempt < maxAttempts) {
-          if (timer !== undefined) clearTimeout(timer);
-          // Drain the body to free the connection before retrying
-          await response.body?.cancel();
-          lastError = new InsForgeError(
-            `Server error: ${response.status} ${response.statusText}`,
-            response.status,
-            'SERVER_ERROR',
-          );
-          continue;
-        }
-
-        // Parse body via shared helper; logger fires after either way.
-        // Note: error-path logger now receives the InsForgeError instance
-        // (not the raw body) and uses err.statusCode as primary source.
-        // Parse failures are now logged here too (previously not logged).
-        let data: T;
-        try {
-          data = await parseResponse<T>(response);
-        } catch (err) {
-          if (timer !== undefined) clearTimeout(timer);
-          if (err instanceof InsForgeError) {
-            this.logger.logResponse(
-              method,
-              url,
-              err.statusCode || response.status,
-              Date.now() - startTime,
-              err,
-            );
-          }
-          throw err;
-        }
-
-        if (timer !== undefined) clearTimeout(timer);
+    // Parse body via shared helper; logger fires after either way.
+    // Note: error-path logger now receives the InsForgeError instance
+    // (not the raw body) and uses err.statusCode as primary source.
+    // Parse failures are now logged here too (previously not logged).
+    let data: T;
+    try {
+      data = await parseResponse<T>(response);
+    } catch (err) {
+      if (err instanceof InsForgeError) {
         this.logger.logResponse(
           method,
           url,
-          response.status,
+          err.statusCode || response.status,
           Date.now() - startTime,
-          data,
-        );
-        return data;
-      } catch (err: any) {
-        if (timer !== undefined) clearTimeout(timer);
-
-        // Determine if this was an SDK timeout or a caller abort
-        if (err?.name === 'AbortError') {
-          if (
-            controller &&
-            controller.signal.aborted &&
-            this.timeout > 0 &&
-            !callerSignal?.aborted
-          ) {
-            throw new InsForgeError(
-              `Request timed out after ${this.timeout}ms`,
-              408,
-              'REQUEST_TIMEOUT',
-            );
-          }
-          // Caller-initiated abort — propagate as-is
-          throw err;
-        }
-
-        // InsForgeError from response handling — don't retry client errors
-        if (err instanceof InsForgeError) {
-          throw err;
-        }
-
-        // Network error — retry if attempts remain
-        if (attempt < maxAttempts) {
-          lastError = err;
-          continue;
-        }
-
-        throw new InsForgeError(
-          `Network request failed: ${err?.message || 'Unknown error'}`,
-          0,
-          'NETWORK_ERROR',
+          err,
         );
       }
+      throw err;
     }
 
-    // Should not normally reach here, but safety net after exhausting retries
-    throw (
-      lastError ||
-      new InsForgeError(
-        'Request failed after all retry attempts',
-        0,
-        'NETWORK_ERROR',
-      )
+    this.logger.logResponse(
+      method,
+      url,
+      response.status,
+      Date.now() - startTime,
+      data,
     );
+    return data;
   }
 
   async request<T>(
@@ -426,19 +466,15 @@ export class HttpClient {
     } catch (error) {
       if (
         error instanceof InsForgeError &&
-        error.statusCode === 401 &&
-        error.error === REFRESHABLE_AUTH_ERROR_CODE &&
-        this.autoRefreshToken &&
-        !options.skipAuthRefresh &&
-        this.userToken !== null
+        this.shouldRefreshAccessToken(error.statusCode, error.error, options)
       ) {
         try {
           await this.refreshAndSaveSession();
-          return await this.handleRequest<T>(method, path, { ...options });
         } catch (error) {
           this.clearAuthSession();
           throw error;
         }
+        return await this.handleRequest<T>(method, path, { ...options });
       }
       throw error;
     }
@@ -454,50 +490,92 @@ export class HttpClient {
     init?: RequestInit,
     options: { skipAuthRefresh?: boolean } = {},
   ): Promise<Response> {
-    const response = await this.fetch(input, init);
-    if (
-      response.status !== 401 ||
-      !this.autoRefreshToken ||
-      options.skipAuthRefresh ||
-      this.userToken === null
-    ) {
-      return response;
-    }
+    const request =
+      typeof Request !== 'undefined' && input instanceof Request
+        ? input
+        : undefined;
+    const {
+      method: initMethod,
+      headers: initHeaders,
+      body: initBody,
+      signal: initSignal,
+      ...fetchOptions
+    } = init ?? {};
+    const method = initMethod ?? request?.method ?? 'GET';
+    const url = request?.url ?? input.toString();
+    const startTime = Date.now();
+    const headers = new Headers(this.getHeaders());
+
+    request?.headers.forEach((value, key) => {
+      headers.set(key, value);
+    });
+    new Headers(initHeaders).forEach((value, key) => {
+      headers.set(key, value);
+    });
+    const requestHeaders: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      requestHeaders[key] = value;
+    });
+
+    const body = initBody ?? request?.body ?? undefined;
+    const callerSignal = initSignal ?? request?.signal;
+    const maxAttempts = IDEMPOTENT_METHODS.has(method.toUpperCase())
+      ? this.retryCount
+      : 0;
+
+    this.logger.logRequest(method, url, requestHeaders, body);
+    const response = await this.fetchWithRetry({
+      method,
+      url,
+      headers: requestHeaders,
+      body,
+      fetchOptions,
+      callerSignal,
+      maxAttempts,
+    });
+    this.logger.logResponse(
+      method,
+      url,
+      response.status,
+      Date.now() - startTime,
+    );
 
     let errorCode: string | null = null;
-    try {
-      const data = await response.clone().json();
-      if (data && typeof data === 'object') {
-        const candidate =
-          (data as { error?: unknown; code?: unknown }).error ??
-          (data as { code?: unknown }).code;
-        if (typeof candidate === 'string') {
-          errorCode = candidate;
+    if (response.status === 401) {
+      try {
+        const data = await response.clone().json();
+        if (data && typeof data === 'object') {
+          const candidate =
+            (data as { error?: unknown; code?: unknown }).error ??
+            (data as { code?: unknown }).code;
+          if (typeof candidate === 'string') {
+            errorCode = candidate;
+          }
         }
+      } catch {
+        // Return the original response when the body is not JSON.
       }
-    } catch {
-      // Return the original response when the body is not JSON.
     }
 
-    if (errorCode !== REFRESHABLE_AUTH_ERROR_CODE) {
+    if (!this.shouldRefreshAccessToken(response.status, errorCode, options)) {
       return response;
     }
 
+    let newTokenData: AuthRefreshResponse;
     try {
-      const newTokenData = await this.refreshAndSaveSession();
-      const headers = new Headers(init?.headers);
-      headers.set('Authorization', `Bearer ${newTokenData.accessToken}`);
-      return await this.fetch(
-        input,
-        {
-          ...init,
-          headers,
-        },
-      );
+      newTokenData = await this.refreshAndSaveSession();
     } catch (error) {
       this.clearAuthSession();
       throw error;
     }
+
+    const retryHeaders = new Headers(initHeaders);
+    retryHeaders.set('Authorization', `Bearer ${newTokenData.accessToken}`);
+    return await this.rawFetch(
+      input,
+      { ...init, headers: retryHeaders },
+      { skipAuthRefresh: true },
+    );
   }
 
   /** Performs a GET request. */
@@ -599,5 +677,4 @@ export class HttpClient {
     this.refreshToken = null;
     clearCsrfToken();
   }
-
 }

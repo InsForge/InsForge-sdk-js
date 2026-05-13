@@ -90,7 +90,11 @@ describe('Database PostgREST auth refresh', () => {
     const fetchFn = vi.fn().mockResolvedValueOnce(
       jsonResponse(
         401,
-        { error: 'AUTH_UNAUTHORIZED', message: 'No token provided', statusCode: 401 },
+        {
+          error: 'AUTH_UNAUTHORIZED',
+          message: 'No token provided',
+          statusCode: 401,
+        },
         'Unauthorized',
       ),
     );
@@ -107,16 +111,20 @@ describe('Database PostgREST auth refresh', () => {
     expect(fetchFn).toHaveBeenCalledOnce();
   });
 
-  it('does not refresh database requests when autoRefreshToken is false', async () => {
+  it('does not refresh database requests in server mode', async () => {
     const fetchFn = vi.fn().mockResolvedValueOnce(
       jsonResponse(
         401,
-        { error: 'AUTH_UNAUTHORIZED', message: 'Invalid token', statusCode: 401 },
+        {
+          error: 'AUTH_UNAUTHORIZED',
+          message: 'Invalid token',
+          statusCode: 401,
+        },
         'Unauthorized',
       ),
     );
 
-    const { database } = makeDatabase(fetchFn, { autoRefreshToken: false });
+    const { database } = makeDatabase(fetchFn, { isServerMode: true });
 
     const { data, error } = await database.from('todos').select('id');
 
@@ -126,5 +134,51 @@ describe('Database PostgREST auth refresh', () => {
       error: 'AUTH_UNAUTHORIZED',
     });
     expect(fetchFn).toHaveBeenCalledOnce();
+    expect(
+      new Headers(fetchFn.mock.calls[0][1].headers).get('Authorization'),
+    ).toBe('Bearer old-token');
+  });
+
+  it('deduplicates concurrent refresh calls for database requests', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          401,
+          {
+            error: 'AUTH_UNAUTHORIZED',
+            message: 'Invalid token',
+            statusCode: 401,
+          },
+          'Unauthorized',
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          401,
+          {
+            error: 'AUTH_UNAUTHORIZED',
+            message: 'Invalid token',
+            statusCode: 401,
+          },
+          'Unauthorized',
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, { accessToken: 'new-token', user: refreshedUser }),
+      )
+      .mockResolvedValue(jsonResponse(200, [{ id: 1 }]));
+
+    const { database } = makeDatabase(fetchFn);
+
+    await Promise.all([
+      database.from('todos').select('id'),
+      database.from('tasks').select('id'),
+    ]);
+
+    const refreshCalls = fetchFn.mock.calls.filter(([url]: [string]) =>
+      url.includes('/api/auth/refresh'),
+    );
+    expect(refreshCalls).toHaveLength(1);
   });
 });

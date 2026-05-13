@@ -83,12 +83,6 @@ export interface InsForgeConfig {
    */
   retryDelay?: number;
 
-  /**
-   * Automatically refresh the access token when an authenticated request fails with 401 AUTH_UNAUTHORIZED.
-   * When true, the SDK will attempt a token refresh and retry the original request.
-   * @default true
-   */
-  autoRefreshToken?: boolean;
 }
 
 export interface AuthSession {
