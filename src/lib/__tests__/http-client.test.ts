@@ -745,6 +745,59 @@ describe('HttpClient', () => {
       expect(retryCallHeaders['Authorization']).toBe('Bearer fresh-token');
     });
 
+    it('should not refresh or replay again when retry after refresh returns 401', async () => {
+      const tokenManager = createMockTokenManager();
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          createJsonResponse(
+            401,
+            {
+              error: 'AUTH_UNAUTHORIZED',
+              message: 'Invalid token',
+              statusCode: 401,
+            },
+            'Unauthorized',
+          ),
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(200, {
+            accessToken: 'fresh-token',
+            user: { id: '1' },
+          }),
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(
+            401,
+            {
+              error: 'AUTH_UNAUTHORIZED',
+              message: 'Still invalid',
+              statusCode: 401,
+            },
+            'Unauthorized',
+          ),
+        );
+
+      const client = createClient(mockFetch, {}, tokenManager);
+      client.setAuthToken('old-token');
+
+      const error = (await client
+        .get('/api/protected')
+        .catch((e: unknown) => e)) as InsForgeError;
+
+      expect(error).toBeInstanceOf(InsForgeError);
+      expect(error.error).toBe('AUTH_UNAUTHORIZED');
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(
+        mockFetch.mock.calls.filter(([url]: [string]) =>
+          url.includes('/api/auth/refresh'),
+        ),
+      ).toHaveLength(1);
+      expect(mockFetch.mock.calls[2][1].headers.Authorization).toBe(
+        'Bearer fresh-token',
+      );
+    });
+
     it('should replay with current token instead of refreshing when request token is stale', async () => {
       const tokenManager = createMockTokenManager();
       let client: HttpClient;
@@ -1040,6 +1093,38 @@ describe('HttpClient', () => {
       expect(tokenManager.saveSession).toHaveBeenCalledOnce();
       expect(tokenManager.clearSession).not.toHaveBeenCalled();
       expect(client.getHeaders().Authorization).toBe('Bearer new-token');
+    });
+
+    it('rawFetch should not refresh anonymous requests that use the anon key', async () => {
+      const tokenManager = createMockTokenManager();
+      const mockFetch = vi.fn().mockResolvedValue(
+        createJsonResponse(
+          401,
+          {
+            error: 'AUTH_UNAUTHORIZED',
+            message: 'Invalid token',
+            statusCode: 401,
+          },
+          'Unauthorized',
+        ),
+      );
+
+      const client = createClient(
+        mockFetch,
+        { anonKey: 'test-anon-key' },
+        tokenManager,
+      );
+
+      const response = await client.rawFetch(
+        'http://localhost:7130/api/database/records/todos',
+      );
+
+      expect(response.status).toBe(401);
+      expect(mockFetch).toHaveBeenCalledOnce();
+      expect(
+        new Headers(mockFetch.mock.calls[0][1].headers).get('Authorization'),
+      ).toBe('Bearer test-anon-key');
+      expect(tokenManager.saveSession).not.toHaveBeenCalled();
     });
 
     it('rawFetch replays with current token instead of refreshing when request token is stale', async () => {

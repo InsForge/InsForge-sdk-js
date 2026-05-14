@@ -518,7 +518,10 @@ export class HttpClient {
         this.clearAuthSession();
         throw error;
       }
-      return await this.handleRequest<T>(method, path, { ...options });
+      return await this.handleRequest<T>(method, path, {
+        ...options,
+        skipAuthRefresh: true,
+      });
     }
   }
 
@@ -561,8 +564,6 @@ export class HttpClient {
     new Headers(initHeaders).forEach((value, key) => {
       headers.set(key, value);
     });
-    const authorizationToken =
-      headers.get('Authorization')?.match(/^Bearer\s+(.+)$/i)?.[1] ?? null;
     const requestHeaders: Record<string, string> = {};
     headers.forEach((value, key) => {
       requestHeaders[key] = value;
@@ -612,7 +613,7 @@ export class HttpClient {
       !this.shouldRefreshAccessToken(
         response.status,
         errorCode,
-        authorizationToken,
+        tokenUsed,
         options,
       )
     ) {
