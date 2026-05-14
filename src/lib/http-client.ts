@@ -201,14 +201,16 @@ export class HttpClient {
   private shouldRefreshAccessToken(
     statusCode: number,
     errorCode: string | null | undefined,
+    authToken: string | null,
     options: { skipAuthRefresh?: boolean } = {},
   ): boolean {
     return (
       statusCode === 401 &&
       errorCode === REFRESHABLE_AUTH_ERROR_CODE &&
-      !(this.config.isServerMode ?? !!this.config.edgeFunctionToken) &&
+      !this.config.isServerMode &&
+      !this.config.edgeFunctionToken &&
       !options.skipAuthRefresh &&
-      this.userToken !== null
+      authToken !== null
     );
   }
 
@@ -372,6 +374,7 @@ export class HttpClient {
     method: string,
     path: string,
     options: RequestOptions = {},
+    tokenOverride?: string | null,
   ): Promise<T> {
     const {
       params,
@@ -393,8 +396,8 @@ export class HttpClient {
       ...this.defaultHeaders,
     };
 
-    // Set Authorization header: prefer user token, fallback to anon key
-    const authToken = this.userToken || this.anonKey;
+    // Set Authorization header: prefer the request-scoped token, fallback to anon key.
+    const authToken = tokenOverride ?? this.userToken ?? this.anonKey;
     if (authToken) {
       requestHeaders['Authorization'] = `Bearer ${authToken}`;
     }
@@ -402,16 +405,28 @@ export class HttpClient {
     const processedBody = serializeBody(method, body, requestHeaders);
 
     // Normalize HeadersInit (Headers | [string,string][] | Record) to plain object
+    const setRequestHeader = (key: string, value: string) => {
+      if (key.toLowerCase() === 'authorization') {
+        delete requestHeaders['Authorization'];
+        delete requestHeaders['authorization'];
+        requestHeaders['Authorization'] = value;
+        return;
+      }
+      requestHeaders[key] = value;
+    };
+
     if (headers instanceof Headers) {
       headers.forEach((value, key) => {
-        requestHeaders[key] = value;
+        setRequestHeader(key, value);
       });
     } else if (Array.isArray(headers)) {
       headers.forEach(([key, value]) => {
-        requestHeaders[key] = value;
+        setRequestHeader(key, value);
       });
     } else {
-      Object.assign(requestHeaders, headers);
+      Object.entries(headers).forEach(([key, value]) => {
+        setRequestHeader(key, value);
+      });
     }
 
     this.logger.logRequest(method, url, requestHeaders, processedBody);
@@ -461,22 +476,49 @@ export class HttpClient {
     path: string,
     options: RequestOptions = {},
   ): Promise<T> {
+    const tokenUsed = this.userToken;
     try {
-      return await this.handleRequest<T>(method, path, { ...options });
+      return await this.handleRequest<T>(
+        method,
+        path,
+        { ...options },
+        tokenUsed,
+      );
     } catch (error) {
       if (
-        error instanceof InsForgeError &&
-        this.shouldRefreshAccessToken(error.statusCode, error.error, options)
+        !(error instanceof InsForgeError) ||
+        !this.shouldRefreshAccessToken(
+          error.statusCode,
+          error.error,
+          tokenUsed,
+          options,
+        )
       ) {
-        try {
-          await this.refreshAndSaveSession();
-        } catch (error) {
-          this.clearAuthSession();
+        throw error;
+      }
+
+      if (tokenUsed !== this.userToken) {
+        if (this.userToken === null) {
           throw error;
         }
-        return await this.handleRequest<T>(method, path, { ...options });
+        return await this.handleRequest<T>(
+          method,
+          path,
+          {
+            ...options,
+            skipAuthRefresh: true,
+          },
+          this.userToken,
+        );
       }
-      throw error;
+
+      try {
+        await this.refreshAndSaveSession();
+      } catch (error) {
+        this.clearAuthSession();
+        throw error;
+      }
+      return await this.handleRequest<T>(method, path, { ...options });
     }
   }
 
@@ -504,7 +546,14 @@ export class HttpClient {
     const method = initMethod ?? request?.method ?? 'GET';
     const url = request?.url ?? input.toString();
     const startTime = Date.now();
-    const headers = new Headers(this.getHeaders());
+    const tokenUsed = this.userToken;
+    const headers = new Headers({
+      ...this.defaultHeaders,
+    });
+    const authToken = tokenUsed ?? this.anonKey;
+    if (authToken) {
+      headers.set('Authorization', `Bearer ${authToken}`);
+    }
 
     request?.headers.forEach((value, key) => {
       headers.set(key, value);
@@ -512,6 +561,8 @@ export class HttpClient {
     new Headers(initHeaders).forEach((value, key) => {
       headers.set(key, value);
     });
+    const authorizationToken =
+      headers.get('Authorization')?.match(/^Bearer\s+(.+)$/i)?.[1] ?? null;
     const requestHeaders: Record<string, string> = {};
     headers.forEach((value, key) => {
       requestHeaders[key] = value;
@@ -557,8 +608,28 @@ export class HttpClient {
       }
     }
 
-    if (!this.shouldRefreshAccessToken(response.status, errorCode, options)) {
+    if (
+      !this.shouldRefreshAccessToken(
+        response.status,
+        errorCode,
+        authorizationToken,
+        options,
+      )
+    ) {
       return response;
+    }
+
+    if (tokenUsed !== this.userToken) {
+      if (this.userToken === null) {
+        return response;
+      }
+      const retryHeaders = new Headers(initHeaders);
+      retryHeaders.set('Authorization', `Bearer ${this.userToken}`);
+      return await this.rawFetch(
+        input,
+        { ...init, headers: retryHeaders },
+        { skipAuthRefresh: true },
+      );
     }
 
     let newTokenData: AuthRefreshResponse;
