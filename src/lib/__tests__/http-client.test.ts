@@ -50,6 +50,22 @@ function createClient(
   );
 }
 
+function createStreamBody(payload: string): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(payload));
+      controller.close();
+    },
+  });
+}
+
+async function readBodyText(body: BodyInit | null | undefined): Promise<string> {
+  if (body === null || body === undefined) {
+    return '';
+  }
+  return await new Response(body).text();
+}
+
 describe('HttpClient', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -1129,10 +1145,13 @@ describe('HttpClient', () => {
 
     it('rawFetch replays with current token instead of refreshing when request token is stale', async () => {
       const tokenManager = createMockTokenManager();
+      const payload = JSON.stringify({ title: 'streamed' });
+      const requestBodies: string[] = [];
       let client: HttpClient;
       const mockFetch = vi
         .fn()
-        .mockImplementationOnce(async () => {
+        .mockImplementationOnce(async (_url: string, init?: RequestInit) => {
+          requestBodies.push(await readBodyText(init?.body));
           client.setAuthToken('new-token');
           return createJsonResponse(
             401,
@@ -1144,14 +1163,21 @@ describe('HttpClient', () => {
             'Unauthorized',
           );
         })
-        .mockResolvedValueOnce(createJsonResponse(200, { ok: true }));
+        .mockImplementationOnce(async (_url: string, init?: RequestInit) => {
+          requestBodies.push(await readBodyText(init?.body));
+          return createJsonResponse(200, { ok: true });
+        });
 
       client = createClient(mockFetch, {}, tokenManager);
       client.setAuthToken('old-token');
 
-      const response = await client.rawFetch('http://localhost:7130/api/a');
+      const response = await client.rawFetch('http://localhost:7130/api/a', {
+        method: 'POST',
+        body: createStreamBody(payload),
+      });
 
       expect(response.status).toBe(200);
+      expect(requestBodies).toEqual([payload, payload]);
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(
         new Headers(mockFetch.mock.calls[0][1].headers).get('Authorization'),
@@ -1165,6 +1191,56 @@ describe('HttpClient', () => {
         ),
       ).toBe(false);
       expect(tokenManager.saveSession).not.toHaveBeenCalled();
+    });
+
+    it('rawFetch reuses stream request body when retrying after refresh', async () => {
+      const tokenManager = createMockTokenManager();
+      const payload = JSON.stringify({ name: 'streamed' });
+      const requestBodies: string[] = [];
+      let protectedCalls = 0;
+      const mockFetch = vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes('/api/auth/refresh')) {
+          return createJsonResponse(200, {
+            accessToken: 'new-token',
+            user: { id: '1' },
+          });
+        }
+
+        protectedCalls += 1;
+        requestBodies.push(await readBodyText(init?.body));
+        if (protectedCalls === 1) {
+          return createJsonResponse(
+            401,
+            {
+              error: 'AUTH_UNAUTHORIZED',
+              message: 'Invalid token',
+              statusCode: 401,
+            },
+            'Unauthorized',
+          );
+        }
+
+        return createJsonResponse(200, { ok: true });
+      });
+
+      const client = createClient(mockFetch, {}, tokenManager);
+      client.setAuthToken('old-token');
+
+      const response = await client.rawFetch(
+        'http://localhost:7130/api/database/records/todos',
+        {
+          method: 'POST',
+          body: createStreamBody(payload),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(requestBodies).toEqual([payload, payload]);
+      expect(
+        mockFetch.mock.calls.filter(([url]: [string]) =>
+          url.includes('/api/auth/refresh'),
+        ),
+      ).toHaveLength(1);
     });
 
     it('rawFetch deduplicates concurrent refresh calls', async () => {

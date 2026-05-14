@@ -569,7 +569,16 @@ export class HttpClient {
       requestHeaders[key] = value;
     });
 
-    const body = initBody ?? request?.body ?? undefined;
+    const sourceBody = initBody ?? request?.body ?? undefined;
+    let body = sourceBody;
+    let retryInit: RequestInit | undefined = init;
+    if (
+      typeof ReadableStream !== 'undefined' &&
+      sourceBody instanceof ReadableStream
+    ) {
+      body = await new Response(sourceBody).arrayBuffer();
+      retryInit = { ...(init ?? {}), body };
+    }
     const callerSignal = initSignal ?? request?.signal;
     const maxAttempts = IDEMPOTENT_METHODS.has(method.toUpperCase())
       ? this.retryCount
@@ -628,7 +637,7 @@ export class HttpClient {
       retryHeaders.set('Authorization', `Bearer ${this.userToken}`);
       return await this.rawFetch(
         input,
-        { ...init, headers: retryHeaders },
+        { ...retryInit, headers: retryHeaders },
         { skipAuthRefresh: true },
       );
     }
@@ -645,7 +654,7 @@ export class HttpClient {
     retryHeaders.set('Authorization', `Bearer ${newTokenData.accessToken}`);
     return await this.rawFetch(
       input,
-      { ...init, headers: retryHeaders },
+      { ...retryInit, headers: retryHeaders },
       { skipAuthRefresh: true },
     );
   }
