@@ -18,10 +18,16 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: RequestInit['body'] | JsonRequestBody;
   /** Allow retrying non-idempotent requests (POST, PATCH). Off by default to prevent duplicate writes. */
   idempotent?: boolean;
+  /** Disable automatic access-token refresh for auth/control-flow requests. */
+  skipAuthRefresh?: boolean;
 }
 
 const RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504]);
 const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']);
+const REFRESHABLE_AUTH_ERROR_CODES = new Set([
+  'AUTH_UNAUTHORIZED',
+  'PGRST301',
+]);
 
 /**
  * Serialize a request body into something fetch (or a Request constructor) accepts.
@@ -103,11 +109,11 @@ export async function parseResponse<T>(response: Response): Promise<T> {
 export class HttpClient {
   public readonly baseUrl: string;
   public readonly fetch: typeof fetch;
+  private readonly config: InsForgeConfig;
   private defaultHeaders: Record<string, string>;
   private anonKey: string | undefined;
   private userToken: string | null = null;
   private logger: Logger;
-  private autoRefreshToken: boolean = true;
   private isRefreshing: boolean = false;
   private refreshPromise: Promise<AuthRefreshResponse> | null = null;
   private tokenManager: TokenManager;
@@ -127,8 +133,8 @@ export class HttpClient {
     tokenManager?: TokenManager,
     logger?: Logger,
   ) {
+    this.config = config;
     this.baseUrl = config.baseUrl || 'http://localhost:7130';
-    this.autoRefreshToken = config.autoRefreshToken ?? true;
     // Properly bind fetch to maintain its context
     this.fetch =
       config.fetch ||
@@ -195,62 +201,40 @@ export class HttpClient {
     return Math.round(jitter);
   }
 
-  /**
-   * Performs an HTTP request with automatic retry and timeout handling.
-   * Retries on network errors and 5xx server errors with exponential backoff.
-   * Client errors (4xx) and timeouts are thrown immediately without retry.
-   * @param method - HTTP method (GET, POST, PUT, PATCH, DELETE).
-   * @param path - API path relative to the base URL.
-   * @param options - Optional request configuration including headers, body, and query params.
-   * @returns Parsed response data.
-   * @throws {InsForgeError} On timeout, network failure, or HTTP error responses.
-   */
-  private async handleRequest<T>(
-    method: string,
-    path: string,
-    options: RequestOptions = {},
-  ): Promise<T> {
+  private shouldRefreshAccessToken(
+    statusCode: number,
+    errorCode: string | null | undefined,
+    authToken: string | null,
+    options: { skipAuthRefresh?: boolean } = {},
+  ): boolean {
+    return (
+      statusCode === 401 &&
+      REFRESHABLE_AUTH_ERROR_CODES.has(errorCode ?? '') &&
+      !this.config.isServerMode &&
+      !this.config.edgeFunctionToken &&
+      !options.skipAuthRefresh &&
+      authToken !== null
+    );
+  }
+
+  private async fetchWithRetry(args: {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    body?: BodyInit | null;
+    fetchOptions: Omit<RequestInit, 'body' | 'headers' | 'method' | 'signal'>;
+    callerSignal?: AbortSignal | null;
+    maxAttempts: number;
+  }): Promise<Response> {
     const {
-      params,
-      headers = {},
+      method,
+      url,
+      headers,
       body,
-      signal: callerSignal,
-      ...fetchOptions
-    } = options as RequestOptions & { signal?: AbortSignal };
-
-    const url = this.buildUrl(path, params);
-    const startTime = Date.now();
-    const canRetry =
-      IDEMPOTENT_METHODS.has(method.toUpperCase()) ||
-      options.idempotent === true;
-    const maxAttempts = canRetry ? this.retryCount : 0;
-
-    const requestHeaders: Record<string, string> = {
-      ...this.defaultHeaders,
-    };
-
-    // Set Authorization header: prefer user token, fallback to anon key
-    const authToken = this.userToken || this.anonKey;
-    if (authToken) {
-      requestHeaders['Authorization'] = `Bearer ${authToken}`;
-    }
-
-    const processedBody = serializeBody(method, body, requestHeaders);
-
-    // Normalize HeadersInit (Headers | [string,string][] | Record) to plain object
-    if (headers instanceof Headers) {
-      headers.forEach((value, key) => {
-        requestHeaders[key] = value;
-      });
-    } else if (Array.isArray(headers)) {
-      headers.forEach(([key, value]) => {
-        requestHeaders[key] = value;
-      });
-    } else {
-      Object.assign(requestHeaders, headers);
-    }
-
-    this.logger.logRequest(method, url, requestHeaders, processedBody);
+      fetchOptions,
+      callerSignal,
+      maxAttempts,
+    } = args;
 
     let lastError: Error | undefined;
 
@@ -260,7 +244,7 @@ export class HttpClient {
         this.logger.warn(
           `Retry ${attempt}/${maxAttempts} for ${method} ${url} in ${delay}ms`,
         );
-        // Abortable backoff sleep — respects caller cancellation
+        // Abortable backoff sleep - respects caller cancellation.
         if (callerSignal?.aborted) throw callerSignal.reason;
         await new Promise<void>((resolve, reject) => {
           const onAbort = () => {
@@ -281,7 +265,7 @@ export class HttpClient {
       let controller: AbortController | undefined;
       let timer: ReturnType<typeof setTimeout> | undefined;
 
-      // Compose SDK timeout signal with caller-provided signal
+      // Compose SDK timeout signal with caller-provided signal.
       if (this.timeout > 0 || callerSignal) {
         controller = new AbortController();
 
@@ -293,15 +277,15 @@ export class HttpClient {
           if (callerSignal.aborted) {
             controller.abort(callerSignal.reason);
           } else {
-            const onCallerAbort = () => controller!.abort(callerSignal!.reason);
+            const onCallerAbort = () => controller!.abort(callerSignal.reason);
             callerSignal.addEventListener('abort', onCallerAbort, {
               once: true,
             });
-            // Clean up listener after fetch completes to prevent accumulation
+            // Clean up listener after fetch completes to prevent accumulation.
             controller.signal.addEventListener(
               'abort',
               () => {
-                callerSignal!.removeEventListener('abort', onCallerAbort);
+                callerSignal.removeEventListener('abort', onCallerAbort);
               },
               { once: true },
             );
@@ -312,16 +296,16 @@ export class HttpClient {
       try {
         const response = await this.fetch(url, {
           method,
-          headers: requestHeaders,
-          body: processedBody,
+          headers,
+          body,
           ...fetchOptions,
           ...(controller ? { signal: controller.signal } : {}),
         });
 
-        // If server error and retries remaining, continue loop
+        // If server error and retries remaining, continue loop.
         if (this.isRetryableStatus(response.status) && attempt < maxAttempts) {
           if (timer !== undefined) clearTimeout(timer);
-          // Drain the body to free the connection before retrying
+          // Drain the body to free the connection before retrying.
           await response.body?.cancel();
           lastError = new InsForgeError(
             `Server error: ${response.status} ${response.statusText}`,
@@ -331,40 +315,12 @@ export class HttpClient {
           continue;
         }
 
-        // Parse body via shared helper; logger fires after either way.
-        // Note: error-path logger now receives the InsForgeError instance
-        // (not the raw body) and uses err.statusCode as primary source.
-        // Parse failures are now logged here too (previously not logged).
-        let data: T;
-        try {
-          data = await parseResponse<T>(response);
-        } catch (err) {
-          if (timer !== undefined) clearTimeout(timer);
-          if (err instanceof InsForgeError) {
-            this.logger.logResponse(
-              method,
-              url,
-              err.statusCode || response.status,
-              Date.now() - startTime,
-              err,
-            );
-          }
-          throw err;
-        }
-
         if (timer !== undefined) clearTimeout(timer);
-        this.logger.logResponse(
-          method,
-          url,
-          response.status,
-          Date.now() - startTime,
-          data,
-        );
-        return data;
+        return response;
       } catch (err: any) {
         if (timer !== undefined) clearTimeout(timer);
 
-        // Determine if this was an SDK timeout or a caller abort
+        // Determine if this was an SDK timeout or a caller abort.
         if (err?.name === 'AbortError') {
           if (
             controller &&
@@ -378,16 +334,11 @@ export class HttpClient {
               'REQUEST_TIMEOUT',
             );
           }
-          // Caller-initiated abort — propagate as-is
+          // Caller-initiated abort - propagate as-is.
           throw err;
         }
 
-        // InsForgeError from response handling — don't retry client errors
-        if (err instanceof InsForgeError) {
-          throw err;
-        }
-
-        // Network error — retry if attempts remain
+        // Network error - retry if attempts remain.
         if (attempt < maxAttempts) {
           lastError = err;
           continue;
@@ -401,7 +352,7 @@ export class HttpClient {
       }
     }
 
-    // Should not normally reach here, but safety net after exhausting retries
+    // Should not normally reach here, but safety net after exhausting retries.
     throw (
       lastError ||
       new InsForgeError(
@@ -412,41 +363,303 @@ export class HttpClient {
     );
   }
 
+  /**
+   * Performs an HTTP request with automatic retry and timeout handling.
+   * Retries on network errors and 5xx server errors with exponential backoff.
+   * Client errors (4xx) and timeouts are thrown immediately without retry.
+   * @param method - HTTP method (GET, POST, PUT, PATCH, DELETE).
+   * @param path - API path relative to the base URL.
+   * @param options - Optional request configuration including headers, body, and query params.
+   * @returns Parsed response data.
+   * @throws {InsForgeError} On timeout, network failure, or HTTP error responses.
+   */
+  private async handleRequest<T>(
+    method: string,
+    path: string,
+    options: RequestOptions = {},
+    tokenOverride?: string | null,
+  ): Promise<T> {
+    const {
+      params,
+      headers = {},
+      body,
+      skipAuthRefresh: _skipAuthRefresh,
+      signal: callerSignal,
+      ...fetchOptions
+    } = options as RequestOptions & { signal?: AbortSignal };
+
+    const url = this.buildUrl(path, params);
+    const startTime = Date.now();
+    const canRetry =
+      IDEMPOTENT_METHODS.has(method.toUpperCase()) ||
+      options.idempotent === true;
+    const maxAttempts = canRetry ? this.retryCount : 0;
+
+    const requestHeaders: Record<string, string> = {
+      ...this.defaultHeaders,
+    };
+
+    // Set Authorization header: prefer the request-scoped token, fallback to anon key.
+    const authToken = tokenOverride ?? this.userToken ?? this.anonKey;
+    if (authToken) {
+      requestHeaders['Authorization'] = `Bearer ${authToken}`;
+    }
+
+    const processedBody = serializeBody(method, body, requestHeaders);
+
+    // Normalize HeadersInit (Headers | [string,string][] | Record) to plain object
+    const setRequestHeader = (key: string, value: string) => {
+      if (key.toLowerCase() === 'authorization') {
+        delete requestHeaders['Authorization'];
+        delete requestHeaders['authorization'];
+        requestHeaders['Authorization'] = value;
+        return;
+      }
+      requestHeaders[key] = value;
+    };
+
+    if (headers instanceof Headers) {
+      headers.forEach((value, key) => {
+        setRequestHeader(key, value);
+      });
+    } else if (Array.isArray(headers)) {
+      headers.forEach(([key, value]) => {
+        setRequestHeader(key, value);
+      });
+    } else {
+      Object.entries(headers).forEach(([key, value]) => {
+        setRequestHeader(key, value);
+      });
+    }
+
+    this.logger.logRequest(method, url, requestHeaders, processedBody);
+
+    const response = await this.fetchWithRetry({
+      method,
+      url,
+      headers: requestHeaders,
+      body: processedBody,
+      fetchOptions,
+      callerSignal,
+      maxAttempts,
+    });
+
+    // Parse body via shared helper; logger fires after either way.
+    // Note: error-path logger now receives the InsForgeError instance
+    // (not the raw body) and uses err.statusCode as primary source.
+    // Parse failures are now logged here too (previously not logged).
+    let data: T;
+    try {
+      data = await parseResponse<T>(response);
+    } catch (err) {
+      if (err instanceof InsForgeError) {
+        this.logger.logResponse(
+          method,
+          url,
+          err.statusCode || response.status,
+          Date.now() - startTime,
+          err,
+        );
+      }
+      throw err;
+    }
+
+    this.logger.logResponse(
+      method,
+      url,
+      response.status,
+      Date.now() - startTime,
+      data,
+    );
+    return data;
+  }
+
   async request<T>(
     method: string,
     path: string,
     options: RequestOptions = {},
   ): Promise<T> {
+    const tokenUsed = this.userToken;
     try {
-      return await this.handleRequest<T>(method, path, { ...options });
+      return await this.handleRequest<T>(
+        method,
+        path,
+        { ...options },
+        tokenUsed,
+      );
     } catch (error) {
       if (
-        error instanceof InsForgeError &&
-        error.statusCode === 401 &&
-        error.error === 'INVALID_TOKEN' &&
-        this.autoRefreshToken
+        !(error instanceof InsForgeError) ||
+        !this.shouldRefreshAccessToken(
+          error.statusCode,
+          error.error,
+          tokenUsed,
+          options,
+        )
       ) {
-        try {
-          const newTokenData = await this.handleTokenRefresh();
-          this.setAuthToken(newTokenData.accessToken);
-          this.tokenManager!.saveSession(newTokenData);
-          if (newTokenData.csrfToken) {
-            setCsrfToken(newTokenData.csrfToken);
-          }
-          if (newTokenData.refreshToken) {
-            this.setRefreshToken(newTokenData.refreshToken);
-          }
-          return await this.handleRequest<T>(method, path, { ...options });
-        } catch (error) {
-          this.tokenManager.clearSession();
-          this.userToken = null;
-          this.refreshToken = null;
-          clearCsrfToken();
+        throw error;
+      }
+
+      if (tokenUsed !== this.userToken) {
+        if (this.userToken === null) {
           throw error;
         }
+        return await this.handleRequest<T>(
+          method,
+          path,
+          {
+            ...options,
+            skipAuthRefresh: true,
+          },
+          this.userToken,
+        );
       }
+
+      try {
+        await this.refreshAndSaveSession();
+      } catch (error) {
+        this.clearAuthSession();
+        throw error;
+      }
+      return await this.handleRequest<T>(method, path, {
+        ...options,
+        skipAuthRefresh: true,
+      });
+    }
+  }
+
+  /**
+   * Performs an SDK-configured fetch and returns the raw Response.
+   * This is used by clients such as postgrest-js that need to own response
+   * parsing while still sharing SDK auth and refresh behavior.
+   */
+  async rawFetch(
+    input: RequestInfo | URL,
+    init?: RequestInit,
+    options: { skipAuthRefresh?: boolean } = {},
+  ): Promise<Response> {
+    const request =
+      typeof Request !== 'undefined' && input instanceof Request
+        ? input
+        : undefined;
+    const {
+      method: initMethod,
+      headers: initHeaders,
+      body: initBody,
+      signal: initSignal,
+      ...fetchOptions
+    } = init ?? {};
+    const method = initMethod ?? request?.method ?? 'GET';
+    const url = request?.url ?? input.toString();
+    const startTime = Date.now();
+    const tokenUsed = this.userToken;
+    const headers = new Headers({
+      ...this.defaultHeaders,
+    });
+    const authToken = tokenUsed ?? this.anonKey;
+    if (authToken) {
+      headers.set('Authorization', `Bearer ${authToken}`);
+    }
+
+    request?.headers.forEach((value, key) => {
+      headers.set(key, value);
+    });
+    new Headers(initHeaders).forEach((value, key) => {
+      headers.set(key, value);
+    });
+    const requestHeaders: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      requestHeaders[key] = value;
+    });
+
+    const sourceBody = initBody ?? request?.body ?? undefined;
+    let body = sourceBody;
+    let retryInit: RequestInit | undefined = init;
+    if (
+      typeof ReadableStream !== 'undefined' &&
+      sourceBody instanceof ReadableStream
+    ) {
+      body = await new Response(sourceBody).arrayBuffer();
+      retryInit = { ...(init ?? {}), body };
+    }
+    const callerSignal = initSignal ?? request?.signal;
+    const maxAttempts = IDEMPOTENT_METHODS.has(method.toUpperCase())
+      ? this.retryCount
+      : 0;
+
+    this.logger.logRequest(method, url, requestHeaders, body);
+    const response = await this.fetchWithRetry({
+      method,
+      url,
+      headers: requestHeaders,
+      body,
+      fetchOptions,
+      callerSignal,
+      maxAttempts,
+    });
+    this.logger.logResponse(
+      method,
+      url,
+      response.status,
+      Date.now() - startTime,
+    );
+
+    let errorCode: string | null = null;
+    if (response.status === 401) {
+      try {
+        const data = await response.clone().json();
+        if (data && typeof data === 'object') {
+          const candidate =
+            (data as { error?: unknown; code?: unknown }).error ??
+            (data as { code?: unknown }).code;
+          if (typeof candidate === 'string') {
+            errorCode = candidate;
+          }
+        }
+      } catch {
+        // Return the original response when the body is not JSON.
+      }
+    }
+
+    if (
+      !this.shouldRefreshAccessToken(
+        response.status,
+        errorCode,
+        tokenUsed,
+        options,
+      )
+    ) {
+      return response;
+    }
+
+    if (tokenUsed !== this.userToken) {
+      if (this.userToken === null) {
+        return response;
+      }
+      const retryHeaders = new Headers(initHeaders);
+      retryHeaders.set('Authorization', `Bearer ${this.userToken}`);
+      return await this.rawFetch(
+        input,
+        { ...retryInit, headers: retryHeaders },
+        { skipAuthRefresh: true },
+      );
+    }
+
+    let newTokenData: AuthRefreshResponse;
+    try {
+      newTokenData = await this.refreshAndSaveSession();
+    } catch (error) {
+      this.clearAuthSession();
       throw error;
     }
+
+    const retryHeaders = new Headers(initHeaders);
+    retryHeaders.set('Authorization', `Bearer ${newTokenData.accessToken}`);
+    return await this.rawFetch(
+      input,
+      { ...retryInit, headers: retryHeaders },
+      { skipAuthRefresh: true },
+    );
   }
 
   /** Performs a GET request. */
@@ -496,7 +709,7 @@ export class HttpClient {
     return headers;
   }
 
-  async handleTokenRefresh(): Promise<AuthRefreshResponse> {
+  async refreshAccessToken(): Promise<AuthRefreshResponse> {
     if (this.isRefreshing) {
       return this.refreshPromise!;
     }
@@ -510,7 +723,9 @@ export class HttpClient {
           : undefined;
         const response = await this.handleRequest<AuthRefreshResponse>(
           'POST',
-          '/api/auth/sessions/current',
+          this.refreshToken
+            ? '/api/auth/refresh?client_type=mobile'
+            : '/api/auth/refresh',
           {
             body,
             headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
@@ -525,5 +740,25 @@ export class HttpClient {
     })();
 
     return this.refreshPromise;
+  }
+
+  private async refreshAndSaveSession(): Promise<AuthRefreshResponse> {
+    const newTokenData = await this.refreshAccessToken();
+    this.setAuthToken(newTokenData.accessToken);
+    this.tokenManager.saveSession(newTokenData);
+    if (newTokenData.csrfToken) {
+      setCsrfToken(newTokenData.csrfToken);
+    }
+    if (newTokenData.refreshToken) {
+      this.setRefreshToken(newTokenData.refreshToken);
+    }
+    return newTokenData;
+  }
+
+  private clearAuthSession(): void {
+    this.tokenManager.clearSession();
+    this.userToken = null;
+    this.refreshToken = null;
+    clearCsrfToken();
   }
 }

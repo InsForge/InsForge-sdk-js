@@ -145,7 +145,7 @@ export class Auth {
           ? '/api/auth/users?client_type=mobile'
           : '/api/auth/users',
         request,
-        { credentials: 'include' },
+        { credentials: 'include', skipAuthRefresh: true },
       );
 
       if (response.accessToken && response.user) {
@@ -171,7 +171,7 @@ export class Auth {
           ? '/api/auth/sessions?client_type=mobile'
           : '/api/auth/sessions',
         request,
-        { credentials: 'include' },
+        { credentials: 'include', skipAuthRefresh: true },
       );
 
       this.saveSessionFromResponse(response);
@@ -194,7 +194,7 @@ export class Auth {
             ? '/api/auth/logout?client_type=mobile'
             : '/api/auth/logout',
           undefined,
-          { credentials: 'include' },
+          { credentials: 'include', skipAuthRefresh: true },
         );
       } catch {
         // Ignore backend logout failure so local state is still cleared
@@ -249,6 +249,7 @@ export class Auth {
 
       const response = await this.http.get<GetOauthUrlResponse>(oauthPath, {
         params,
+        skipAuthRefresh: true,
       });
 
       if (
@@ -313,7 +314,7 @@ export class Auth {
           ? '/api/auth/oauth/exchange?client_type=mobile'
           : '/api/auth/oauth/exchange',
         request,
-        { credentials: 'include' },
+        { credentials: 'include', skipAuthRefresh: true },
       );
 
       this.saveSessionFromResponse(response);
@@ -350,7 +351,7 @@ export class Auth {
       const response = await this.http.post<CreateSessionResponse>(
         '/api/auth/id-token?client_type=mobile',
         { provider, token },
-        { credentials: 'include' },
+        { credentials: 'include', skipAuthRefresh: true },
       );
 
       this.saveSessionFromResponse(response);
@@ -411,6 +412,7 @@ export class Auth {
         {
           headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
           credentials: 'include',
+          skipAuthRefresh: true,
         },
       );
 
@@ -552,7 +554,9 @@ export class Auth {
       const response = await this.http.post<{
         success: boolean;
         message: string;
-      }>('/api/auth/email/send-verification', request);
+      }>('/api/auth/email/send-verification', request, {
+        skipAuthRefresh: true,
+      });
       return { data: response, error: null };
     } catch (error) {
       return wrapError(
@@ -572,7 +576,7 @@ export class Auth {
           ? '/api/auth/email/verify?client_type=mobile'
           : '/api/auth/email/verify',
         request,
-        { credentials: 'include' },
+        { credentials: 'include', skipAuthRefresh: true },
       );
 
       this.saveSessionFromResponse(response);
@@ -602,7 +606,9 @@ export class Auth {
       const response = await this.http.post<{
         success: boolean;
         message: string;
-      }>('/api/auth/email/send-reset-password', request);
+      }>('/api/auth/email/send-reset-password', request, {
+        skipAuthRefresh: true,
+      });
       return { data: response, error: null };
     } catch (error) {
       return wrapError(
@@ -622,6 +628,7 @@ export class Auth {
       const response = await this.http.post<ExchangeResetPasswordTokenResponse>(
         '/api/auth/email/exchange-reset-password-token',
         request,
+        { skipAuthRefresh: true },
       );
       return { data: response, error: null };
     } catch (error) {
@@ -640,6 +647,7 @@ export class Auth {
       const response = await this.http.post<ResetPasswordResponse>(
         '/api/auth/email/reset-password',
         request,
+        { skipAuthRefresh: true },
       );
       return { data: response, error: null };
     } catch (error) {
@@ -661,6 +669,7 @@ export class Auth {
     try {
       const response = await this.http.get<GetPublicAuthConfigResponse>(
         '/api/auth/public-config',
+        { skipAuthRefresh: true },
       );
       return { data: response, error: null };
     } catch (error) {
