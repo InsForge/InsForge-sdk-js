@@ -24,7 +24,10 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
 
 const RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504]);
 const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']);
-const REFRESHABLE_AUTH_ERROR_CODE = 'AUTH_UNAUTHORIZED';
+const REFRESHABLE_AUTH_ERROR_CODES = new Set([
+  'AUTH_UNAUTHORIZED',
+  'PGRST301',
+]);
 
 /**
  * Serialize a request body into something fetch (or a Request constructor) accepts.
@@ -206,7 +209,7 @@ export class HttpClient {
   ): boolean {
     return (
       statusCode === 401 &&
-      errorCode === REFRESHABLE_AUTH_ERROR_CODE &&
+      REFRESHABLE_AUTH_ERROR_CODES.has(errorCode ?? '') &&
       !this.config.isServerMode &&
       !this.config.edgeFunctionToken &&
       !options.skipAuthRefresh &&

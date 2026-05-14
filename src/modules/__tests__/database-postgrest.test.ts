@@ -86,6 +86,42 @@ describe('Database PostgREST auth refresh', () => {
     expect(tokenManager.getAccessToken()).toBe('new-token');
   });
 
+  it('refreshes the access token and retries a table query on PostgREST PGRST301', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          401,
+          {
+            code: 'PGRST301',
+            message: 'JWT expired',
+            details: 'Unauthorized',
+            hint: null,
+          },
+          'Unauthorized',
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, { accessToken: 'new-token', user: refreshedUser }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, [{ id: 1 }]));
+
+    const { database, tokenManager } = makeDatabase(fetchFn);
+
+    const { data, error } = await database.from('todos').select('id');
+
+    expect(error).toBeNull();
+    expect(data).toEqual([{ id: 1 }]);
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+    expect(fetchFn.mock.calls[1][0]).toBe(
+      'http://localhost:7130/api/auth/refresh',
+    );
+    expect(
+      new Headers(fetchFn.mock.calls[2][1].headers).get('Authorization'),
+    ).toBe('Bearer new-token');
+    expect(tokenManager.getAccessToken()).toBe('new-token');
+  });
+
   it('does not refresh database requests when no user token was sent', async () => {
     const fetchFn = vi.fn().mockResolvedValueOnce(
       jsonResponse(
