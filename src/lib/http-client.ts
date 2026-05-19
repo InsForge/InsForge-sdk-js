@@ -518,7 +518,12 @@ export class HttpClient {
       try {
         await this.refreshAndSaveSession();
       } catch (error) {
-        this.clearAuthSession();
+        if (
+          error instanceof InsForgeError &&
+          (error.statusCode === 401 || error.statusCode === 403)
+        ) {
+          this.clearAuthSession();
+        }
         throw error;
       }
       return await this.handleRequest<T>(method, path, {
@@ -649,7 +654,12 @@ export class HttpClient {
     try {
       newTokenData = await this.refreshAndSaveSession();
     } catch (error) {
-      this.clearAuthSession();
+      if (
+        error instanceof InsForgeError &&
+        (error.statusCode === 401 || error.statusCode === 403)
+      ) {
+        this.clearAuthSession();
+      }
       throw error;
     }
 
