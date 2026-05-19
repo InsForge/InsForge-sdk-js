@@ -987,6 +987,35 @@ describe('HttpClient', () => {
       expect(tokenManager.clearSession).toHaveBeenCalledOnce();
     });
 
+    it('should preserve session when refresh fails with a transient network error', async () => {
+      const tokenManager = createMockTokenManager();
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          createJsonResponse(
+            401,
+            {
+              error: 'AUTH_UNAUTHORIZED',
+              message: 'Invalid token',
+              statusCode: 401,
+            },
+            'Unauthorized',
+          ),
+        )
+        .mockRejectedValueOnce(new TypeError('network down'));
+
+      const client = createClient(mockFetch, {}, tokenManager);
+      client.setAuthToken('old-token');
+      const error = (await client
+        .get('/api/protected')
+        .catch((e: unknown) => e)) as InsForgeError;
+
+      expect(error).toBeInstanceOf(InsForgeError);
+      expect(error.error).toBe('NETWORK_ERROR');
+      expect(tokenManager.clearSession).not.toHaveBeenCalled();
+      expect(client.getHeaders().Authorization).toBe('Bearer old-token');
+    });
+
     it('refresh succeeds, retry fails without clearing auth state', async () => {
       const tokenManager = createMockTokenManager();
       const mockFetch = vi
