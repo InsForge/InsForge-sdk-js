@@ -71,7 +71,7 @@ describe('Functions.invoke', () => {
     it('falls back to proxy when subhosting returns 404', async () => {
       const fetchFn = vi
         .fn()
-        .mockResolvedValueOnce(jsonRes(404, { error: 'NOT_FOUND', message: 'no' }, 'Not Found'))
+        .mockResolvedValueOnce(jsonRes(404, { error: 'DEPLOYMENT_NOT_FOUND', message: 'no' }, 'Not Found'))
         .mockResolvedValueOnce(jsonRes(200, { proxied: true }));
       const http = makeHttp(fetchFn);
       const fns = new Functions(http, 'https://app.functions.insforge.app');

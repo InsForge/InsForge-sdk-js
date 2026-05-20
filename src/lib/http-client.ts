@@ -24,10 +24,7 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
 
 const RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504]);
 const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']);
-const REFRESHABLE_AUTH_ERROR_CODES = new Set([
-  'AUTH_UNAUTHORIZED',
-  'PGRST301',
-]);
+
 
 /**
  * Serialize a request body into something fetch (or a Request constructor) accepts.
@@ -203,13 +200,11 @@ export class HttpClient {
 
   private shouldRefreshAccessToken(
     statusCode: number,
-    errorCode: string | null | undefined,
     authToken: string | null,
     options: { skipAuthRefresh?: boolean } = {},
   ): boolean {
     return (
       statusCode === 401 &&
-      REFRESHABLE_AUTH_ERROR_CODES.has(errorCode ?? '') &&
       !this.config.isServerMode &&
       !this.config.edgeFunctionToken &&
       !options.skipAuthRefresh &&
@@ -492,7 +487,6 @@ export class HttpClient {
         !(error instanceof InsForgeError) ||
         !this.shouldRefreshAccessToken(
           error.statusCode,
-          error.error,
           tokenUsed,
           options,
         )
@@ -604,27 +598,9 @@ export class HttpClient {
       Date.now() - startTime,
     );
 
-    let errorCode: string | null = null;
-    if (response.status === 401) {
-      try {
-        const data = await response.clone().json();
-        if (data && typeof data === 'object') {
-          const candidate =
-            (data as { error?: unknown; code?: unknown }).error ??
-            (data as { code?: unknown }).code;
-          if (typeof candidate === 'string') {
-            errorCode = candidate;
-          }
-        }
-      } catch {
-        // Return the original response when the body is not JSON.
-      }
-    }
-
     if (
       !this.shouldRefreshAccessToken(
         response.status,
-        errorCode,
         tokenUsed,
         options,
       )

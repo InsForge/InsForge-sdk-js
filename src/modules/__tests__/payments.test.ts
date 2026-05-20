@@ -115,7 +115,7 @@ describe("Payments", () => {
       .mockResolvedValue(
         jsonRes(
           400,
-          { error: "INVALID_INPUT", message: "Bad checkout" },
+          { error: "PAYMENT_CONFIG_INVALID", message: "Bad checkout" },
           "Bad",
         ),
       );
@@ -130,7 +130,7 @@ describe("Payments", () => {
 
     expect(result.data).toBeNull();
     expect(result.error).toBeInstanceOf(InsForgeError);
-    expect(result.error?.error).toBe("INVALID_INPUT");
+    expect(result.error?.error).toBe("PAYMENT_CONFIG_INVALID");
     expect(result.error?.message).toBe("Bad checkout");
   });
 
