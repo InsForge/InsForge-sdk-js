@@ -241,11 +241,6 @@ export class Auth {
 
       const params: Record<string, string> = { code_challenge: codeChallenge };
       if (redirectTo) params.redirect_uri = redirectTo;
-
-      // Merge extra params if provided
-      if (extraParams) {
-        Object.assign(params, extraParams);
-      }
       const isBuiltInProvider = oAuthProvidersSchema.options.includes(
         providerKey as OAuthProvidersSchema,
       );
