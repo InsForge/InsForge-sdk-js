@@ -244,7 +244,14 @@ export class Auth {
 
       // Merge extra params if provided
       if (extraParams) {
-        Object.assign(params, extraParams);
+        const reservedParams = ['code_challenge', 'redirect_uri'];
+        for (const [key, value] of Object.entries(extraParams)) {
+          if (reservedParams.includes(key)) {
+            console.warn(`Ignoring reserved OAuth parameter: ${key}`);
+            continue;
+          }
+          params[key] = value;
+        }
       }
       const isBuiltInProvider = oAuthProvidersSchema.options.includes(
         providerKey as OAuthProvidersSchema,
