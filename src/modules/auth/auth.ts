@@ -226,13 +226,13 @@ export class Auth {
     provider: OAuthProvidersSchema | string;
     redirectTo?: string;
     skipBrowserRedirect?: boolean;
-    extraParams?: Record<string, string>;
+    additionalParams?: Record<string, string>;
   }): Promise<{
     data: { url?: string; provider?: string; codeVerifier?: string };
     error: InsForgeError | null;
   }> {
     try {
-      const { provider, redirectTo, skipBrowserRedirect, extraParams } = options;
+      const { provider, redirectTo, skipBrowserRedirect, additionalParams } = options;
       const providerKey = encodeURIComponent(provider.toLowerCase());
 
       const codeVerifier = generateCodeVerifier();
@@ -242,10 +242,10 @@ export class Auth {
       const params: Record<string, string> = { code_challenge: codeChallenge };
       if (redirectTo) params.redirect_uri = redirectTo;
 
-      // Merge extra params if provided
-      if (extraParams) {
+      // Merge additional params if provided
+      if (additionalParams) {
         const reservedParams = ['code_challenge', 'redirect_uri'];
-        for (const [key, value] of Object.entries(extraParams)) {
+        for (const [key, value] of Object.entries(additionalParams)) {
           if (reservedParams.includes(key)) {
             console.warn(`Ignoring reserved OAuth parameter: ${key}`);
             continue;
