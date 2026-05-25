@@ -109,10 +109,14 @@ await insforge.auth.signInWithPassword({
 ```javascript
 await insforge.auth.signInWithOAuth({
   provider: "google", // built-in (e.g. "google") or custom provider key (e.g. "auth0-acme")
-  redirectTo: "http://localhost:3000/dashboard",
+  redirectTo: "http://localhost:3000/dashboard", // optional
   skipBrowserRedirect: true, // optional, returns URL instead of redirecting
+  additionalParams: { // optional, pass additional OAuth parameters
+    prompt: "select_account",
+    access_type: "offline",
+  },
 });
-// Response: { data: { url, provider }, error }
+// Response: { data: { url, provider, codeVerifier }, error }
 // Auto-redirects in browser unless skipBrowserRedirect: true
 
 // AUTOMATIC OAuth Callback Detection (v0.0.14+):
