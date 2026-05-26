@@ -240,11 +240,29 @@ export class StorageBucket {
    */
   async download(path: string): Promise<{ data: Blob | null; error: InsForgeError | null }> {
     try {
-      // Get download strategy from backend - this is required
-      const strategyResponse = await this.http.post<DownloadStrategy>(
-        `/api/storage/buckets/${this.bucketName}/objects/${encodeURIComponent(path)}/download-strategy`,
-        { expiresIn: 3600 }
-      );
+      // Get download strategy from backend - this is required.
+      // GET on the canonical path aligns with S3-style object retrieval;
+      // expiry (when presigned) is computed server-side from bucket visibility.
+      // Older backends only expose POST on the legacy path, so on a 404 from
+      // the GET endpoint fall back once to POST so the SDK keeps working
+      // against backends that haven't shipped the GET route yet.
+      const encodedKey = encodeURIComponent(path);
+      let strategyResponse: DownloadStrategy;
+      try {
+        strategyResponse = await this.http.get<DownloadStrategy>(
+          `/api/storage/buckets/${this.bucketName}/download-strategy/objects/${encodedKey}`
+        );
+      } catch (err) {
+        const status = err instanceof InsForgeError ? err.statusCode : undefined;
+        if (status === 404 || status === 405) {
+          strategyResponse = await this.http.post<DownloadStrategy>(
+            `/api/storage/buckets/${this.bucketName}/objects/${encodedKey}/download-strategy`,
+            {}
+          );
+        } else {
+          throw err;
+        }
+      }
 
       // Use URL from strategy
       const downloadUrl = strategyResponse.url;
