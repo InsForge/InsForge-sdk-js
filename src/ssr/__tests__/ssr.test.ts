@@ -2,17 +2,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ERROR_CODES } from '@insforge/shared-schemas';
 import {
   accessTokenCookieOptions,
+  clearAuthCookies,
   createBrowserClient,
   createRefreshAuthRouter,
   createServerClient,
   refreshAuth,
   refreshTokenCookieOptions,
+  setAuthCookies,
   updateSession,
   type CookieOptions,
 } from '../../ssr';
 
 function jwtWithExp(exp: number): string {
-  const payload = Buffer.from(JSON.stringify({ exp })).toString('base64url');
+  const payload = btoa(JSON.stringify({ exp }))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
   return `header.${payload}.signature`;
 }
 
@@ -43,6 +48,43 @@ function cookieStore(initial: Record<string, string> = {}) {
   };
 }
 
+type NextCookieOptions = Omit<CookieOptions, 'sameSite'> & {
+  sameSite?: boolean | 'lax' | 'strict' | 'none';
+};
+
+class NextCookiesLike {
+  public values = new Map<string, string>();
+  public options = new Map<string, NextCookieOptions>();
+
+  set(name: string, value: string, options?: NextCookieOptions): this;
+  set(options: { name: string; value: string } & NextCookieOptions): this;
+  set(
+    nameOrOptions: string | ({ name: string; value: string } & NextCookieOptions),
+    value?: string,
+    options?: NextCookieOptions,
+  ): this {
+    if (typeof nameOrOptions === 'string') {
+      this.values.set(nameOrOptions, value ?? '');
+      this.options.set(nameOrOptions, options ?? {});
+      return this;
+    }
+
+    const { name, value: cookieValue, ...cookieOptions } = nameOrOptions;
+    this.values.set(name, cookieValue);
+    this.options.set(name, cookieOptions);
+    return this;
+  }
+
+  delete(name: string): this;
+  delete(options: { name: string } & NextCookieOptions): this;
+  delete(nameOrOptions: string | ({ name: string } & NextCookieOptions)): this {
+    const name =
+      typeof nameOrOptions === 'string' ? nameOrOptions : nameOrOptions.name;
+    this.values.delete(name);
+    return this;
+  }
+}
+
 describe('@insforge/sdk/ssr cookies', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -67,6 +109,33 @@ describe('@insforge/sdk/ssr cookies', () => {
 
     expect(options.httpOnly).toBe(true);
     expect(options.expires?.getTime()).toBe(expiresAt * 1000);
+  });
+
+  it('writes auth cookies through a NextResponse-like cookie wrapper', () => {
+    const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
+    const refreshToken = jwtWithExp(Math.floor(Date.now() / 1000) + 86400);
+    const cookies = new NextCookiesLike();
+
+    setAuthCookies(cookies, { accessToken, refreshToken });
+
+    expect(cookies.values.get('insforge_access_token')).toBe(accessToken);
+    expect(cookies.values.get('insforge_refresh_token')).toBe(refreshToken);
+    expect(cookies.options.get('insforge_access_token')?.httpOnly).toBe(false);
+    expect(cookies.options.get('insforge_refresh_token')?.httpOnly).toBe(
+      true,
+    );
+  });
+
+  it('clears auth cookies through a NextResponse-like cookie wrapper', () => {
+    const cookies = new NextCookiesLike();
+
+    clearAuthCookies(cookies);
+
+    expect(cookies.values.get('insforge_access_token')).toBe('');
+    expect(cookies.values.get('insforge_refresh_token')).toBe('');
+    expect(
+      cookies.options.get('insforge_access_token')?.expires?.getTime(),
+    ).toBe(0);
   });
 
   it('creates a server client from the access-token cookie', () => {
@@ -244,6 +313,7 @@ describe('@insforge/sdk/ssr config', () => {
 
     expect(() => createServerClient()).toThrow('NEXT_PUBLIC_INSFORGE_ANON_KEY');
   });
+
 });
 
 describe('@insforge/sdk/ssr refresh route', () => {

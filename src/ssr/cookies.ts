@@ -29,11 +29,18 @@ export type CookieStoreValue =
   | undefined
   | null;
 
-export interface CookieStore {
+export interface CookieReader {
   get(name: string): CookieStoreValue;
-  set?(name: string, value: string, options?: CookieOptions): unknown;
-  delete?(name: string, options?: CookieOptions): unknown;
 }
+
+export interface CookieWriter {
+  set?(name: string, value: string, options?: CookieOptions): unknown;
+  set?(options: { name: string; value: string } & CookieOptions): unknown;
+  delete?(name: string): unknown;
+  delete?(options: { name: string } & CookieOptions): unknown;
+}
+
+export interface CookieStore extends CookieReader, CookieWriter {}
 
 export interface AuthCookieSettings {
   names?: AuthCookieNames;
@@ -51,7 +58,7 @@ export function getRefreshTokenCookieName(names?: AuthCookieNames): string {
 }
 
 export function getCookieValue(
-  cookies: Pick<CookieStore, 'get'> | undefined,
+  cookies: CookieReader | undefined,
   name: string,
 ): string | null {
   if (!cookies) return null;
@@ -133,7 +140,7 @@ export function expiredCookieOptions(overrides?: CookieOptions): CookieOptions {
 }
 
 export function setCookie(
-  cookies: Pick<CookieStore, 'set'> | undefined,
+  cookies: CookieWriter | undefined,
   name: string,
   value: string,
   options?: CookieOptions,
@@ -143,16 +150,16 @@ export function setCookie(
 }
 
 export function deleteCookie(
-  cookies: Pick<CookieStore, 'set' | 'delete'> | undefined,
+  cookies: CookieWriter | undefined,
   name: string,
   options?: CookieOptions,
 ): void {
   if (!cookies) return;
-  if (cookies.delete) {
-    cookies.delete(name, options);
+  if (cookies.set) {
+    cookies.set(name, '', expiredCookieOptions(options));
     return;
   }
-  cookies.set?.(name, '', expiredCookieOptions(options));
+  cookies.delete?.(name);
 }
 
 export function serializeCookie(
@@ -187,7 +194,7 @@ export function appendSetCookie(
 }
 
 export function setAuthCookies(
-  target: Headers | CookieStore | undefined,
+  cookies: CookieWriter | undefined,
   tokens: {
     accessToken: string;
     refreshToken?: string | null;
@@ -201,26 +208,10 @@ export function setAuthCookies(
     settings.options?.accessToken,
   );
 
-  if (target instanceof Headers) {
-    appendSetCookie(target, accessName, tokens.accessToken, accessOptions);
-    if (tokens.refreshToken) {
-      appendSetCookie(
-        target,
-        refreshName,
-        tokens.refreshToken,
-        refreshTokenCookieOptions(
-          tokens.refreshToken,
-          settings.options?.refreshToken,
-        ),
-      );
-    }
-    return;
-  }
-
-  setCookie(target, accessName, tokens.accessToken, accessOptions);
+  setCookie(cookies, accessName, tokens.accessToken, accessOptions);
   if (tokens.refreshToken) {
     setCookie(
-      target,
+      cookies,
       refreshName,
       tokens.refreshToken,
       refreshTokenCookieOptions(
@@ -232,7 +223,7 @@ export function setAuthCookies(
 }
 
 export function clearAuthCookies(
-  target: Headers | CookieStore | undefined,
+  cookies: CookieWriter | undefined,
   settings: AuthCookieSettings = {},
 ): void {
   const accessName = getAccessTokenCookieName(settings.names);
@@ -240,12 +231,54 @@ export function clearAuthCookies(
   const accessOptions = expiredCookieOptions(settings.options?.accessToken);
   const refreshOptions = expiredCookieOptions(settings.options?.refreshToken);
 
-  if (target instanceof Headers) {
-    appendSetCookie(target, accessName, '', accessOptions);
-    appendSetCookie(target, refreshName, '', refreshOptions);
-    return;
-  }
+  deleteCookie(cookies, accessName, accessOptions);
+  deleteCookie(cookies, refreshName, refreshOptions);
+}
 
-  deleteCookie(target, accessName, accessOptions);
-  deleteCookie(target, refreshName, refreshOptions);
+export function setAuthCookieHeaders(
+  headers: Headers,
+  tokens: {
+    accessToken: string;
+    refreshToken?: string | null;
+  },
+  settings: AuthCookieSettings = {},
+): void {
+  const accessName = getAccessTokenCookieName(settings.names);
+  const refreshName = getRefreshTokenCookieName(settings.names);
+
+  appendSetCookie(
+    headers,
+    accessName,
+    tokens.accessToken,
+    accessTokenCookieOptions(tokens.accessToken, settings.options?.accessToken),
+  );
+  if (tokens.refreshToken) {
+    appendSetCookie(
+      headers,
+      refreshName,
+      tokens.refreshToken,
+      refreshTokenCookieOptions(
+        tokens.refreshToken,
+        settings.options?.refreshToken,
+      ),
+    );
+  }
+}
+
+export function clearAuthCookieHeaders(
+  headers: Headers,
+  settings: AuthCookieSettings = {},
+): void {
+  appendSetCookie(
+    headers,
+    getAccessTokenCookieName(settings.names),
+    '',
+    expiredCookieOptions(settings.options?.accessToken),
+  );
+  appendSetCookie(
+    headers,
+    getRefreshTokenCookieName(settings.names),
+    '',
+    expiredCookieOptions(settings.options?.refreshToken),
+  );
 }

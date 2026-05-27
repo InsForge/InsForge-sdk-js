@@ -5,11 +5,9 @@ function decodeBase64Url(input: string): string {
     '=',
   );
 
-  if (typeof atob === 'function') {
-    return atob(padded);
-  }
-
-  return Buffer.from(padded, 'base64').toString('utf8');
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
 }
 
 export function getJwtExpiration(token: string | null | undefined): Date | null {

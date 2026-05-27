@@ -89,6 +89,16 @@ export interface InsForgeConfig {
   retryDelay?: number;
 }
 
+export type InsForgeAdminConfig = Omit<
+  InsForgeConfig,
+  'anonKey' | 'edgeFunctionToken' | 'isServerMode'
+> & {
+  /**
+   * Project admin API key. Keep this server-side only.
+   */
+  apiKey: string;
+};
+
 export interface AuthSession {
   user: UserSchema;
   accessToken: string;

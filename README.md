@@ -37,8 +37,24 @@ import { createClient } from "@insforge/sdk";
 
 const insforge = createClient({
   baseUrl: "http://localhost:7130", // Your InsForge backend URL
+  anonKey: "your-anon-key", // Optional public anon key
 });
 ```
+
+### Server Admin Client
+
+Use `createAdminClient()` only in trusted server code that needs project-admin privileges:
+
+```typescript
+import { createAdminClient } from "@insforge/sdk";
+
+const admin = createAdminClient({
+  baseUrl: "http://localhost:7130",
+  apiKey: process.env.INSFORGE_API_KEY!,
+});
+```
+
+`apiKey` belongs in `createAdminClient()`. Public and user-scoped clients use `anonKey`.
 
 ### Authentication
 
@@ -261,6 +277,8 @@ const insforge = createClient({
 });
 ```
 
+For project-admin keys, use `createAdminClient({ apiKey })` in server-only code.
+
 ### SSR / Next.js
 
 Use `@insforge/sdk/ssr` for apps that need the same auth session in Server Components, Client Components, Storage, and Realtime.
@@ -295,7 +313,19 @@ import { createRefreshAuthRouter } from "@insforge/sdk/ssr";
 export const { POST } = createRefreshAuthRouter();
 ```
 
-For server-owned refresh cookies, run sign-in in a Route Handler or Server Action and use `setAuthCookies()` from `@insforge/sdk/ssr` with the auth response.
+For server-owned refresh cookies, run sign-in in a Route Handler or Server Action and use `setAuthCookies()` from `@insforge/sdk/ssr` with the framework cookie writer. In Next.js Route Handlers, pass `response.cookies`:
+
+```typescript
+import { NextResponse } from "next/server";
+import { setAuthCookies } from "@insforge/sdk/ssr";
+
+const response = NextResponse.json({ user: data.user });
+setAuthCookies(response.cookies, {
+  accessToken: data.accessToken,
+  refreshToken: data.refreshToken,
+});
+return response;
+```
 
 If your refresh route needs custom side effects:
 

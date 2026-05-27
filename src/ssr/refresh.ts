@@ -5,11 +5,11 @@ import {
 } from '../types';
 import { ERROR_CODES } from '@insforge/shared-schemas';
 import {
-  clearAuthCookies,
+  clearAuthCookieHeaders,
   getCookieValue,
   getCookieValueFromHeader,
   getRefreshTokenCookieName,
-  setAuthCookies,
+  setAuthCookieHeaders,
   type AuthCookieSettings,
   type CookieStore,
 } from './cookies';
@@ -97,7 +97,7 @@ export async function refreshAuth(
   const refreshToken = readRefreshToken(options);
 
   if (!refreshToken) {
-    clearAuthCookies(headers, options);
+    clearAuthCookieHeaders(headers, options);
     const error = new InsForgeError(
       'Refresh token cookie is missing',
       401,
@@ -178,7 +178,7 @@ export async function refreshAuth(
   }
 
   if (error || !data?.accessToken) {
-    clearAuthCookies(headers, options);
+    clearAuthCookieHeaders(headers, options);
     const normalized = normalizeError(error);
     return {
       response: jsonResponse(
@@ -198,7 +198,7 @@ export async function refreshAuth(
   }
 
   const nextRefreshToken = data.refreshToken ?? refreshToken;
-  setAuthCookies(
+  setAuthCookieHeaders(
     headers,
     {
       accessToken: data.accessToken,

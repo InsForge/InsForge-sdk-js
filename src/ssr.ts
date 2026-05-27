@@ -31,5 +31,7 @@ export {
   type AuthCookieOptions,
   type AuthCookieSettings,
   type CookieOptions,
+  type CookieReader,
   type CookieStore,
+  type CookieWriter,
 } from './ssr/cookies';

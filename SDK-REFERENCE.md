@@ -13,8 +13,24 @@ import { createClient } from "@insforge/sdk";
 
 const insforge = createClient({
   baseUrl: "http://localhost:7130",
+  anonKey: "your-anon-key",
 });
 ```
+
+`createClient()` is for public and user-scoped clients. Use `createAdminClient()` for project-admin API keys.
+
+## Admin Client
+
+```typescript
+import { createAdminClient } from "@insforge/sdk";
+
+const admin = createAdminClient({
+  baseUrl: "http://localhost:7130",
+  apiKey: process.env.INSFORGE_API_KEY!,
+});
+```
+
+Use this only in trusted server code. The admin client sends `apiKey` as the bearer token for every request.
 
 ## SSR Auth Mode
 
@@ -68,6 +84,7 @@ export const { POST } = createRefreshAuthRouter();
 For server-owned refresh cookies, sign-in should also run through a Route Handler or Server Action that can set cookies:
 
 ```typescript
+import { NextResponse } from "next/server";
 import { createServerClient, setAuthCookies } from "@insforge/sdk/ssr";
 
 export async function POST(request: Request) {
@@ -79,16 +96,16 @@ export async function POST(request: Request) {
     return Response.json(error, { status: error?.statusCode ?? 400 });
   }
 
-  const headers = new Headers();
-  setAuthCookies(headers, {
+  const response = NextResponse.json({
+    accessToken: data.accessToken,
+    user: data.user,
+  });
+  setAuthCookies(response.cookies, {
     accessToken: data.accessToken,
     refreshToken: data.refreshToken,
   });
 
-  return Response.json(
-    { accessToken: data.accessToken, user: data.user },
-    { headers },
-  );
+  return response;
 }
 ```
 
