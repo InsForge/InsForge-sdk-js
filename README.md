@@ -258,28 +258,74 @@ The SDK supports the following configuration options:
 const insforge = createClient({
   baseUrl: "http://localhost:7130", // Your InsForge backend URL
   anonKey: "your-anon-key", // Optional
-  isServerMode: false, // Optional (set true in SSR/server runtime)
 });
 ```
 
 ### SSR / Next.js
 
-For SSR apps, configure `isServerMode: true`.
-In this mode, auth requests use `client_type=mobile` so auth methods return `refreshToken` in the response body.
-The SDK does not auto-refresh in server mode; your Next.js app should manage refresh token flow.
-In server mode, the SDK does not persist session/user state.
-Read your access token from cookies in Next.js and pass it as `edgeFunctionToken` per request.
-Your app should write/update cookies itself after login/refresh.
+Use `@insforge/sdk/ssr` for apps that need the same auth session in Server Components, Client Components, Storage, and Realtime.
+The helper reads `NEXT_PUBLIC_INSFORGE_URL` / `NEXT_PUBLIC_INSFORGE_ANON_KEY` in the browser and `INSFORGE_URL` / `INSFORGE_ANON_KEY` on the server, with public env fallbacks.
+
+By default, the SSR helpers use:
+
+- `insforge_access_token`: browser-readable access token cookie, expires at the JWT `exp`
+- `insforge_refresh_token`: httpOnly refresh token cookie, expires at the JWT `exp`
 
 ```typescript
-import { createClient } from "@insforge/sdk";
-const accessToken = /* read access token from request cookies */ null;
+// app/lib/insforge/client.ts
+import { createBrowserClient } from "@insforge/sdk/ssr";
 
-const insforge = createClient({
-  baseUrl: process.env.INSFORGE_URL!,
-  isServerMode: true,
-  edgeFunctionToken: accessToken ?? undefined,
-});
+export const insforge = createBrowserClient();
+```
+
+```typescript
+// app/lib/insforge/server.ts
+import { cookies } from "next/headers";
+import { createServerClient } from "@insforge/sdk/ssr";
+
+export async function createInsForgeServerClient() {
+  return createServerClient({ cookies: await cookies() });
+}
+```
+
+```typescript
+// app/api/auth/refresh/route.ts
+import { createRefreshAuthRouter } from "@insforge/sdk/ssr";
+
+export const { POST } = createRefreshAuthRouter();
+```
+
+For server-owned refresh cookies, run sign-in in a Route Handler or Server Action and use `setAuthCookies()` from `@insforge/sdk/ssr` with the auth response.
+
+If your refresh route needs custom side effects:
+
+```typescript
+import { refreshAuth } from "@insforge/sdk/ssr";
+
+export async function POST(request: Request) {
+  const result = await refreshAuth({ request });
+  // run app-specific side effects here
+  return result.response;
+}
+```
+
+For Next.js Proxy/Middleware, refresh before Server Components render:
+
+```typescript
+// proxy.ts on Next.js 16+, middleware.ts on Next.js 15 and earlier
+import { NextResponse, type NextRequest } from "next/server";
+import { updateSession } from "@insforge/sdk/ssr";
+
+export async function proxy(request: NextRequest) {
+  const response = NextResponse.next({ request });
+
+  await updateSession({
+    requestCookies: request.cookies,
+    responseCookies: response.cookies,
+  });
+
+  return response;
+}
 ```
 
 ## TypeScript Support

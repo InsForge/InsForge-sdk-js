@@ -3,7 +3,9 @@
  * Use @insforge/shared-schemas directly for API types
  */
 
-import type { UserSchema } from '@insforge/shared-schemas';
+import type { ErrorCode, UserSchema } from '@insforge/shared-schemas';
+
+export type InsForgeErrorCode = ErrorCode | (string & {});
 
 export interface InsForgeConfig {
   /**
@@ -41,6 +43,9 @@ export interface InsForgeConfig {
   /**
    * Enable server-side auth mode (SSR/Node runtime)
    * In this mode auth endpoints use `client_type=mobile` and refresh_token body flow.
+   *
+   * @deprecated Use `createServerClient()`, `createBrowserClient()`, and
+   * `updateSession()` from `@insforge/sdk/ssr` for SSR apps.
    * @default false
    */
   isServerMode?: boolean;
@@ -82,7 +87,6 @@ export interface InsForgeConfig {
    * @default 500
    */
   retryDelay?: number;
-
 }
 
 export interface AuthSession {
@@ -99,7 +103,7 @@ export interface AuthRefreshResponse {
 }
 
 export interface ApiError {
-  error: string;
+  error: InsForgeErrorCode;
   message: string;
   statusCode: number;
   nextActions?: string;
@@ -107,13 +111,13 @@ export interface ApiError {
 
 export class InsForgeError extends Error {
   public statusCode: number;
-  public error: string;
+  public error: InsForgeErrorCode;
   public nextActions?: string;
 
   constructor(
     message: string,
     statusCode: number,
-    error: string,
+    error: InsForgeErrorCode,
     nextActions?: string,
   ) {
     super(message);

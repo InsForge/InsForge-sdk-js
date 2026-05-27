@@ -13,6 +13,7 @@ export type {
   InsForgeConfig as ClientOptions,  // Alias for compatibility
   AuthSession,
   ApiError,
+  InsForgeErrorCode,
 } from './types';
 
 export { InsForgeError } from './types';
