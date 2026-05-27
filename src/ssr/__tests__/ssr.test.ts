@@ -45,6 +45,7 @@ function cookieStore(initial: Record<string, string> = {}) {
 
 describe('@insforge/sdk/ssr cookies', () => {
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 
@@ -75,6 +76,7 @@ describe('@insforge/sdk/ssr cookies', () => {
     const client = createServerClient({
       cookies,
       baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
     });
 
     expect(client.getHttpClient().getHeaders().Authorization).toBe(
@@ -90,6 +92,7 @@ describe('@insforge/sdk/ssr cookies', () => {
 
     const client = createBrowserClient({
       baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
       fetch: vi.fn() as any,
     });
 
@@ -113,6 +116,7 @@ describe('@insforge/sdk/ssr cookies', () => {
 
     const client = createBrowserClient({
       baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
       fetch: fetch as any,
     });
     const result = await client.getHttpClient().get('/api/protected');
@@ -158,6 +162,7 @@ describe('@insforge/sdk/ssr cookies', () => {
 
     const client = createBrowserClient({
       baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
       fetch: fetch as any,
     });
     const result = await client.getHttpClient().get('/api/protected');
@@ -181,6 +186,66 @@ describe('@insforge/sdk/ssr cookies', () => {
   });
 });
 
+describe('@insforge/sdk/ssr config', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it('uses public env defaults for browser clients', () => {
+    vi.stubEnv('NEXT_PUBLIC_INSFORGE_URL', 'https://public.insforge.test');
+    vi.stubEnv('NEXT_PUBLIC_INSFORGE_ANON_KEY', 'public-anon-key');
+    vi.stubGlobal('document', { cookie: '' });
+
+    const client = createBrowserClient({
+      fetch: vi.fn() as any,
+    });
+
+    expect(client.getHttpClient().baseUrl).toBe('https://public.insforge.test');
+  });
+
+  it('uses explicit browser config when process is unavailable', () => {
+    vi.stubGlobal('process', undefined);
+    vi.stubGlobal('document', { cookie: '' });
+
+    const client = createBrowserClient({
+      baseUrl: 'https://explicit.insforge.test',
+      anonKey: 'explicit-anon-key',
+      fetch: vi.fn() as any,
+    });
+
+    expect(client.getHttpClient().baseUrl).toBe('https://explicit.insforge.test');
+  });
+
+  it('uses public env defaults for server clients', () => {
+    vi.stubEnv('NEXT_PUBLIC_INSFORGE_URL', 'https://public.insforge.test');
+    vi.stubEnv('NEXT_PUBLIC_INSFORGE_ANON_KEY', 'public-anon-key');
+
+    const client = createServerClient();
+
+    expect(client.getHttpClient().baseUrl).toBe('https://public.insforge.test');
+  });
+
+  it('throws when SSR browser config cannot resolve baseUrl', () => {
+    vi.stubEnv('NEXT_PUBLIC_INSFORGE_URL', '');
+    vi.stubEnv('NEXT_PUBLIC_INSFORGE_ANON_KEY', 'public-anon-key');
+    vi.stubGlobal('document', { cookie: '' });
+
+    expect(() =>
+      createBrowserClient({
+        fetch: vi.fn() as any,
+      }),
+    ).toThrow('NEXT_PUBLIC_INSFORGE_URL');
+  });
+
+  it('throws when SSR server config cannot resolve anonKey', () => {
+    vi.stubEnv('NEXT_PUBLIC_INSFORGE_URL', 'https://public.insforge.test');
+    vi.stubEnv('NEXT_PUBLIC_INSFORGE_ANON_KEY', '');
+
+    expect(() => createServerClient()).toThrow('NEXT_PUBLIC_INSFORGE_ANON_KEY');
+  });
+});
+
 describe('@insforge/sdk/ssr refresh route', () => {
   it('returns AUTH_UNAUTHORIZED when refresh token cookie is missing', async () => {
     const result = await refreshAuth({
@@ -188,6 +253,7 @@ describe('@insforge/sdk/ssr refresh route', () => {
         method: 'POST',
       }),
       baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
       fetch: vi.fn() as any,
     });
     const body = await result.response.json();
@@ -200,7 +266,9 @@ describe('@insforge/sdk/ssr refresh route', () => {
   it('refreshes with the httpOnly refresh cookie and returns access token only', async () => {
     const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
     const refreshToken = jwtWithExp(Math.floor(Date.now() / 1000) + 86400);
-    const fetch = vi.fn(async (_url: string, init: RequestInit) => {
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe('https://api.insforge.test/api/auth/refresh?client_type=mobile');
+      expect(new Headers(init.headers).get('Authorization')).toBe('Bearer anon-key');
       expect(JSON.parse(init.body as string)).toEqual({
         refresh_token: 'old-refresh',
       });
@@ -218,6 +286,7 @@ describe('@insforge/sdk/ssr refresh route', () => {
     const result = await refreshAuth({
       request,
       baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
       fetch: fetch as any,
     });
     const body = await result.response.json();
@@ -246,6 +315,7 @@ describe('@insforge/sdk/ssr refresh route', () => {
     );
     const { POST } = createRefreshAuthRouter({
       baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
       fetch: fetch as any,
     });
 
@@ -270,6 +340,7 @@ describe('@insforge/sdk/ssr updateSession', () => {
       requestCookies,
       responseCookies,
       baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
       fetch: vi.fn() as any,
     });
 
@@ -294,6 +365,7 @@ describe('@insforge/sdk/ssr updateSession', () => {
       requestCookies,
       responseCookies,
       baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
       fetch: fetch as any,
     });
 
@@ -326,6 +398,7 @@ describe('@insforge/sdk/ssr updateSession', () => {
       requestCookies,
       responseCookies,
       baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
       fetch: fetch as any,
     });
 

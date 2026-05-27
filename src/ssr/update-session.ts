@@ -1,6 +1,5 @@
 import { isJwtExpiredOrExpiring } from '../lib/jwt';
-import type { InsForgeError } from '../types';
-import type { SsrClientConfig } from './config';
+import type { InsForgeConfig, InsForgeError } from '../types';
 import {
   clearAuthCookies,
   getAccessTokenCookieName,
@@ -13,7 +12,7 @@ import {
 import { refreshAuth } from './refresh';
 
 export interface UpdateSessionOptions
-  extends SsrClientConfig,
+  extends Omit<InsForgeConfig, 'edgeFunctionToken' | 'isServerMode' | 'auth'>,
     AuthCookieSettings {
   requestCookies: CookieStore;
   responseCookies: CookieStore;

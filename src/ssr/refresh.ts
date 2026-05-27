@@ -1,6 +1,8 @@
-import { InsForgeClient } from '../client';
-import { InsForgeError, type AuthRefreshResponse } from '../types';
-import { resolveServerConfig, type SsrClientConfig } from './config';
+import {
+  InsForgeError,
+  type AuthRefreshResponse,
+  type InsForgeConfig,
+} from '../types';
 import { ERROR_CODES } from '@insforge/shared-schemas';
 import {
   clearAuthCookies,
@@ -13,7 +15,7 @@ import {
 } from './cookies';
 
 export interface RefreshAuthOptions
-  extends SsrClientConfig,
+  extends Omit<InsForgeConfig, 'edgeFunctionToken' | 'isServerMode' | 'auth'>,
     AuthCookieSettings {
   request?: Request;
   cookies?: Pick<CookieStore, 'get'>;
@@ -45,11 +47,34 @@ function jsonResponse(
 function normalizeError(error: unknown): InsForgeError {
   if (error instanceof InsForgeError) return error;
 
+  if (error && typeof error === 'object') {
+    const body = error as {
+      error?: unknown;
+      message?: unknown;
+      statusCode?: unknown;
+    };
+    return new InsForgeError(
+      typeof body.message === 'string'
+        ? body.message
+        : 'Failed to refresh auth session',
+      typeof body.statusCode === 'number' ? body.statusCode : 500,
+      typeof body.error === 'string'
+        ? body.error
+        : ERROR_CODES.UNKNOWN_ERROR,
+    );
+  }
+
   return new InsForgeError(
     error instanceof Error ? error.message : 'Failed to refresh auth session',
     500,
     ERROR_CODES.UNKNOWN_ERROR,
   );
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.includes('json')) return null;
+  return response.json();
 }
 
 function readRefreshToken(options: RefreshAuthOptions): string | null {
@@ -95,11 +120,62 @@ export async function refreshAuth(
     };
   }
 
-  const client = new InsForgeClient({
-    ...resolveServerConfig(options),
-    isServerMode: true,
-  });
-  const { data, error } = await client.auth.refreshSession({ refreshToken });
+  let { baseUrl, anonKey } = options;
+  try {
+    baseUrl ||= process.env.NEXT_PUBLIC_INSFORGE_URL;
+    anonKey ||= process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY;
+  } catch {
+    // process may be unavailable outside Next.js/browser-bundled envs.
+  }
+  if (!baseUrl || !anonKey) {
+    throw new Error(
+      'Missing InsForge baseUrl or anonKey. Pass baseUrl and anonKey to refreshAuth() or set NEXT_PUBLIC_INSFORGE_URL and NEXT_PUBLIC_INSFORGE_ANON_KEY.',
+    );
+  }
+
+  const fetchImpl =
+    options.fetch ??
+    (globalThis.fetch
+      ? globalThis.fetch.bind(globalThis)
+      : (undefined as typeof fetch | undefined));
+  if (!fetchImpl) {
+    throw new Error(
+      'Fetch is not available. Please provide a fetch implementation.',
+    );
+  }
+
+  const requestHeaders = new Headers(options.headers);
+  requestHeaders.set('Authorization', `Bearer ${anonKey}`);
+  requestHeaders.set('Content-Type', 'application/json');
+  requestHeaders.set('Accept', 'application/json');
+
+  let data: AuthRefreshResponse | null = null;
+  let error: InsForgeError | null = null;
+
+  try {
+    const response = await fetchImpl(
+      new URL('/api/auth/refresh?client_type=mobile', baseUrl).toString(),
+      {
+        method: 'POST',
+        headers: requestHeaders,
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      },
+    );
+    const body = await readJson(response);
+    if (!response.ok) {
+      error = normalizeError(
+        body ?? {
+          message: 'Failed to refresh auth session',
+          statusCode: response.status,
+          error: ERROR_CODES.UNKNOWN_ERROR,
+        },
+      );
+    } else {
+      data = body as AuthRefreshResponse;
+    }
+  } catch (caught) {
+    error = normalizeError(caught);
+  }
 
   if (error || !data?.accessToken) {
     clearAuthCookies(headers, options);

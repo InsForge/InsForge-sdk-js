@@ -264,7 +264,7 @@ const insforge = createClient({
 ### SSR / Next.js
 
 Use `@insforge/sdk/ssr` for apps that need the same auth session in Server Components, Client Components, Storage, and Realtime.
-The helper reads `NEXT_PUBLIC_INSFORGE_URL` / `NEXT_PUBLIC_INSFORGE_ANON_KEY` in the browser and `INSFORGE_URL` / `INSFORGE_ANON_KEY` on the server, with public env fallbacks.
+The helper uses explicit `baseUrl` / `anonKey` when provided. Otherwise it reads `NEXT_PUBLIC_INSFORGE_URL` / `NEXT_PUBLIC_INSFORGE_ANON_KEY`. Missing config throws a clear error.
 
 By default, the SSR helpers use:
 

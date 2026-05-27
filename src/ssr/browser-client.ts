@@ -1,7 +1,10 @@
 import { InsForgeClient } from '../client';
-import { InsForgeError, type AuthRefreshResponse } from '../types';
+import {
+  InsForgeError,
+  type AuthRefreshResponse,
+  type InsForgeConfig,
+} from '../types';
 import { isJwtExpiredOrExpiring } from '../lib/jwt';
-import { resolveBrowserConfig, type SsrClientConfig } from './config';
 import { ERROR_CODES } from '@insforge/shared-schemas';
 import {
   getAccessTokenCookieName,
@@ -10,7 +13,7 @@ import {
 } from './cookies';
 
 export interface CreateBrowserClientOptions
-  extends SsrClientConfig,
+  extends Omit<InsForgeConfig, 'edgeFunctionToken' | 'isServerMode' | 'auth'>,
     AuthCookieSettings {
   refreshUrl?: string;
   refreshLeewaySeconds?: number;
@@ -88,6 +91,19 @@ function withAuthHeader(init: RequestInit | undefined, token: string): RequestIn
 export function createBrowserClient(
   options: CreateBrowserClientOptions = {},
 ): InsForgeClient {
+  let { baseUrl, anonKey } = options;
+  try {
+    baseUrl ||= process.env.NEXT_PUBLIC_INSFORGE_URL;
+    anonKey ||= process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY;
+  } catch {
+    // process may be unavailable outside Next.js/browser-bundled envs.
+  }
+  if (!baseUrl || !anonKey) {
+    throw new Error(
+      'Missing InsForge baseUrl or anonKey. Pass baseUrl and anonKey to createBrowserClient() or set NEXT_PUBLIC_INSFORGE_URL and NEXT_PUBLIC_INSFORGE_ANON_KEY.',
+    );
+  }
+
   let accessToken = getBrowserCookie(
     getAccessTokenCookieName(options.names),
   );
@@ -189,7 +205,9 @@ export function createBrowserClient(
   };
 
   client = new InsForgeClient({
-    ...resolveBrowserConfig(options),
+    ...options,
+    baseUrl,
+    anonKey,
     fetch: ssrFetch,
   });
   const setAccessToken = client.setAccessToken.bind(client);

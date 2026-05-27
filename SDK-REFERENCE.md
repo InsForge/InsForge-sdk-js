@@ -22,8 +22,9 @@ Use `@insforge/sdk/ssr` for Next.js/SSR. The helpers keep the refresh token serv
 
 Default env resolution:
 
-- Browser: `NEXT_PUBLIC_INSFORGE_URL`, `NEXT_PUBLIC_INSFORGE_ANON_KEY`
-- Server: `INSFORGE_URL`, `INSFORGE_ANON_KEY`, then the public env fallbacks
+- Browser and server: `NEXT_PUBLIC_INSFORGE_URL`, `NEXT_PUBLIC_INSFORGE_ANON_KEY`
+
+Explicit `baseUrl` / `anonKey` values win. Missing SSR config throws a clear error.
 
 Default cookies:
 
@@ -230,7 +231,7 @@ await insforge.auth.getCurrentUser();
 
 For browser apps, call `getCurrentUser()` during startup. The SDK will use the httpOnly refresh cookie automatically when it can refresh the session.
 
-For SSR apps, prefer `@insforge/sdk/ssr` instead of configuring `isServerMode` manually.
+For SSR apps, use `@insforge/sdk/ssr`.
 
 ### `getProfile()`
 
