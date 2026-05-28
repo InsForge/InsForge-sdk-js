@@ -1,4 +1,4 @@
-import { InsForgeConfig } from './types';
+import type { InsForgeConfig } from './types';
 import { HttpClient } from './lib/http-client';
 import { Logger } from './lib/logger';
 import { TokenManager } from './lib/token-manager';

@@ -13,27 +13,132 @@ import { createClient } from "@insforge/sdk";
 
 const insforge = createClient({
   baseUrl: "http://localhost:7130",
-  isServerMode: false, // Set true in SSR/server runtime
+  anonKey: "your-anon-key",
 });
 ```
 
-## SSR Auth Mode
+`createClient()` is for public and user-scoped clients. Use `createAdminClient()` for project-admin API keys.
 
-Use `isServerMode: true` for Next.js/SSR.
-In this mode, auth endpoints use `client_type=mobile` so auth methods return `refreshToken` in response body.
-The SDK does not auto-refresh in server mode; your app should manage refresh token flow.
-In server mode, the SDK does not persist session/user state.
-Read your access token from cookies in Next.js and pass it as `edgeFunctionToken` per request.
-Your app should write/update cookies itself after login/refresh.
+## Admin Client
 
 ```typescript
-const accessToken = /* read access token from request cookies */ null;
+import { createAdminClient } from "@insforge/sdk";
 
-const insforge = createClient({
-  baseUrl: process.env.INSFORGE_URL!,
-  isServerMode: true,
-  edgeFunctionToken: accessToken ?? undefined,
+const admin = createAdminClient({
+  baseUrl: "http://localhost:7130",
+  apiKey: process.env.INSFORGE_API_KEY!,
 });
+```
+
+Use this only in trusted server code. The admin client sends `apiKey` as the bearer token for every request.
+
+## SSR Auth Mode
+
+Use `@insforge/sdk/ssr` for Next.js/SSR. The helpers keep the refresh token server-owned while still making the short-lived access token available to browser-only SDK surfaces such as Storage and Realtime.
+
+Default env resolution:
+
+- Browser and server: `NEXT_PUBLIC_INSFORGE_URL`, `NEXT_PUBLIC_INSFORGE_ANON_KEY`
+
+Explicit `baseUrl` / `anonKey` values win. Missing SSR config throws a clear error.
+
+Default cookies:
+
+- `insforge_access_token`: `httpOnly: false`, `sameSite: "lax"`, `path: "/"`, expires at the JWT `exp`
+- `insforge_refresh_token`: `httpOnly: true`, `sameSite: "lax"`, `path: "/"`, expires at the JWT `exp`
+
+### `createBrowserClient()`
+
+```typescript
+import { createBrowserClient } from "@insforge/sdk/ssr";
+
+const insforge = createBrowserClient({
+  refreshUrl: "/api/auth/refresh", // default
+});
+```
+
+The browser client reads the access-token cookie, uses it for Database, Storage, Functions, and Realtime, and calls the refresh route when the access token is missing or near expiry.
+
+### `createServerClient()`
+
+```typescript
+import { cookies } from "next/headers";
+import { createServerClient } from "@insforge/sdk/ssr";
+
+const insforge = createServerClient({
+  cookies: await cookies(),
+});
+```
+
+The server client reads only the access-token cookie and passes it as the per-request bearer token.
+
+### `createRefreshAuthRouter()`
+
+```typescript
+// app/api/auth/refresh/route.ts
+import { createRefreshAuthRouter } from "@insforge/sdk/ssr";
+
+export const { POST } = createRefreshAuthRouter();
+```
+
+For server-owned refresh cookies, sign-in should also run through a Route Handler or Server Action that can set cookies:
+
+```typescript
+import { NextResponse } from "next/server";
+import { createServerClient, setAuthCookies } from "@insforge/sdk/ssr";
+
+export async function POST(request: Request) {
+  const client = createServerClient();
+  const { data, error } = await client.auth.signInWithPassword(
+    await request.json(),
+  );
+  if (error || !data?.accessToken) {
+    return Response.json(error, { status: error?.statusCode ?? 400 });
+  }
+
+  const response = NextResponse.json({
+    accessToken: data.accessToken,
+    user: data.user,
+  });
+  setAuthCookies(response.cookies, {
+    accessToken: data.accessToken,
+    refreshToken: data.refreshToken,
+  });
+
+  return response;
+}
+```
+
+Use `refreshAuth()` directly when the route needs app-specific logic:
+
+```typescript
+import { refreshAuth } from "@insforge/sdk/ssr";
+
+export async function POST(request: Request) {
+  await beforeRefresh(request);
+  const result = await refreshAuth({ request });
+  await afterRefresh(result);
+  return result.response;
+}
+```
+
+### `updateSession()`
+
+```typescript
+// proxy.ts on Next.js 16+, middleware.ts on Next.js 15 and earlier
+import { NextResponse, type NextRequest } from "next/server";
+import { updateSession } from "@insforge/sdk/ssr";
+
+export async function proxy(request: NextRequest) {
+  const response = NextResponse.next({ request });
+
+  await updateSession({
+    requestCookies: request.cookies,
+    responseCookies: response.cookies,
+  });
+
+  return response;
+}
 ```
 
 ## OAuth Auto-Detection (Browser)
@@ -143,7 +248,7 @@ await insforge.auth.getCurrentUser();
 
 For browser apps, call `getCurrentUser()` during startup. The SDK will use the httpOnly refresh cookie automatically when it can refresh the session.
 
-For `isServerMode: true`, call `refreshSession({ refreshToken })` explicitly when you need to refresh an expired access token.
+For SSR apps, use `@insforge/sdk/ssr`.
 
 ### `getProfile()`
 

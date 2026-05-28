@@ -11,8 +11,10 @@ export { InsForgeClient } from './client';
 export type {
   InsForgeConfig,
   InsForgeConfig as ClientOptions,  // Alias for compatibility
+  InsForgeAdminConfig,
   AuthSession,
   ApiError,
+  InsForgeErrorCode,
 } from './types';
 
 export { InsForgeError } from './types';
@@ -68,10 +70,26 @@ export { Logger } from './lib/logger';
 
 // Factory function for creating clients (Supabase-style)
 import { InsForgeClient } from './client';
-import { InsForgeConfig } from './types';
+import type { InsForgeAdminConfig, InsForgeConfig } from './types';
 
-export function createClient(config: InsForgeConfig): InsForgeClient {
+export function createClient(config: InsForgeConfig = {}): InsForgeClient {
   return new InsForgeClient(config);
+}
+
+export function createAdminClient(
+  config: InsForgeAdminConfig,
+): InsForgeClient {
+  const { apiKey: rawApiKey, ...clientConfig } = config ?? {};
+  const apiKey = rawApiKey?.trim();
+  if (!apiKey) {
+    throw new Error('Missing apiKey. Pass apiKey to createAdminClient().');
+  }
+
+  return new InsForgeClient({
+    ...clientConfig,
+    edgeFunctionToken: apiKey,
+    isServerMode: true,
+  });
 }
 
 // Default export for convenience

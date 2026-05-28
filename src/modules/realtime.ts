@@ -1,4 +1,4 @@
-import { io, Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 import type { SubscribeResponse, RealtimeErrorPayload, SocketMessage } from '@insforge/shared-schemas';
 import { TokenManager } from '../lib/token-manager';
 
@@ -90,75 +90,83 @@ export class Realtime {
       return this.connectPromise;
     }
 
-    this.connectPromise = new Promise((resolve, reject) => {
-      const token = this.tokenManager.getAccessToken() ?? this.anonKey;
-      
+    this.connectPromise = (async () => {
+      try {
+        const { io } = await import('socket.io-client');
 
-      this.socket = io(this.baseUrl, {
-        transports: ['websocket'],
-        auth: token ? { token } : undefined,
-      });
+        await new Promise<void>((resolve, reject) => {
+          const token = this.tokenManager.getAccessToken() ?? this.anonKey;
 
-      let initialConnection = true;
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+          this.socket = io(this.baseUrl, {
+            transports: ['websocket'],
+            auth: token ? { token } : undefined,
+          });
 
-      const cleanup = () => {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-      };
+          let initialConnection = true;
+          let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-      timeoutId = setTimeout(() => {
-        if (initialConnection) {
-          initialConnection = false;
-          this.connectPromise = null;
-          this.socket?.disconnect();
-          this.socket = null;
-          reject(new Error(`Connection timeout after ${CONNECT_TIMEOUT}ms`));
-        }
-      }, CONNECT_TIMEOUT);
+          const cleanup = () => {
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+              timeoutId = null;
+            }
+          };
 
-      this.socket.on('connect', () => {
-        cleanup();
-        // Re-subscribe to channels on every connect (initial + reconnects)
-        for (const channel of this.subscribedChannels) {
-          this.socket!.emit('realtime:subscribe', { channel });
-        }
-        this.notifyListeners('connect');
+          timeoutId = setTimeout(() => {
+            if (initialConnection) {
+              initialConnection = false;
+              this.connectPromise = null;
+              this.socket?.disconnect();
+              this.socket = null;
+              reject(new Error(`Connection timeout after ${CONNECT_TIMEOUT}ms`));
+            }
+          }, CONNECT_TIMEOUT);
 
-        if (initialConnection) {
-          initialConnection = false;
-          this.connectPromise = null;
-          resolve();
-        }
-      });
+          this.socket.on('connect', () => {
+            cleanup();
+            // Re-subscribe to channels on every connect (initial + reconnects)
+            for (const channel of this.subscribedChannels) {
+              this.socket!.emit('realtime:subscribe', { channel });
+            }
+            this.notifyListeners('connect');
 
-      this.socket.on('connect_error', (error: Error) => {
-        cleanup();
-        this.notifyListeners('connect_error', error);
+            if (initialConnection) {
+              initialConnection = false;
+              this.connectPromise = null;
+              resolve();
+            }
+          });
 
-        if (initialConnection) {
-          initialConnection = false;
-          this.connectPromise = null;
-          reject(error);
-        }
-      });
+          this.socket.on('connect_error', (error: Error) => {
+            cleanup();
+            this.notifyListeners('connect_error', error);
 
-      this.socket.on('disconnect', (reason: string) => {
-        this.notifyListeners('disconnect', reason);
-      });
+            if (initialConnection) {
+              initialConnection = false;
+              this.connectPromise = null;
+              reject(error);
+            }
+          });
 
-      this.socket.on('realtime:error', (error: RealtimeErrorPayload) => {
-        this.notifyListeners('error', error);
-      });
+          this.socket.on('disconnect', (reason: string) => {
+            this.notifyListeners('disconnect', reason);
+          });
 
-      // Route custom events to listeners (onAny doesn't catch socket reserved events)
-      this.socket.onAny((event: string, message: SocketMessage) => {
-        if (event === 'realtime:error') return; // Already handled above
-        this.notifyListeners(event, message);
-      });
-    });
+          this.socket.on('realtime:error', (error: RealtimeErrorPayload) => {
+            this.notifyListeners('error', error);
+          });
+
+          // Route custom events to listeners (onAny doesn't catch socket reserved events)
+          this.socket.onAny((event: string, message: SocketMessage) => {
+            if (event === 'realtime:error') return; // Already handled above
+            this.notifyListeners(event, message);
+          });
+        });
+      } catch (error) {
+        this.connectPromise = null;
+        throw error;
+      }
+    })();
 
     return this.connectPromise;
   }

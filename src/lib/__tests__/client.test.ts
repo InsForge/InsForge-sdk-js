@@ -1,5 +1,36 @@
 import { describe, it, expect } from 'vitest';
 import { InsForgeClient } from '../../client';
+import { createAdminClient } from '../../index';
+
+describe('client factories', () => {
+  it('creates an admin client with the API key as bearer auth', () => {
+    const client = createAdminClient({
+      baseUrl: 'http://localhost:7130',
+      apiKey: 'ik_test',
+    });
+
+    expect(client.getHttpClient().getHeaders().Authorization).toBe(
+      'Bearer ik_test',
+    );
+  });
+
+  it('requires apiKey on createAdminClient', () => {
+    expect(() =>
+      createAdminClient({
+        baseUrl: 'http://localhost:7130',
+      } as any),
+    ).toThrow('Missing apiKey');
+  });
+
+  it('rejects blank apiKey on createAdminClient', () => {
+    expect(() =>
+      createAdminClient({
+        baseUrl: 'http://localhost:7130',
+        apiKey: '   ',
+      }),
+    ).toThrow('Missing apiKey');
+  });
+});
 
 describe('InsForgeClient – edgeFunctionToken implies server mode', () => {
   it('should auto-enable server mode when edgeFunctionToken is provided', async () => {

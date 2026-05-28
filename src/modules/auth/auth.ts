@@ -40,7 +40,7 @@ import type {
   GetProfileResponse,
   OAuthCodeExchangeRequest,
 } from '@insforge/shared-schemas';
-import { oAuthProvidersSchema } from '@insforge/shared-schemas';
+import { ERROR_CODES, oAuthProvidersSchema } from '@insforge/shared-schemas';
 
 interface AuthOptions {
   isServerMode?: boolean;
@@ -381,8 +381,11 @@ export class Auth {
    * Browser mode:
    * - Uses httpOnly refresh cookie and optional CSRF header.
    *
-   * Server mode (`isServerMode: true`):
+   * Legacy server mode (`isServerMode: true`):
    * - Uses mobile auth flow and requires `refreshToken` in request body.
+   *
+   * SSR apps should prefer `createRefreshAuthRouter()` / `refreshAuth()` from
+   * `@insforge/sdk/ssr`.
    */
   async refreshSession(options?: { refreshToken?: string }): Promise<{
     data: RefreshSessionResponse | null;
@@ -395,7 +398,7 @@ export class Auth {
           error: new InsForgeError(
             'refreshToken is required when refreshing session in server mode',
             400,
-            'REFRESH_TOKEN_REQUIRED',
+            ERROR_CODES.AUTH_UNAUTHORIZED,
           ),
         };
       }
