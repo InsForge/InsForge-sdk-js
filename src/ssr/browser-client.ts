@@ -88,6 +88,14 @@ function withAuthHeader(init: RequestInit | undefined, token: string): RequestIn
   };
 }
 
+function getRequestUrl(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (typeof Request !== 'undefined' && input instanceof Request) {
+    return input.url;
+  }
+  return input.toString();
+}
+
 export function createBrowserClient(
   options: CreateBrowserClientOptions = {},
 ): InsForgeClient {
@@ -164,7 +172,7 @@ export function createBrowserClient(
   };
 
   const shouldSkipRefresh = (input: RequestInfo | URL): boolean => {
-    const url = typeof input === 'string' ? input : input.toString();
+    const url = getRequestUrl(input);
     return url === refreshUrl || url.endsWith(refreshUrl);
   };
 

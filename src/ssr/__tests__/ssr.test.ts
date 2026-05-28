@@ -138,6 +138,26 @@ describe('@insforge/sdk/ssr cookies', () => {
     ).toBe(0);
   });
 
+  it('keeps deletion expiry fields when clearing cookies with overrides', () => {
+    const cookies = new NextCookiesLike();
+
+    clearAuthCookies(cookies, {
+      options: {
+        accessToken: {
+          domain: 'app.test',
+          expires: new Date('2030-01-01T00:00:00Z'),
+          maxAge: 3600,
+        },
+      },
+    });
+
+    expect(cookies.options.get('insforge_access_token')).toMatchObject({
+      domain: 'app.test',
+      expires: new Date(0),
+      maxAge: 0,
+    });
+  });
+
   it('creates a server client from the access-token cookie', () => {
     const token = jwtWithExp(Math.floor(Date.now() / 1000) + 3600);
     const cookies = cookieStore({ insforge_access_token: token });
@@ -252,6 +272,32 @@ describe('@insforge/sdk/ssr cookies', () => {
         ([url]: [string]) => url === 'https://api.insforge.test/api/auth/refresh',
       ),
     ).toBe(false);
+  });
+
+  it('detects the refresh route when the SSR fetch receives a Request input', async () => {
+    const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 3600);
+    vi.stubGlobal('document', {
+      cookie: `insforge_access_token=${encodeURIComponent(accessToken)}`,
+    });
+    const fetch = vi.fn(async () =>
+      jsonResponse(401, {
+        error: ERROR_CODES.AUTH_TOKEN_EXPIRED,
+        message: 'Access token expired',
+        statusCode: 401,
+      }),
+    );
+
+    const client = createBrowserClient({
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const response = await client
+      .getHttpClient()
+      .fetch(new Request('https://app.test/api/auth/refresh'));
+
+    expect(response.status).toBe(401);
+    expect(fetch).toHaveBeenCalledOnce();
   });
 });
 

@@ -21,6 +21,15 @@ describe('client factories', () => {
       } as any),
     ).toThrow('Missing apiKey');
   });
+
+  it('rejects blank apiKey on createAdminClient', () => {
+    expect(() =>
+      createAdminClient({
+        baseUrl: 'http://localhost:7130',
+        apiKey: '   ',
+      }),
+    ).toThrow('Missing apiKey');
+  });
 });
 
 describe('InsForgeClient – edgeFunctionToken implies server mode', () => {

@@ -31,8 +31,9 @@ export function isJwtExpiredOrExpiring(
   token: string | null | undefined,
   leewaySeconds = 60,
 ): boolean {
+  if (!token) return false;
   const expires = getJwtExpiration(token);
-  if (!expires) return false;
+  if (!expires) return true;
 
   return expires.getTime() <= Date.now() + leewaySeconds * 1000;
 }

@@ -131,11 +131,12 @@ export function refreshTokenCookieOptions(
 }
 
 export function expiredCookieOptions(overrides?: CookieOptions): CookieOptions {
+  const { expires: _expires, maxAge: _maxAge, ...safeOverrides } = overrides ?? {};
   return {
     ...defaultCookieOptions(),
+    ...safeOverrides,
     expires: EXPIRED_DATE,
     maxAge: 0,
-    ...overrides,
   };
 }
 

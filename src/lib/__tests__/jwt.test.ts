@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getJwtExpiration } from '../jwt';
+import { getJwtExpiration, isJwtExpiredOrExpiring } from '../jwt';
 
 function jwtWithPayload(payload: object): string {
   const encoded = btoa(JSON.stringify(payload))
@@ -22,5 +22,14 @@ describe('jwt helpers', () => {
     } finally {
       vi.stubGlobal('Buffer', originalBuffer);
     }
+  });
+
+  it('returns null for malformed JWT expiration', () => {
+    expect(getJwtExpiration('malformed.token')).toBeNull();
+  });
+
+  it('treats malformed JWTs as expiring for refresh decisions', () => {
+    expect(isJwtExpiredOrExpiring('malformed.token')).toBe(true);
+    expect(isJwtExpiredOrExpiring(null)).toBe(false);
   });
 });

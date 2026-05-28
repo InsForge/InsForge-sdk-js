@@ -79,11 +79,12 @@ export function createClient(config: InsForgeConfig = {}): InsForgeClient {
 export function createAdminClient(
   config: InsForgeAdminConfig,
 ): InsForgeClient {
-  if (!config?.apiKey) {
+  const { apiKey: rawApiKey, ...clientConfig } = config ?? {};
+  const apiKey = rawApiKey?.trim();
+  if (!apiKey) {
     throw new Error('Missing apiKey. Pass apiKey to createAdminClient().');
   }
 
-  const { apiKey, ...clientConfig } = config;
   return new InsForgeClient({
     ...clientConfig,
     edgeFunctionToken: apiKey,
