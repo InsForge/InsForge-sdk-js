@@ -74,9 +74,9 @@ const { data, error } = await insforge.auth.signInWithPassword({
 });
 
 // OAuth authentication (built-in or custom provider key)
-await insforge.auth.signInWithOAuth({
-  provider: "google", // e.g. built-in: "google", custom: "auth0-acme"
+await insforge.auth.signInWithOAuth("google", {
   redirectTo: "http://localhost:3000/dashboard",
+  additionalParams: { prompt: "select_account" },
 });
 
 // Get current user (call this during browser app startup)

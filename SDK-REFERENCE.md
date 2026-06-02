@@ -212,9 +212,9 @@ await insforge.auth.signInWithPassword({
 ### `signInWithOAuth()`
 
 ```javascript
-await insforge.auth.signInWithOAuth({
-  provider: "google", // built-in (e.g. "google") or custom provider key (e.g. "auth0-acme")
+await insforge.auth.signInWithOAuth("google", {
   redirectTo: "http://localhost:3000/dashboard",
+  additionalParams: { prompt: "select_account" }, // optional provider-specific OAuth params
   skipBrowserRedirect: true, // optional, returns URL instead of redirecting
 });
 // Response: { data: { url, provider }, error }
