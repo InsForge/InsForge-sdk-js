@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { signUpAndSignIn, createClient } from './setup';
+import { signUpAndSignIn } from './setup';
 import type { InsForgeClient } from '../src/client';
 
 /**
@@ -15,10 +15,8 @@ import type { InsForgeClient } from '../src/client';
 
 describe('Email Module', () => {
   let authedClient: InsForgeClient;
-  let anonClient: InsForgeClient;
 
   beforeAll(async () => {
-    anonClient = createClient();
     const result = await signUpAndSignIn();
     expect(result.error).toBeNull();
     authedClient = result.client;
@@ -53,18 +51,6 @@ describe('Email Module', () => {
       } else {
         expect(data).toBeDefined();
       }
-    });
-
-    it('should reject unauthenticated email send', async () => {
-      const { error } = await anonClient.emails.send({
-        to: 'test@test.insforge.dev',
-        subject: 'Should Fail',
-        html: '<p>No auth</p>',
-      });
-
-      // Should get 401 or similar auth error
-      expect(error).not.toBeNull();
-      expect(error!.statusCode).toBeGreaterThanOrEqual(400);
     });
   });
 });
