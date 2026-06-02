@@ -78,6 +78,9 @@ await insforge.auth.signInWithOAuth("google", {
   redirectTo: "http://localhost:3000/dashboard",
   additionalParams: { prompt: "select_account" },
 });
+// additionalParams is for provider-specific hints only.
+// Do not pass client_id, scope, redirect_uri, code_challenge, state, or response_type;
+// InsForge sets server-owned OAuth fields and ignores colliding client-provided keys.
 
 // Get current user (call this during browser app startup)
 const { data: currentUser } = await insforge.auth.getCurrentUser();

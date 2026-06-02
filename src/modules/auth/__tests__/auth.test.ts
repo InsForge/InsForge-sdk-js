@@ -3,6 +3,16 @@ import { HttpClient } from '../../../lib/http-client';
 import { TokenManager } from '../../../lib/token-manager';
 import { Auth } from '../auth';
 
+vi.mock('../helpers', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../helpers')>();
+  return {
+    ...actual,
+    generateCodeVerifier: vi.fn(() => 'a'.repeat(43)),
+    generateCodeChallenge: vi.fn(() => Promise.resolve('b'.repeat(43))),
+    storePkceVerifier: vi.fn(),
+  };
+});
+
 function createJsonResponse(status: number, body: any): Response {
   const response = {
     ok: status >= 200 && status < 300,
@@ -13,10 +23,9 @@ function createJsonResponse(status: number, body: any): Response {
     text: () => Promise.resolve(JSON.stringify(body)),
   } as Response;
 
-  return {
-    ...response,
-    clone: () => response,
-  } as Response;
+  (response as any).clone = () => createJsonResponse(status, body);
+
+  return response;
 }
 
 describe('Auth', () => {
@@ -143,6 +152,53 @@ describe('Auth', () => {
       expect(requestUrl.searchParams.has('additionalParams[code_challenge]')).toBe(
         false,
       );
+    });
+
+    it('returns INVALID_INPUT when called without an options object', async () => {
+      const fetchMock = vi.fn();
+      const http = new HttpClient(
+        {
+          baseUrl: 'http://localhost:7130',
+          fetch: fetchMock as any,
+          retryCount: 0,
+          timeout: 0,
+        },
+        new TokenManager(),
+      );
+      const auth = new Auth(http, new TokenManager(), { isServerMode: true });
+
+      const { error } = await (auth.signInWithOAuth as any)('google');
+
+      expect(error).not.toBeNull();
+      expect(error?.statusCode).toBe(400);
+      expect(error?.error).toBe('INVALID_INPUT');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('returns INVALID_INPUT when redirectTo is missing at runtime', async () => {
+      const fetchMock = vi.fn();
+      const http = new HttpClient(
+        {
+          baseUrl: 'http://localhost:7130',
+          fetch: fetchMock as any,
+          retryCount: 0,
+          timeout: 0,
+        },
+        new TokenManager(),
+      );
+      const auth = new Auth(http, new TokenManager(), { isServerMode: true });
+
+      const { error } = await (auth.signInWithOAuth as any)({
+        provider: 'google',
+        additionalParams: { prompt: 'select_account' },
+        skipBrowserRedirect: true,
+      });
+
+      expect(error).not.toBeNull();
+      expect(error?.message).toBe('Redirect URI is required');
+      expect(error?.statusCode).toBe(400);
+      expect(error?.error).toBe('INVALID_INPUT');
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 });

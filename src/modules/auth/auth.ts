@@ -275,6 +275,17 @@ export class Auth {
         };
       }
 
+      if (!signInOptions || !signInOptions.redirectTo) {
+        return {
+          data: {},
+          error: new InsForgeError(
+            'Redirect URI is required',
+            400,
+            ERROR_CODES.INVALID_INPUT,
+          ),
+        };
+      }
+
       const { provider } = signInOptions;
       const providerKey = encodeURIComponent(provider.toLowerCase());
 

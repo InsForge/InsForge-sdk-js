@@ -219,6 +219,9 @@ await insforge.auth.signInWithOAuth("google", {
 });
 // Response: { data: { url, provider }, error }
 // Auto-redirects in browser unless skipBrowserRedirect: true
+// additionalParams is for provider-specific hints only. Do not pass client_id, scope,
+// redirect_uri, code_challenge, state, or response_type; InsForge sets those server-side
+// and ignores colliding client-provided keys.
 
 // AUTOMATIC OAuth Callback Detection (v0.0.14+):
 // When users are redirected back from OAuth provider, the SDK automatically:
