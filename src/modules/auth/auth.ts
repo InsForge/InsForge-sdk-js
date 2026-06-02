@@ -27,6 +27,7 @@ import type {
   CreateSessionResponse,
   GetOauthUrlResponse,
   GetPublicAuthConfigResponse,
+  OAuthInitRequest,
   OAuthProvidersSchema,
   SendVerificationEmailRequest,
   SendResetPasswordEmailRequest,
@@ -45,6 +46,16 @@ import { ERROR_CODES, oAuthProvidersSchema } from '@insforge/shared-schemas';
 interface AuthOptions {
   isServerMode?: boolean;
 }
+
+type OAuthSignInOptions = {
+  redirectTo: string;
+  additionalParams?: Record<string, string>;
+  skipBrowserRedirect?: boolean;
+};
+
+type OAuthSignInLegacyOptions = OAuthSignInOptions & {
+  provider: OAuthProvidersSchema | string;
+};
 
 export class Auth {
   private authCallbackHandled: Promise<void>;
@@ -222,24 +233,72 @@ export class Auth {
   /**
    * Sign in with OAuth provider using PKCE flow
    */
-  async signInWithOAuth(options: {
-    provider: OAuthProvidersSchema | string;
-    redirectTo?: string;
-    skipBrowserRedirect?: boolean;
-  }): Promise<{
+  async signInWithOAuth(
+    provider: OAuthProvidersSchema | string,
+    options: OAuthSignInOptions,
+  ): Promise<{
+    data: { url?: string; provider?: string; codeVerifier?: string };
+    error: InsForgeError | null;
+  }>;
+  /**
+   * @deprecated Use signInWithOAuth(provider, { redirectTo, additionalParams, skipBrowserRedirect }).
+   */
+  async signInWithOAuth(options: OAuthSignInLegacyOptions): Promise<{
+    data: { url?: string; provider?: string; codeVerifier?: string };
+    error: InsForgeError | null;
+  }>;
+  async signInWithOAuth(
+    providerOrOptions:
+      | OAuthProvidersSchema
+      | string
+      | OAuthSignInLegacyOptions,
+    options?: OAuthSignInOptions,
+  ): Promise<{
     data: { url?: string; provider?: string; codeVerifier?: string };
     error: InsForgeError | null;
   }> {
     try {
-      const { provider, redirectTo, skipBrowserRedirect } = options;
+      let signInOptions: OAuthSignInLegacyOptions;
+
+      if (typeof providerOrOptions === 'object') {
+        signInOptions = providerOrOptions;
+      } else if (options) {
+        signInOptions = { provider: providerOrOptions, ...options };
+      } else {
+        return {
+          data: {},
+          error: new InsForgeError(
+            'OAuth sign-in options are required',
+            400,
+            ERROR_CODES.INVALID_INPUT,
+          ),
+        };
+      }
+
+      if (!signInOptions || !signInOptions.redirectTo) {
+        return {
+          data: {},
+          error: new InsForgeError(
+            'Redirect URI is required',
+            400,
+            ERROR_CODES.INVALID_INPUT,
+          ),
+        };
+      }
+
+      const { provider } = signInOptions;
       const providerKey = encodeURIComponent(provider.toLowerCase());
 
       const codeVerifier = generateCodeVerifier();
       const codeChallenge = await generateCodeChallenge(codeVerifier);
       storePkceVerifier(codeVerifier);
 
-      const params: Record<string, string> = { code_challenge: codeChallenge };
-      if (redirectTo) params.redirect_uri = redirectTo;
+      const params: OAuthInitRequest = {
+        ...(signInOptions.additionalParams ?? {}),
+        redirect_uri: signInOptions.redirectTo,
+        code_challenge: codeChallenge,
+      };
+
       const isBuiltInProvider = oAuthProvidersSchema.options.includes(
         providerKey as OAuthProvidersSchema,
       );
@@ -255,7 +314,7 @@ export class Auth {
       if (
         !this.isServerMode() &&
         typeof window !== 'undefined' &&
-        !skipBrowserRedirect
+        !signInOptions.skipBrowserRedirect
       ) {
         window.location.href = response.authUrl;
         return { data: {}, error: null };

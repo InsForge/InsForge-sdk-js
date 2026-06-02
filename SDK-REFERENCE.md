@@ -212,13 +212,16 @@ await insforge.auth.signInWithPassword({
 ### `signInWithOAuth()`
 
 ```javascript
-await insforge.auth.signInWithOAuth({
-  provider: "google", // built-in (e.g. "google") or custom provider key (e.g. "auth0-acme")
+await insforge.auth.signInWithOAuth("google", {
   redirectTo: "http://localhost:3000/dashboard",
+  additionalParams: { prompt: "select_account" }, // optional provider-specific OAuth params
   skipBrowserRedirect: true, // optional, returns URL instead of redirecting
 });
 // Response: { data: { url, provider }, error }
 // Auto-redirects in browser unless skipBrowserRedirect: true
+// additionalParams is for provider-specific hints only. Do not pass client_id, scope,
+// redirect_uri, code_challenge, state, or response_type; InsForge sets those server-side
+// and ignores colliding client-provided keys.
 
 // AUTOMATIC OAuth Callback Detection (v0.0.14+):
 // When users are redirected back from OAuth provider, the SDK automatically:
