@@ -343,7 +343,7 @@ class Images {
    *   model: 'dall-e-3',
    *   prompt: 'A sunset over mountains',
    * });
-   * console.log(response.images[0].url);
+   * console.log(response.data[0].b64_json);
    *
    * // Image-to-image (with input images)
    * const response = await client.ai.images.generate({

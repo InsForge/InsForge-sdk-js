@@ -689,7 +689,7 @@ Create AI chat completions with support for both streaming and non-streaming res
 #### Non-Streaming
 
 ```javascript
-const { data, error } = await insforge.ai.chat.completions.create({
+const completion = await insforge.ai.chat.completions.create({
   model: "anthropic/claude-3.5-haiku",
   messages: [
     { role: "system", content: "You are a helpful assistant" },
@@ -698,32 +698,27 @@ const { data, error } = await insforge.ai.chat.completions.create({
   temperature: 0.7,
   maxTokens: 500,
 });
-// Response: { data: { response, usage, model }, error }
-// response: The complete AI response text
-// usage: Token usage information
-// model: The model used for generation
+// Returns an OpenAI-like completion object directly (not a { data, error } envelope):
+// completion.choices[0].message.content - the complete AI response text
+// completion.usage                      - token usage information
+// completion.model                      - the model used for generation
+console.log(completion.choices[0].message.content);
 ```
 
 #### Streaming
 
 ```javascript
-// Returns async iterable for real-time streaming
+// Returns an async iterable of OpenAI-like chunks for real-time streaming
 const stream = await insforge.ai.chat.completions.create({
   model: "anthropic/claude-3.5-haiku",
   messages: [{ role: "user", content: "Tell me a story" }],
   stream: true,
 });
 
-// Process stream events
-for await (const event of stream) {
-  if (event.chunk) {
-    // Partial response chunk
-    process.stdout.write(event.chunk);
-  }
-  if (event.done) {
-    // Stream complete
-    console.log("\nStream finished");
-  }
+// Each chunk carries an incremental delta in choices[0].delta.content
+for await (const chunk of stream) {
+  const delta = chunk.choices[0]?.delta?.content;
+  if (delta) process.stdout.write(delta);
 }
 ```
 
@@ -731,42 +726,67 @@ for await (const event of stream) {
 
 - `model` (string, required): AI model to use (e.g., 'anthropic/claude-3.5-haiku', 'openai/gpt-4', etc.)
 - `messages` (array): Conversation messages with role ('system', 'user', 'assistant') and content
-- `message` (string): Simple message string (alternative to messages array)
-- `systemPrompt` (string): System prompt for the conversation
-- `temperature` (number): Sampling temperature (0-1)
+- `temperature` (number): Sampling temperature (0-2)
 - `maxTokens` (number): Maximum tokens to generate
-- `topP` (number): Top-p sampling parameter
+- `topP` (number): Top-p sampling parameter (0-1)
 - `stream` (boolean): Enable streaming mode
+- `thinking` (boolean): Enable chain-of-thought reasoning (supported models)
+- `webSearch`, `fileParser`, `tools`, `toolChoice`, `parallelToolCalls`: Optional plugin/tool-calling options — see the SDK source for their shapes
 
 ### `ai.images.generate()`
 
 Generate images using AI models.
 
 ```javascript
-const { data, error } = await insforge.ai.images.generate({
-  model: "google/gemini-2.5-flash-image-preview",
+// Text-to-image
+const image = await insforge.ai.images.generate({
+  model: "google/gemini-3-pro-image-preview",
   prompt: "A serene landscape with mountains at sunset",
-  size: "1024x1024",
-  numImages: 1,
-  quality: "hd",
-  style: "vivid",
 });
-// Response: { data: { images: [{ url, ... }] }, error }
-// images: Array of generated images with URLs
+// Returns an OpenAI-like image object directly (not a { data, error } envelope):
+// image.data[i].b64_json - base64-encoded image (no `data:` URI prefix)
+// image.data[i].content  - text output, for text-capable image models
+// image.usage            - token usage (when reported by the model)
+const base64Png = image.data[0].b64_json;
+
+// Image-to-image — pass source images as URLs or base64 data URIs
+const edited = await insforge.ai.images.generate({
+  model: "google/gemini-3-pro-image-preview",
+  prompt: "Turn this into a watercolor painting",
+  images: [{ url: "https://example.com/input.jpg" }],
+});
 ```
 
 #### Parameters
 
-- `model` (string, required): Image generation model (e.g., 'google/gemini-2.5-flash-image-preview', 'openai/dall-e-3', 'stable-diffusion', etc.)
+- `model` (string, required): Image generation model (e.g., 'google/gemini-3-pro-image-preview', 'openai/dall-e-3')
 - `prompt` (string, required): Text description of the image to generate
-- `negativePrompt` (string): What to avoid in the image (some models)
-- `width` (number): Image width in pixels
-- `height` (number): Image height in pixels
-- `size` (string): Predefined size (e.g., '1024x1024', '512x512')
-- `numImages` (number): Number of images to generate
-- `quality` ('standard' | 'hd'): Image quality setting
-- `style` ('vivid' | 'natural'): Image style preference
-- `responseFormat` ('url' | 'b64_json'): Response format for images
+- `images` (array): Optional source images for image-to-image, each `{ url: string }` (HTTPS URL or `data:` base64 URI)
+
+> The SDK normalizes generated images to base64 and exposes them as `image.data[i].b64_json`.
+
+### `ai.embeddings.create()`
+
+Create embeddings for one or more text inputs.
+
+```javascript
+const embeddings = await insforge.ai.embeddings.create({
+  model: "openai/text-embedding-3-small",
+  input: "Hello world", // or string[] for batch input
+});
+// Returns an OpenAI-like embeddings object directly (not a { data, error } envelope):
+// embeddings.data[i].embedding - the vector (number[]) for input i
+// embeddings.usage             - token usage information
+// embeddings.model             - the model used
+console.log(embeddings.data[0].embedding);
+```
+
+#### Parameters
+
+- `model` (string, required): Embedding model (e.g., 'openai/text-embedding-3-small')
+- `input` (string | string[], required): Text(s) to embed
+- `dimensions` (number): Output dimensions, if supported by the model
+- `encoding_format` ('float' | 'base64'): Encoding of the returned vectors
 
 ### Complete AI Example
 
@@ -778,11 +798,11 @@ const insforge = createClient({
 });
 
 // Chat completion
-const { data: chat } = await insforge.ai.chat.completions.create({
+const chat = await insforge.ai.chat.completions.create({
   model: "anthropic/claude-3.5-haiku",
   messages: [{ role: "user", content: "What is the capital of France?" }],
 });
-console.log(chat.response); // "The capital of France is Paris."
+console.log(chat.choices[0].message.content); // "The capital of France is Paris."
 
 // Streaming chat
 const stream = await insforge.ai.chat.completions.create({
@@ -792,21 +812,27 @@ const stream = await insforge.ai.chat.completions.create({
 });
 
 let fullResponse = "";
-for await (const event of stream) {
-  if (event.chunk) {
-    fullResponse += event.chunk;
-    process.stdout.write(event.chunk);
+for await (const chunk of stream) {
+  const delta = chunk.choices[0]?.delta?.content;
+  if (delta) {
+    fullResponse += delta;
+    process.stdout.write(delta);
   }
 }
 
 // Image generation
-const { data: images } = await insforge.ai.images.generate({
-  model: "google/gemini-2.5-flash-image-preview",
+const image = await insforge.ai.images.generate({
+  model: "google/gemini-3-pro-image-preview",
   prompt: "A futuristic city with flying cars",
-  size: "1024x1024",
-  quality: "hd",
 });
-console.log(images.images[0].url); // URL to generated image
+const base64Png = image.data[0].b64_json; // base64-encoded image
+
+// Embeddings
+const embeddings = await insforge.ai.embeddings.create({
+  model: "openai/text-embedding-3-small",
+  input: "Vectorize this sentence",
+});
+console.log(embeddings.data[0].embedding); // number[]
 ```
 
 ## Types (from @insforge/shared-schemas)

@@ -245,18 +245,39 @@ if (portal?.customerPortalSession.url) {
 
 ### AI Integration
 
-```javascript
-// Generate text completion
-const { data, error } = await insforge.ai.completion({
-  model: "gpt-3.5-turbo",
-  prompt: "Write a hello world program",
-});
+AI methods return an OpenAI-like response object directly (not the `{ data, error }` envelope used by the other modules) and throw on failure.
 
-// Analyze an image
-const { data, error } = await insforge.ai.vision({
-  imageUrl: "https://example.com/image.jpg",
-  prompt: "Describe this image",
+```javascript
+// Chat completion
+const completion = await insforge.ai.chat.completions.create({
+  model: "anthropic/claude-3.5-haiku",
+  messages: [{ role: "user", content: "Write a hello world program" }],
 });
+console.log(completion.choices[0].message.content);
+
+// Streaming chat — returns an async iterable of chunks
+const stream = await insforge.ai.chat.completions.create({
+  model: "anthropic/claude-3.5-haiku",
+  messages: [{ role: "user", content: "Tell me a story" }],
+  stream: true,
+});
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta?.content ?? "");
+}
+
+// Generate an image — returns base64-encoded image data
+const image = await insforge.ai.images.generate({
+  model: "google/gemini-3-pro-image-preview",
+  prompt: "A sunset over mountains",
+});
+const base64Png = image.data[0].b64_json;
+
+// Create embeddings
+const embeddings = await insforge.ai.embeddings.create({
+  model: "openai/text-embedding-3-small",
+  input: "Hello world",
+});
+console.log(embeddings.data[0].embedding); // number[]
 ```
 
 ## Documentation
