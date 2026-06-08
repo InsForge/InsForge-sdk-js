@@ -1,0 +1,150 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { StorageBucket } from '../storage';
+import { HttpClient } from '../../lib/http-client';
+import { InsForgeError } from '../../types';
+import { TokenManager } from '../../lib/token-manager';
+
+function makeTokenManager(): TokenManager {
+  return {
+    saveSession: vi.fn(),
+    clearSession: vi.fn(),
+    getSession: vi.fn().mockReturnValue(null),
+    getAccessToken: vi.fn().mockReturnValue(null),
+  } as unknown as TokenManager;
+}
+
+function makeHttp(fetchFn: ReturnType<typeof vi.fn>) {
+  return new HttpClient(
+    {
+      baseUrl: 'http://localhost:7130',
+      fetch: fetchFn as any,
+      retryCount: 0,
+      timeout: 0,
+    },
+    makeTokenManager(),
+  );
+}
+
+function jsonRes(status: number, body: any, statusText = 'OK'): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    statusText,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+describe('StorageBucket.getPublicUrl', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns { data: { publicUrl }, error } and makes no request', () => {
+    const fetchFn = vi.fn();
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = bucket.getPublicUrl('images/logo.png');
+
+    expect(result).toEqual({
+      data: {
+        publicUrl: 'http://localhost:7130/api/storage/buckets/docs/objects/images%2Flogo.png',
+      },
+      error: null,
+    });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('encodes special characters and nested paths', () => {
+    const bucket = new StorageBucket('docs', makeHttp(vi.fn()));
+
+    const { data } = bucket.getPublicUrl('files/my doc (1).pdf');
+
+    expect(data?.publicUrl).toContain('docs');
+    expect(data?.publicUrl).toContain('files%2Fmy%20doc%20(1).pdf');
+  });
+});
+
+describe('StorageBucket.createSignedUrl', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('GETs the download-strategy endpoint with expiresIn and returns the signed URL', async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonRes(200, {
+        method: 'presigned',
+        url: 'https://cdn.insforge.dev/storage/app/docs/invoice.pdf?Signature=abc',
+        expiresAt: '2026-01-01T00:00:00.000Z',
+      }),
+    );
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = await bucket.createSignedUrl('invoice.pdf', 120);
+
+    expect(result.error).toBeNull();
+    expect(result.data?.signedUrl).toBe(
+      'https://cdn.insforge.dev/storage/app/docs/invoice.pdf?Signature=abc',
+    );
+    expect(result.data?.expiresAt).toBe('2026-01-01T00:00:00.000Z');
+
+    expect(fetchFn).toHaveBeenCalledOnce();
+    const url = new URL(String(fetchFn.mock.calls[0][0]));
+    expect(url.pathname).toBe('/api/storage/buckets/docs/download-strategy/objects/invoice.pdf');
+    expect(url.searchParams.get('expiresIn')).toBe('120');
+  });
+
+  it('defaults expiresIn to 3600 and returns expiresAt: null when absent', async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonRes(200, { method: 'presigned', url: 'https://cdn.insforge.dev/x' }),
+    );
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = await bucket.createSignedUrl('x.pdf');
+
+    expect(result.data?.signedUrl).toBe('https://cdn.insforge.dev/x');
+    expect(result.data?.expiresAt).toBeNull();
+    const url = new URL(String(fetchFn.mock.calls[0][0]));
+    expect(url.searchParams.get('expiresIn')).toBe('3600');
+  });
+
+  it('maps a non-2xx response to { data: null, error: InsForgeError }', async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonRes(404, { error: 'STORAGE_NOT_FOUND', message: 'Object not found' }, 'Not Found'),
+    );
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = await bucket.createSignedUrl('missing.pdf');
+
+    expect(result.data).toBeNull();
+    expect(result.error).toBeInstanceOf(InsForgeError);
+    expect(result.error?.statusCode).toBe(404);
+  });
+});
+
+describe('StorageBucket.createSignedUrls', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('resolves each path independently; one failure does not fail the rest', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonRes(200, { method: 'presigned', url: 'https://cdn/ok1' }))
+      .mockResolvedValueOnce(
+        jsonRes(404, { error: 'STORAGE_NOT_FOUND', message: 'nope' }, 'Not Found'),
+      )
+      .mockResolvedValueOnce(jsonRes(200, { method: 'presigned', url: 'https://cdn/ok3' }));
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = await bucket.createSignedUrls(['a.pdf', 'missing.pdf', 'c.pdf'], 60);
+
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual([
+      { path: 'a.pdf', signedUrl: 'https://cdn/ok1', error: null },
+      { path: 'missing.pdf', signedUrl: null, error: 'nope' },
+      { path: 'c.pdf', signedUrl: 'https://cdn/ok3', error: null },
+    ]);
+
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+    expect(new URL(String(fetchFn.mock.calls[0][0])).searchParams.get('expiresIn')).toBe('60');
+  });
+});
