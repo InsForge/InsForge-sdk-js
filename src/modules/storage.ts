@@ -323,6 +323,37 @@ export class StorageBucket {
   }
 
   /**
+   * Resolve a download strategy (signed or direct URL) for an object with a
+   * caller-supplied TTL. Prefers the canonical GET route and falls back to the
+   * legacy POST alias so signed-URL creation still works against older backends
+   * that predate the GET route (they return 404/405 for it). A genuine
+   * "object not found" (STORAGE_NOT_FOUND) is not retried.
+   */
+  private async requestDownloadStrategy(
+    path: string,
+    expiresIn: number
+  ): Promise<DownloadStrategy> {
+    const encoded = encodeURIComponent(path);
+    try {
+      return await this.http.get<DownloadStrategy>(
+        `/api/storage/buckets/${this.bucketName}/download-strategy/objects/${encoded}`,
+        { params: { expiresIn: expiresIn.toString() } }
+      );
+    } catch (error) {
+      const status = error instanceof InsForgeError ? error.statusCode : undefined;
+      const isMissingRoute =
+        (status === 404 || status === 405) &&
+        !(error instanceof InsForgeError && error.error === 'STORAGE_NOT_FOUND');
+      if (!isMissingRoute) throw error;
+
+      return await this.http.post<DownloadStrategy>(
+        `/api/storage/buckets/${this.bucketName}/objects/${encoded}/download-strategy`,
+        { expiresIn }
+      );
+    }
+  }
+
+  /**
    * Create a signed URL for an object.
    *
    * Returns a time-limited, credential-free URL that can be handed directly to
@@ -340,10 +371,7 @@ export class StorageBucket {
     expiresIn = 3600
   ): Promise<StorageResponse<{ signedUrl: string; expiresAt: string | null }>> {
     try {
-      const strategy = await this.http.get<DownloadStrategy>(
-        `/api/storage/buckets/${this.bucketName}/download-strategy/objects/${encodeURIComponent(path)}`,
-        { params: { expiresIn: expiresIn.toString() } }
-      );
+      const strategy = await this.requestDownloadStrategy(path, expiresIn);
 
       return {
         data: {

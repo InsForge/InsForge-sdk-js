@@ -117,6 +117,30 @@ describe('StorageBucket.createSignedUrl', () => {
     expect(result.data).toBeNull();
     expect(result.error).toBeInstanceOf(InsForgeError);
     expect(result.error?.statusCode).toBe(404);
+    // STORAGE_NOT_FOUND is a real miss, not a missing route — no POST fallback.
+    expect(fetchFn).toHaveBeenCalledOnce();
+  });
+
+  it('falls back to the legacy POST route when the GET route 404s on older backends', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonRes(404, { error: 'NOT_FOUND', message: 'no route' }, 'Not Found'))
+      .mockResolvedValueOnce(jsonRes(200, { method: 'presigned', url: 'https://cdn/ok' }));
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = await bucket.createSignedUrl('invoice.pdf', 120);
+
+    expect(result.error).toBeNull();
+    expect(result.data?.signedUrl).toBe('https://cdn/ok');
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    // First the canonical GET, then the legacy POST alias.
+    expect(new URL(String(fetchFn.mock.calls[0][0])).pathname).toBe(
+      '/api/storage/buckets/docs/download-strategy/objects/invoice.pdf',
+    );
+    expect(new URL(String(fetchFn.mock.calls[1][0])).pathname).toBe(
+      '/api/storage/buckets/docs/objects/invoice.pdf/download-strategy',
+    );
+    expect(String(fetchFn.mock.calls[1][1]?.method)).toBe('POST');
   });
 });
 
