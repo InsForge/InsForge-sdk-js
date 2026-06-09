@@ -382,18 +382,21 @@ await insforge.auth.resetPassword({
 
 ## Payments Methods
 
-Payments methods are intended for generated app frontends. They call runtime-safe backend routes using the current user token or anon key. Admin-only Stripe key, product, price, sync, and webhook configuration APIs are intentionally not exposed through this frontend SDK surface.
+Payments methods are provider-scoped and intended for generated app frontends. They call runtime-safe backend routes using the current user token or anon key. Admin-only key, catalog, sync, transaction, and webhook configuration APIs are intentionally not exposed through this frontend SDK surface.
 
-### `createCheckoutSession()`
+### `stripe.createCheckoutSession()`
 
 ```javascript
-const { data, error } = await insforge.payments.createCheckoutSession("test", {
-  mode: "payment",
-  lineItems: [{ stripePriceId: "price_123", quantity: 1 }],
-  successUrl: "https://example.com/success",
-  cancelUrl: "https://example.com/pricing",
-  idempotencyKey: "cart_123", // optional, recommended for retry-safe checkout creation
-});
+const { data, error } = await insforge.payments.stripe.createCheckoutSession(
+  "test",
+  {
+    mode: "payment",
+    lineItems: [{ priceId: "price_123", quantity: 1 }],
+    successUrl: "https://example.com/success",
+    cancelUrl: "https://example.com/pricing",
+    idempotencyKey: "cart_123", // optional, recommended for retry-safe checkout creation
+  },
+);
 
 if (!error && data?.checkoutSession.url) {
   window.location.assign(data.checkoutSession.url);
@@ -403,25 +406,23 @@ if (!error && data?.checkoutSession.url) {
 For one-time payments, `subject` is optional. For subscription checkout, `subject` is required because subscriptions represent ongoing entitlement for an app-defined billing owner.
 
 ```javascript
-await insforge.payments.createCheckoutSession("test", {
+await insforge.payments.stripe.createCheckoutSession("test", {
   mode: "subscription",
   subject: { type: "team", id: "team_123" },
-  lineItems: [{ stripePriceId: "price_monthly_123", quantity: 1 }],
+  lineItems: [{ priceId: "price_monthly_123", quantity: 1 }],
   successUrl: "https://example.com/billing/success",
   cancelUrl: "https://example.com/billing",
 });
 ```
 
-### `createCustomerPortalSession()`
+### `stripe.createCustomerPortalSession()`
 
 ```javascript
-const { data, error } = await insforge.payments.createCustomerPortalSession(
-  "test",
-  {
+const { data, error } =
+  await insforge.payments.stripe.createCustomerPortalSession("test", {
     subject: { type: "team", id: "team_123" },
     returnUrl: "https://example.com/billing",
-  },
-);
+  });
 
 if (!error && data?.customerPortalSession.url) {
   window.location.assign(data.customerPortalSession.url);
@@ -429,6 +430,83 @@ if (!error && data?.customerPortalSession.url) {
 ```
 
 Customer portal sessions require an authenticated user and an existing Stripe customer mapping for the billing subject.
+
+### `razorpay.createOrder()`
+
+Razorpay uses Checkout.js instead of a hosted redirect URL. Create an order through InsForge, pass `checkoutOptions` into Razorpay Checkout.js, then verify the signed payment response.
+
+```javascript
+const { data, error } = await insforge.payments.razorpay.createOrder("test", {
+  amount: 200000,
+  currency: "INR",
+  receipt: "cart_123",
+  subject: { type: "team", id: "team_123" },
+  customerName: "Ada Lovelace",
+  customerEmail: "ada@example.com",
+});
+
+if (!error && data) {
+  const checkout = new Razorpay({
+    ...data.checkoutOptions,
+    handler: async (response) => {
+      await insforge.payments.razorpay.verifyOrder("test", {
+        orderId: response.razorpay_order_id,
+        paymentId: response.razorpay_payment_id,
+        signature: response.razorpay_signature,
+      });
+    },
+  });
+
+  checkout.open();
+}
+```
+
+### `razorpay.createSubscription()`
+
+```javascript
+const { data, error } = await insforge.payments.razorpay.createSubscription(
+  "test",
+  {
+    planId: "plan_123",
+    totalCount: 12,
+    subject: { type: "team", id: "team_123" },
+    customerName: "Ada Lovelace",
+    customerEmail: "ada@example.com",
+  },
+);
+
+if (!error && data) {
+  const checkout = new Razorpay({
+    ...data.checkoutOptions,
+    handler: async (response) => {
+      await insforge.payments.razorpay.verifySubscription("test", {
+        subscriptionId: response.razorpay_subscription_id,
+        paymentId: response.razorpay_payment_id,
+        signature: response.razorpay_signature,
+      });
+    },
+  });
+
+  checkout.open();
+}
+```
+
+### `razorpay.cancelSubscription()`
+
+```javascript
+await insforge.payments.razorpay.cancelSubscription("test", "sub_123", {
+  cancelAtCycleEnd: false,
+});
+```
+
+### `razorpay.pauseSubscription()` / `razorpay.resumeSubscription()`
+
+```javascript
+await insforge.payments.razorpay.pauseSubscription("test", "sub_123");
+await insforge.payments.razorpay.resumeSubscription("test", "sub_123");
+```
+
+Razorpay webhook setup is manual in the Razorpay dashboard. Configure keys and copy the webhook URL, secret, and recommended events from the InsForge payments settings UI.
 
 ## Database Methods
 
