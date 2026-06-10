@@ -206,13 +206,16 @@ const { data, error } = await insforge.functions.invoke("my-function", {
 
 ```javascript
 // Create and redirect to a Stripe Checkout Session
-const { data, error } = await insforge.payments.createCheckoutSession("test", {
-  mode: "payment",
-  lineItems: [{ stripePriceId: "price_123", quantity: 1 }],
-  successUrl: `${window.location.origin}/success`,
-  cancelUrl: `${window.location.origin}/pricing`,
-  idempotencyKey: "cart_123",
-});
+const { data, error } = await insforge.payments.stripe.createCheckoutSession(
+  "test",
+  {
+    mode: "payment",
+    lineItems: [{ priceId: "price_123", quantity: 1 }],
+    successUrl: `${window.location.origin}/success`,
+    cancelUrl: `${window.location.origin}/pricing`,
+    idempotencyKey: "cart_123",
+  },
+);
 
 if (!error && data?.checkoutSession.url) {
   window.location.assign(data.checkoutSession.url);
@@ -220,10 +223,10 @@ if (!error && data?.checkoutSession.url) {
 
 // Create a subscription checkout for an app billing subject
 const { data: subscriptionCheckout } =
-  await insforge.payments.createCheckoutSession("test", {
+  await insforge.payments.stripe.createCheckoutSession("test", {
     mode: "subscription",
     subject: { type: "team", id: "team_123" },
-    lineItems: [{ stripePriceId: "price_monthly_123", quantity: 1 }],
+    lineItems: [{ priceId: "price_monthly_123", quantity: 1 }],
     successUrl: `${window.location.origin}/billing/success`,
     cancelUrl: `${window.location.origin}/billing`,
   });
@@ -233,17 +236,47 @@ if (subscriptionCheckout?.checkoutSession.url) {
 }
 
 // Let an authenticated customer manage their subscription in Stripe Billing Portal
-const { data: portal } = await insforge.payments.createCustomerPortalSession(
-  "test",
-  {
+const { data: portal } =
+  await insforge.payments.stripe.createCustomerPortalSession("test", {
     subject: { type: "team", id: "team_123" },
     returnUrl: `${window.location.origin}/billing`,
-  },
-);
+  });
 
 if (portal?.customerPortalSession.url) {
   window.location.assign(portal.customerPortalSession.url);
 }
+
+// Create a Razorpay order, then pass checkoutOptions to Razorpay Checkout.js
+const { data: order } = await insforge.payments.razorpay.createOrder("test", {
+  amount: 200000,
+  currency: "INR",
+  subject: { type: "team", id: "team_123" },
+  customerEmail: "ada@example.com",
+  notes: { order_id: "order_123" },
+});
+
+if (order) {
+  const checkout = new Razorpay({
+    ...order.checkoutOptions,
+    handler: async (response) => {
+      await insforge.payments.razorpay.verifyOrder("test", {
+        orderId: response.razorpay_order_id,
+        paymentId: response.razorpay_payment_id,
+        signature: response.razorpay_signature,
+      });
+    },
+  });
+  checkout.open();
+}
+
+// Create a Razorpay subscription checkout for an app billing subject
+const { data: subscription } =
+  await insforge.payments.razorpay.createSubscription("test", {
+    planId: "plan_123",
+    totalCount: 12,
+    subject: { type: "team", id: "team_123" },
+    notes: { order_id: "order_123" },
+  });
 ```
 
 ### AI Integration
