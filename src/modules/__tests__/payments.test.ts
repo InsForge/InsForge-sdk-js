@@ -98,6 +98,7 @@ function razorpayOrderResponse() {
       attempts: 0,
       verifiedPaymentId: null,
       verifiedAt: null,
+      notes: {},
       lastError: null,
       createdAt: "2026-04-30T00:00:00.000Z",
       updatedAt: "2026-04-30T00:00:00.000Z",
@@ -274,11 +275,14 @@ describe("Payments", () => {
       subject: { type: "team", id: "team_123" },
       customerName: "Ada",
       customerEmail: "ada@example.com",
+      notes: { order_id: "order_123" },
     });
 
     expect(result.error).toBeNull();
     expect(result.data?.order.orderId).toBe("order_123");
     expect(result.data?.checkoutOptions.order_id).toBe("order_123");
+    expect(result.data?.checkoutOptions.key).toBe("rzp_test_123");
+    expect(result.data?.checkoutOptions.callback_url).toBeNull();
 
     const [url, init] = fetchFn.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("http://localhost:7130/api/payments/razorpay/test/orders");
@@ -287,6 +291,7 @@ describe("Payments", () => {
       amount: 200000,
       currency: "INR",
       subject: { type: "team", id: "team_123" },
+      notes: { order_id: "order_123" },
     });
     expect(JSON.parse(init.body as string)).not.toHaveProperty("environment");
   });
@@ -338,6 +343,7 @@ describe("Payments", () => {
       customerNotify: true,
       customerName: "Ada",
       customerEmail: "ada@example.com",
+      notes: { order_id: "order_123" },
     });
     const verified = await payments.razorpay.verifySubscription("test", {
       subscriptionId: "sub_123",
@@ -347,12 +353,19 @@ describe("Payments", () => {
 
     expect(created.error).toBeNull();
     expect(created.data?.checkoutOptions.subscription_id).toBe("sub_123");
+    expect(created.data?.checkoutOptions.key).toBe("rzp_test_123");
+    expect(created.data?.checkoutOptions.callback_url).toBeNull();
     expect(verified.error).toBeNull();
     expect(verified.data?.verified).toBe(true);
 
     expect(fetchFn.mock.calls[0][0]).toBe(
       "http://localhost:7130/api/payments/razorpay/test/subscriptions",
     );
+    expect(JSON.parse(fetchFn.mock.calls[0][1].body as string)).toMatchObject({
+      planId: "plan_123",
+      subject: { type: "team", id: "team_123" },
+      notes: { order_id: "order_123" },
+    });
     expect(fetchFn.mock.calls[1][0]).toBe(
       "http://localhost:7130/api/payments/razorpay/test/subscriptions/verify",
     );
@@ -407,4 +420,77 @@ describe("Payments", () => {
       "http://localhost:7130/api/payments/razorpay/test/subscriptions/sub_123/resume",
     );
   });
+
+  it.each([
+    {
+      method: "createOrder",
+      fallbackMessage: "Razorpay order creation failed",
+      call: (payments: Payments) =>
+        payments.razorpay.createOrder("test", {
+          amount: 200000,
+          currency: "INR",
+        }),
+    },
+    {
+      method: "verifyOrder",
+      fallbackMessage: "Razorpay order verification failed",
+      call: (payments: Payments) =>
+        payments.razorpay.verifyOrder("test", {
+          orderId: "order_123",
+          paymentId: "pay_123",
+          signature: "sig_123",
+        }),
+    },
+    {
+      method: "createSubscription",
+      fallbackMessage: "Razorpay subscription creation failed",
+      call: (payments: Payments) =>
+        payments.razorpay.createSubscription("test", {
+          planId: "plan_123",
+          totalCount: 12,
+        }),
+    },
+    {
+      method: "verifySubscription",
+      fallbackMessage: "Razorpay subscription verification failed",
+      call: (payments: Payments) =>
+        payments.razorpay.verifySubscription("test", {
+          subscriptionId: "sub_123",
+          paymentId: "pay_123",
+          signature: "sig_123",
+        }),
+    },
+    {
+      method: "cancelSubscription",
+      fallbackMessage: "Razorpay subscription cancellation failed",
+      call: (payments: Payments) =>
+        payments.razorpay.cancelSubscription("test", "sub_123"),
+    },
+    {
+      method: "pauseSubscription",
+      fallbackMessage: "Razorpay subscription pause failed",
+      call: (payments: Payments) =>
+        payments.razorpay.pauseSubscription("test", "sub_123"),
+    },
+    {
+      method: "resumeSubscription",
+      fallbackMessage: "Razorpay subscription resume failed",
+      call: (payments: Payments) =>
+        payments.razorpay.resumeSubscription("test", "sub_123"),
+    },
+  ])(
+    "surfaces $method unexpected errors as InsForgeError values",
+    async ({ call, fallbackMessage }) => {
+      const post = vi.fn().mockRejectedValue("unexpected failure");
+      const payments = new Payments({ post } as unknown as HttpClient);
+
+      const result = await call(payments);
+
+      expect(result.data).toBeNull();
+      expect(result.error).toBeInstanceOf(InsForgeError);
+      expect(result.error?.error).toBe("UNEXPECTED_ERROR");
+      expect(result.error?.statusCode).toBe(500);
+      expect(result.error?.message).toBe(fallbackMessage);
+    },
+  );
 });

@@ -252,6 +252,7 @@ const { data: order } = await insforge.payments.razorpay.createOrder("test", {
   currency: "INR",
   subject: { type: "team", id: "team_123" },
   customerEmail: "ada@example.com",
+  notes: { order_id: "order_123" },
 });
 
 if (order) {
@@ -274,6 +275,7 @@ const { data: subscription } =
     planId: "plan_123",
     totalCount: 12,
     subject: { type: "team", id: "team_123" },
+    notes: { order_id: "order_123" },
   });
 ```
 

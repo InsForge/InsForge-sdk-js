@@ -1,8 +1,8 @@
 import { HttpClient } from "../lib/http-client";
 import { wrapError } from "./auth/helpers";
 import type { InsForgeError } from "../types";
-import type { cancelRazorpaySubscriptionBodySchema } from "@insforge/shared-schemas";
 import type {
+  CancelRazorpaySubscriptionBodyInput,
   CancelRazorpaySubscriptionResponse,
   CreateCheckoutSessionBody,
   CreateCheckoutSessionResponse,
@@ -14,40 +14,6 @@ import type {
   CreateRazorpaySubscriptionResponse,
   PauseRazorpaySubscriptionResponse,
   RazorpayEnvironment,
-  ResumeRazorpaySubscriptionResponse,
-  StripeEnvironment,
-  VerifyRazorpayOrderBody,
-  VerifyRazorpayOrderResponse,
-  VerifyRazorpaySubscriptionBody,
-  VerifyRazorpaySubscriptionResponse,
-} from "@insforge/shared-schemas";
-
-export type {
-  BillingSubject,
-  CancelRazorpaySubscriptionBody,
-  CancelRazorpaySubscriptionRequest,
-  CancelRazorpaySubscriptionResponse,
-  CheckoutMode,
-  CheckoutSession,
-  CheckoutSessionPaymentStatus,
-  CheckoutSessionStatus,
-  CreateCheckoutSessionBody,
-  CreateCheckoutSessionLineItem,
-  CreateCheckoutSessionResponse,
-  CreateCustomerPortalSessionBody,
-  CreateCustomerPortalSessionResponse,
-  CreateRazorpayOrderBody,
-  CreateRazorpayOrderResponse,
-  CreateRazorpaySubscriptionBody,
-  CreateRazorpaySubscriptionResponse,
-  CustomerPortalSession,
-  CustomerPortalSessionStatus,
-  PauseRazorpaySubscriptionResponse,
-  RazorpayEnvironment,
-  RazorpayOrder,
-  RazorpayOrderStatus,
-  RazorpaySubscription,
-  RazorpaySubscriptionStatus,
   ResumeRazorpaySubscriptionResponse,
   StripeEnvironment,
   VerifyRazorpayOrderBody,
@@ -60,9 +26,6 @@ export interface PaymentsResponse<T> {
   data: T | null;
   error: InsForgeError | null;
 }
-
-type CancelRazorpaySubscriptionBodyInput =
-  (typeof cancelRazorpaySubscriptionBodySchema)["_input"];
 
 function providerEnvironmentPath(
   provider: "stripe" | "razorpay",
