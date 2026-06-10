@@ -200,12 +200,17 @@ export class Auth {
     try {
       // Try backend logout first
       try {
+        const csrfToken = !this.isServerMode() ? getCsrfToken() : null;
         await this.http.post(
           this.isServerMode()
             ? '/api/auth/logout?client_type=mobile'
             : '/api/auth/logout',
           undefined,
-          { credentials: 'include', skipAuthRefresh: true },
+          {
+            credentials: 'include',
+            skipAuthRefresh: true,
+            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+          },
         );
       } catch {
         // Ignore backend logout failure so local state is still cleared

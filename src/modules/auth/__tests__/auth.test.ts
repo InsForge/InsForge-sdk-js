@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { HttpClient } from '../../../lib/http-client';
 import { TokenManager } from '../../../lib/token-manager';
+import * as tokenManagerModule from '../../../lib/token-manager';
 import { Auth } from '../auth';
 
 vi.mock('../helpers', async (importOriginal) => {
@@ -199,6 +200,68 @@ describe('Auth', () => {
       expect(error?.statusCode).toBe(400);
       expect(error?.error).toBe('INVALID_INPUT');
       expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('signOut()', () => {
+    it('sends X-CSRF-Token header during browser logout when CSRF token is present', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(createJsonResponse(200, { success: true }));
+      const http = new HttpClient(
+        {
+          baseUrl: 'http://localhost:7130',
+          fetch: fetchMock as any,
+          retryCount: 0,
+          timeout: 0,
+        },
+        new TokenManager(),
+      );
+      const auth = new Auth(http, new TokenManager(), { isServerMode: false });
+
+      vi.spyOn(tokenManagerModule, 'getCsrfToken').mockReturnValue('test-csrf-token-abc');
+
+      const { error } = await auth.signOut();
+
+      expect(error).toBeNull();
+      expect(fetchMock).toHaveBeenCalled();
+      
+      const lastCall = fetchMock.mock.calls[0];
+      const requestUrl = lastCall[0] as string;
+      const requestInit = lastCall[1] as RequestInit;
+      
+      expect(requestUrl).toContain('/api/auth/logout');
+      
+      const headers = new Headers(requestInit.headers);
+      expect(headers.get('X-CSRF-Token')).toBe('test-csrf-token-abc');
+    });
+
+    it('does not send X-CSRF-Token header in server mode', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(createJsonResponse(200, { success: true }));
+      const http = new HttpClient(
+        {
+          baseUrl: 'http://localhost:7130',
+          fetch: fetchMock as any,
+          retryCount: 0,
+          timeout: 0,
+        },
+        new TokenManager(),
+      );
+      const auth = new Auth(http, new TokenManager(), { isServerMode: true });
+
+      vi.spyOn(tokenManagerModule, 'getCsrfToken').mockReturnValue('test-csrf-token-abc');
+
+      const { error } = await auth.signOut();
+
+      expect(error).toBeNull();
+      expect(fetchMock).toHaveBeenCalled();
+      
+      const lastCall = fetchMock.mock.calls[0];
+      const requestUrl = lastCall[0] as string;
+      const requestInit = lastCall[1] as RequestInit;
+      
+      expect(requestUrl).toContain('/api/auth/logout');
+      
+      const headers = new Headers(requestInit.headers);
+      expect(headers.has('X-CSRF-Token')).toBe(false);
     });
   });
 });
