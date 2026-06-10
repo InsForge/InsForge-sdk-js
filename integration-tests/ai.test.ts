@@ -21,7 +21,7 @@ import type { InsForgeClient } from '../src/client';
 
 const EMBEDDINGS_MODEL = 'openai/text-embedding-3-small';
 const CHAT_MODEL = 'openai/gpt-4o-mini';
-const IMAGE_MODEL = 'openai/dall-e-3';
+const IMAGE_MODEL = 'google/gemini-2.5-flash-image';
 
 /** Check if an error indicates the model is unavailable/disabled (not a real failure). */
 function isModelUnavailable(err: any): boolean {
@@ -29,6 +29,11 @@ function isModelUnavailable(err: any): boolean {
   const code = (err?.code || err?.error || '').toLowerCase();
   return (
     code === 'model_not_found' ||
+    // OpenRouter retiring a model from its catalog is upstream churn, not an
+    // SDK regression — e.g. "<id> is not a valid model ID" after dall-e-3 was
+    // removed. Surfaced by the backend as AI_UPSTREAM_UNAVAILABLE.
+    code === 'ai_upstream_unavailable' ||
+    msg.includes('not a valid model') ||
     msg.includes('not available') ||
     msg.includes('unavailable') ||
     msg.includes('disabled') ||
