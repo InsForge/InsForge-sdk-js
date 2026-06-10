@@ -103,11 +103,10 @@ function razorpayOrderResponse() {
       updatedAt: "2026-04-30T00:00:00.000Z",
     },
     checkoutOptions: {
-      keyId: "rzp_test_123",
+      key: "rzp_test_123",
       amount: 200000,
       currency: "INR",
-      orderId: "order_123",
-      subscriptionId: null,
+      order_id: "order_123",
       name: null,
       description: null,
       prefill: {
@@ -115,7 +114,7 @@ function razorpayOrderResponse() {
         email: "ada@example.com",
         contact: null,
       },
-      callbackUrl: null,
+      callback_url: null,
     },
   };
 }
@@ -156,11 +155,10 @@ function razorpaySubscriptionResponse(status = "created") {
       updatedAt: "2026-04-30T00:00:00.000Z",
     },
     checkoutOptions: {
-      keyId: "rzp_test_123",
+      key: "rzp_test_123",
       amount: undefined,
       currency: undefined,
-      orderId: null,
-      subscriptionId: "sub_123",
+      subscription_id: "sub_123",
       name: null,
       description: null,
       prefill: {
@@ -168,7 +166,7 @@ function razorpaySubscriptionResponse(status = "created") {
         email: "ada@example.com",
         contact: null,
       },
-      callbackUrl: null,
+      callback_url: null,
     },
   };
 }
@@ -280,7 +278,7 @@ describe("Payments", () => {
 
     expect(result.error).toBeNull();
     expect(result.data?.order.orderId).toBe("order_123");
-    expect(result.data?.checkoutOptions.orderId).toBe("order_123");
+    expect(result.data?.checkoutOptions.order_id).toBe("order_123");
 
     const [url, init] = fetchFn.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("http://localhost:7130/api/payments/razorpay/test/orders");
@@ -348,7 +346,7 @@ describe("Payments", () => {
     });
 
     expect(created.error).toBeNull();
-    expect(created.data?.checkoutOptions.subscriptionId).toBe("sub_123");
+    expect(created.data?.checkoutOptions.subscription_id).toBe("sub_123");
     expect(verified.error).toBeNull();
     expect(verified.data?.verified).toBe(true);
 
