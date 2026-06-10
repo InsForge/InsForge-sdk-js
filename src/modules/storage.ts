@@ -219,7 +219,7 @@ export class StorageBucket {
           size: file.size,
           mimeType: file.type || 'application/octet-stream',
           uploadedAt: new Date().toISOString(),
-          url: this.getPublicUrl(strategy.key)
+          url: this.getPublicUrl(strategy.key).data!.publicUrl
         } as StorageFileSchema,
         error: null
       };
@@ -308,11 +308,126 @@ export class StorageBucket {
   }
 
   /**
-   * Get public URL for a file
+   * Get the public URL for an object in a public bucket.
+   *
+   * Pure string construction — no network call, no auth. The URL only resolves
+   * if the bucket is public; for private objects use {@link createSignedUrl}.
+   *
    * @param path - The object key/path
+   * @returns `{ data: { publicUrl }, error }` — matches the external SDK pattern,
+   *   so `const { data } = getPublicUrl(path)` then `data.publicUrl`.
    */
-  getPublicUrl(path: string): string {
-    return `${this.http.baseUrl}/api/storage/buckets/${this.bucketName}/objects/${encodeURIComponent(path)}`;
+  getPublicUrl(path: string): StorageResponse<{ publicUrl: string }> {
+    const publicUrl = `${this.http.baseUrl}/api/storage/buckets/${this.bucketName}/objects/${encodeURIComponent(path)}`;
+    return { data: { publicUrl }, error: null };
+  }
+
+  /**
+   * Resolve a download strategy (signed or direct URL) for an object with a
+   * caller-supplied TTL. Prefers the canonical GET route and falls back to the
+   * legacy POST alias so signed-URL creation still works against older backends
+   * that predate the GET route (they return 404/405 for it). A genuine
+   * "object not found" (STORAGE_NOT_FOUND) is not retried.
+   */
+  private async requestDownloadStrategy(
+    path: string,
+    expiresIn: number
+  ): Promise<DownloadStrategy> {
+    const encoded = encodeURIComponent(path);
+    try {
+      return await this.http.get<DownloadStrategy>(
+        `/api/storage/buckets/${this.bucketName}/download-strategy/objects/${encoded}`,
+        { params: { expiresIn: expiresIn.toString() } }
+      );
+    } catch (error) {
+      const status = error instanceof InsForgeError ? error.statusCode : undefined;
+      const isMissingRoute =
+        (status === 404 || status === 405) &&
+        !(error instanceof InsForgeError && error.error === 'STORAGE_NOT_FOUND');
+      if (!isMissingRoute) throw error;
+
+      return await this.http.post<DownloadStrategy>(
+        `/api/storage/buckets/${this.bucketName}/objects/${encoded}/download-strategy`,
+        { expiresIn }
+      );
+    }
+  }
+
+  /**
+   * Create a signed URL for an object.
+   *
+   * Returns a time-limited, credential-free URL that can be handed directly to
+   * a browser (`<img src>`), an email, or a third party — no SDK or session is
+   * needed to fetch it. Authorization is enforced when the URL is minted (the
+   * caller must be allowed to read the object), so the resulting link is a
+   * pre-authorized capability scoped to this one object until it expires.
+   *
+   * @param path - The object key/path
+   * @param expiresIn - Lifetime in seconds (default 3600 = 1h, max 604800 = 7d).
+   *   Honored for private buckets; public buckets return their long-lived URL.
+   */
+  async createSignedUrl(
+    path: string,
+    expiresIn = 3600
+  ): Promise<StorageResponse<{ signedUrl: string; expiresAt: string | null }>> {
+    try {
+      const strategy = await this.requestDownloadStrategy(path, expiresIn);
+
+      return {
+        data: {
+          signedUrl: strategy.url,
+          expiresAt: strategy.expiresAt ? new Date(strategy.expiresAt).toISOString() : null,
+        },
+        error: null,
+      };
+    } catch (error) {
+      return {
+        data: null,
+        error:
+          error instanceof InsForgeError
+            ? error
+            : new InsForgeError('Failed to create signed URL', 500, 'STORAGE_ERROR'),
+      };
+    }
+  }
+
+  /**
+   * Create signed URLs for multiple objects in a single call.
+   *
+   * Each entry resolves independently: a failure on one key (not found / not
+   * permitted) is reported on that entry's `error` without failing the rest.
+   *
+   * @param paths - The object keys/paths
+   * @param expiresIn - Lifetime in seconds (default 3600 = 1h, max 604800 = 7d)
+   */
+  async createSignedUrls(
+    paths: string[],
+    expiresIn = 3600
+  ): Promise<
+    StorageResponse<Array<{ path: string; signedUrl: string | null; error: string | null }>>
+  > {
+    try {
+      const data = await Promise.all(
+        paths.map(async (path) => {
+          const { data: signed, error } = await this.createSignedUrl(path, expiresIn);
+          return {
+            path,
+            signedUrl: signed?.signedUrl ?? null,
+            error: error ? error.message : null,
+          };
+        })
+      );
+
+      return { data, error: null };
+    } catch (error) {
+      return {
+        data: null,
+        error:
+          error instanceof InsForgeError
+            ? error
+            : new InsForgeError('Failed to create signed URLs', 500, 'STORAGE_ERROR'),
+      };
+    }
   }
 
   /**

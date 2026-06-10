@@ -69,22 +69,23 @@ describe('Storage Module', () => {
 
   describe('getPublicUrl()', () => {
     it('should build a correct public URL', () => {
-      const url = client.storage.from(BUCKET).getPublicUrl('images/logo.png');
-      expect(url).toContain(env.baseUrl);
-      expect(url).toContain(BUCKET);
-      expect(url).toContain('images%2Flogo.png');
+      const { data, error } = client.storage.from(BUCKET).getPublicUrl('images/logo.png');
+      expect(error).toBeNull();
+      expect(data?.publicUrl).toContain(env.baseUrl);
+      expect(data?.publicUrl).toContain(BUCKET);
+      expect(data?.publicUrl).toContain('images%2Flogo.png');
     });
 
     it('should handle nested paths', () => {
-      const url = client.storage.from(BUCKET).getPublicUrl('a/b/c/file.txt');
-      expect(url).toContain('a%2Fb%2Fc%2Ffile.txt');
+      const { data } = client.storage.from(BUCKET).getPublicUrl('a/b/c/file.txt');
+      expect(data?.publicUrl).toContain('a%2Fb%2Fc%2Ffile.txt');
     });
 
     it('should handle paths with special characters', () => {
-      const url = client.storage.from(BUCKET).getPublicUrl('files/my doc (1).pdf');
-      expect(url).toContain(BUCKET);
+      const { data } = client.storage.from(BUCKET).getPublicUrl('files/my doc (1).pdf');
+      expect(data?.publicUrl).toContain(BUCKET);
       // URL encoding should be applied
-      expect(url).toBeDefined();
+      expect(data?.publicUrl).toBeDefined();
     });
   });
 
