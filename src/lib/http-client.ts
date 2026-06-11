@@ -211,6 +211,7 @@ export class HttpClient {
       statusCode === 401 &&
       REFRESHABLE_AUTH_ERROR_CODES.has(errorCode ?? '') &&
       !this.config.isServerMode &&
+      !this.config.accessToken &&
       !this.config.edgeFunctionToken &&
       !options.skipAuthRefresh &&
       authToken !== null

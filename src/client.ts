@@ -72,14 +72,15 @@ export class InsForgeClient {
     this.tokenManager = new TokenManager();
     this.http = new HttpClient(config, this.tokenManager, logger);
 
-    // Check for edge function token
-    if (config.edgeFunctionToken) {
-      this.http.setAuthToken(config.edgeFunctionToken);
-      this.tokenManager.setAccessToken(config.edgeFunctionToken);
+    // edgeFunctionToken is the deprecated alias for accessToken
+    const accessToken = config.accessToken ?? config.edgeFunctionToken;
+    if (accessToken) {
+      this.http.setAuthToken(accessToken);
+      this.tokenManager.setAccessToken(accessToken);
     }
 
     this.auth = new Auth(this.http, this.tokenManager, {
-      isServerMode: config.isServerMode ?? !!config.edgeFunctionToken,
+      isServerMode: config.isServerMode ?? !!accessToken,
     });
     this.database = new Database(this.http);
     this.storage = new Storage(this.http);

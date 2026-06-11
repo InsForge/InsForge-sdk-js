@@ -87,7 +87,7 @@ export function createAdminClient(
 
   return new InsForgeClient({
     ...clientConfig,
-    edgeFunctionToken: apiKey,
+    accessToken: apiKey,
     isServerMode: true,
   });
 }

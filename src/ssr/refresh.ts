@@ -15,7 +15,10 @@ import {
 } from './cookies';
 
 export interface RefreshAuthOptions
-  extends Omit<InsForgeConfig, 'edgeFunctionToken' | 'isServerMode' | 'auth'>,
+  extends Omit<
+      InsForgeConfig,
+      'accessToken' | 'edgeFunctionToken' | 'isServerMode' | 'auth'
+    >,
     AuthCookieSettings {
   request?: Request;
   cookies?: Pick<CookieStore, 'get'>;

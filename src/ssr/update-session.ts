@@ -12,7 +12,10 @@ import {
 import { refreshAuth } from './refresh';
 
 export interface UpdateSessionOptions
-  extends Omit<InsForgeConfig, 'edgeFunctionToken' | 'isServerMode' | 'auth'>,
+  extends Omit<
+      InsForgeConfig,
+      'accessToken' | 'edgeFunctionToken' | 'isServerMode' | 'auth'
+    >,
     AuthCookieSettings {
   requestCookies: CookieStore;
   responseCookies: CookieStore;

@@ -729,6 +729,35 @@ describe('HttpClient', () => {
       expect(tokenManager.saveSession).not.toHaveBeenCalled();
     });
 
+    it('should NOT refresh token when a static accessToken is configured even if server mode is false', async () => {
+      const tokenManager = createMockTokenManager();
+      const mockFetch = vi.fn().mockResolvedValue(
+        createJsonResponse(
+          401,
+          {
+            error: 'AUTH_UNAUTHORIZED',
+            message: 'Invalid token',
+            statusCode: 401,
+          },
+          'Unauthorized',
+        ),
+      );
+
+      const client = createClient(
+        mockFetch,
+        { accessToken: 'static-token', isServerMode: false },
+        tokenManager,
+      );
+      client.setAuthToken('static-token');
+      const error = (await client
+        .get('/api/protected')
+        .catch((e: unknown) => e)) as InsForgeError;
+
+      expect(error).toBeInstanceOf(InsForgeError);
+      expect(mockFetch).toHaveBeenCalledOnce();
+      expect(tokenManager.saveSession).not.toHaveBeenCalled();
+    });
+
     it('should use new access token on retry after refresh', async () => {
       const tokenManager = createMockTokenManager();
       const mockFetch = vi
