@@ -87,7 +87,21 @@ describe('InsForgeClient', () => {
       expect(client).toBeInstanceOf(InsForgeClient);
     });
 
-    it('should set auth token when edgeFunctionToken is provided', () => {
+    it('should set auth token when accessToken is provided', () => {
+      const fakeToken = 'static-jwt-token-abc123';
+      const client = new InsForgeClient({
+        baseUrl: env.baseUrl,
+        anonKey: env.anonKey,
+        accessToken: fakeToken,
+      });
+
+      expect(client).toBeInstanceOf(InsForgeClient);
+      // The token should be set on the HTTP client
+      const headers = client.getHttpClient().getHeaders();
+      expect(headers['Authorization']).toBe(`Bearer ${fakeToken}`);
+    });
+
+    it('should still accept the deprecated edgeFunctionToken alias', () => {
       const fakeToken = 'edge-fn-jwt-token-abc123';
       const client = new InsForgeClient({
         baseUrl: env.baseUrl,
@@ -96,7 +110,6 @@ describe('InsForgeClient', () => {
       });
 
       expect(client).toBeInstanceOf(InsForgeClient);
-      // The token should be set on the HTTP client
       const headers = client.getHttpClient().getHeaders();
       expect(headers['Authorization']).toBe(`Bearer ${fakeToken}`);
     });

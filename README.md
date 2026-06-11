@@ -56,6 +56,19 @@ const admin = createAdminClient({
 
 `apiKey` belongs in `createAdminClient()`. Public and user-scoped clients use `anonKey`.
 
+### Acting as a User on the Server
+
+In edge functions or other server code that receives a user's JWT, seed the client with it via `accessToken`:
+
+```javascript
+const insforge = createClient({
+  baseUrl: "http://localhost:7130",
+  accessToken: userJwt, // e.g. from the request's Authorization header
+});
+```
+
+All requests run as that user (RLS applies). The token is used as-is — the SDK does not refresh it. `edgeFunctionToken` is a deprecated alias for this option.
+
 ### Authentication
 
 ```javascript

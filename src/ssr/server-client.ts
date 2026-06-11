@@ -8,7 +8,10 @@ import {
 } from './cookies';
 
 export interface CreateServerClientOptions
-  extends Omit<InsForgeConfig, 'edgeFunctionToken' | 'isServerMode' | 'auth'>,
+  extends Omit<
+      InsForgeConfig,
+      'accessToken' | 'edgeFunctionToken' | 'isServerMode' | 'auth'
+    >,
     AuthCookieSettings {
   cookies?: Pick<CookieStore, 'get'>;
   accessToken?: string;
@@ -42,6 +45,9 @@ export function createServerClient(
     baseUrl,
     anonKey,
     isServerMode: true,
-    edgeFunctionToken: accessToken ?? undefined,
+    accessToken: accessToken ?? undefined,
+    // The cookie/option token is the only credential source here; shadow any
+    // untyped edgeFunctionToken smuggled through the options spread.
+    edgeFunctionToken: undefined,
   });
 }

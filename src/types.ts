@@ -21,9 +21,17 @@ export interface InsForgeConfig {
   anonKey?: string;
 
   /**
-   * Edge Function Token (optional)
-   * Use this when running in edge functions/serverless with a user's JWT token
-   * This token will be used for all authenticated requests
+   * Static access token (optional)
+   * Seeds the client with a fixed bearer token used for all authenticated
+   * requests — e.g. a user JWT inside an edge function, or a server-signed
+   * JWT from an external auth provider. Disables automatic token refresh
+   * and implies server mode unless `isServerMode` is set explicitly.
+   */
+  accessToken?: string;
+
+  /**
+   * @deprecated Use `accessToken` instead. Same behavior; `accessToken`
+   * takes precedence when both are provided.
    */
   edgeFunctionToken?: string;
 
@@ -91,7 +99,7 @@ export interface InsForgeConfig {
 
 export type InsForgeAdminConfig = Omit<
   InsForgeConfig,
-  'anonKey' | 'edgeFunctionToken' | 'isServerMode'
+  'anonKey' | 'accessToken' | 'edgeFunctionToken' | 'isServerMode'
 > & {
   /**
    * Project admin API key. Keep this server-side only.

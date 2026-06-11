@@ -32,6 +32,37 @@ describe('client factories', () => {
   });
 });
 
+describe('InsForgeClient – accessToken config', () => {
+  it('seeds bearer auth and implies server mode', async () => {
+    const fakeToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test';
+    const client = new InsForgeClient({
+      baseUrl: 'http://localhost:7130',
+      accessToken: fakeToken,
+    });
+
+    expect(client.getHttpClient().getHeaders().Authorization).toBe(
+      `Bearer ${fakeToken}`,
+    );
+
+    // Server path attempts a network call (no server running → error),
+    // proving accessToken implies server mode just like the deprecated alias.
+    const { error } = await client.auth.getCurrentUser();
+    expect(error).not.toBeNull();
+  });
+
+  it('takes precedence over the deprecated edgeFunctionToken alias', () => {
+    const client = new InsForgeClient({
+      baseUrl: 'http://localhost:7130',
+      accessToken: 'new-token',
+      edgeFunctionToken: 'old-token',
+    });
+
+    expect(client.getHttpClient().getHeaders().Authorization).toBe(
+      'Bearer new-token',
+    );
+  });
+});
+
 describe('InsForgeClient – edgeFunctionToken implies server mode', () => {
   it('should auto-enable server mode when edgeFunctionToken is provided', async () => {
     const fakeToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test';

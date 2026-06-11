@@ -13,7 +13,10 @@ import {
 } from './cookies';
 
 export interface CreateBrowserClientOptions
-  extends Omit<InsForgeConfig, 'edgeFunctionToken' | 'isServerMode' | 'auth'>,
+  extends Omit<
+      InsForgeConfig,
+      'accessToken' | 'edgeFunctionToken' | 'isServerMode' | 'auth'
+    >,
     AuthCookieSettings {
   refreshUrl?: string;
   refreshLeewaySeconds?: number;
@@ -217,6 +220,9 @@ export function createBrowserClient(
     baseUrl,
     anonKey,
     fetch: ssrFetch,
+    // Browser clients manage tokens via the refresh route, not a static
+    // config token; shadow any untyped accessToken in the options spread.
+    accessToken: undefined,
   });
   const setAccessToken = client.setAccessToken.bind(client);
   client.setAccessToken = (token: string | null) => {
