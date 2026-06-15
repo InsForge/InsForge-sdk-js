@@ -12,6 +12,7 @@ import {
   updateSession,
   type CookieOptions,
 } from '../../ssr';
+import { updateSession as updateSessionFromMiddleware } from '../middleware';
 
 function jwtWithExp(exp: number): string {
   const payload = btoa(JSON.stringify({ exp }))
@@ -59,7 +60,9 @@ class NextCookiesLike {
   set(name: string, value: string, options?: NextCookieOptions): this;
   set(options: { name: string; value: string } & NextCookieOptions): this;
   set(
-    nameOrOptions: string | ({ name: string; value: string } & NextCookieOptions),
+    nameOrOptions:
+      | string
+      | ({ name: string; value: string } & NextCookieOptions),
     value?: string,
     options?: NextCookieOptions,
   ): this {
@@ -121,9 +124,7 @@ describe('@insforge/sdk/ssr cookies', () => {
     expect(cookies.values.get('insforge_access_token')).toBe(accessToken);
     expect(cookies.values.get('insforge_refresh_token')).toBe(refreshToken);
     expect(cookies.options.get('insforge_access_token')?.httpOnly).toBe(false);
-    expect(cookies.options.get('insforge_refresh_token')?.httpOnly).toBe(
-      true,
-    );
+    expect(cookies.options.get('insforge_refresh_token')?.httpOnly).toBe(true);
   });
 
   it('clears auth cookies through a NextResponse-like cookie wrapper', () => {
@@ -269,7 +270,8 @@ describe('@insforge/sdk/ssr cookies', () => {
     );
     expect(
       fetch.mock.calls.some(
-        ([url]: [string]) => url === 'https://api.insforge.test/api/auth/refresh',
+        ([url]: [string]) =>
+          url === 'https://api.insforge.test/api/auth/refresh',
       ),
     ).toBe(false);
   });
@@ -301,6 +303,12 @@ describe('@insforge/sdk/ssr cookies', () => {
   });
 });
 
+describe('@insforge/sdk/ssr/middleware entrypoint', () => {
+  it('exports the proxy-safe updateSession helper', () => {
+    expect(updateSessionFromMiddleware).toBe(updateSession);
+  });
+});
+
 describe('@insforge/sdk/ssr config', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -329,7 +337,9 @@ describe('@insforge/sdk/ssr config', () => {
       fetch: vi.fn() as any,
     });
 
-    expect(client.getHttpClient().baseUrl).toBe('https://explicit.insforge.test');
+    expect(client.getHttpClient().baseUrl).toBe(
+      'https://explicit.insforge.test',
+    );
   });
 
   it('uses public env defaults for server clients', () => {
@@ -359,7 +369,6 @@ describe('@insforge/sdk/ssr config', () => {
 
     expect(() => createServerClient()).toThrow('NEXT_PUBLIC_INSFORGE_ANON_KEY');
   });
-
 });
 
 describe('@insforge/sdk/ssr refresh route', () => {
@@ -383,8 +392,12 @@ describe('@insforge/sdk/ssr refresh route', () => {
     const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
     const refreshToken = jwtWithExp(Math.floor(Date.now() / 1000) + 86400);
     const fetch = vi.fn(async (url: string, init: RequestInit) => {
-      expect(url).toBe('https://api.insforge.test/api/auth/refresh?client_type=mobile');
-      expect(new Headers(init.headers).get('Authorization')).toBe('Bearer anon-key');
+      expect(url).toBe(
+        'https://api.insforge.test/api/auth/refresh?client_type=mobile',
+      );
+      expect(new Headers(init.headers).get('Authorization')).toBe(
+        'Bearer anon-key',
+      );
       expect(JSON.parse(init.body as string)).toEqual({
         refresh_token: 'old-refresh',
       });
@@ -526,8 +539,8 @@ describe('@insforge/sdk/ssr updateSession', () => {
     expect(responseCookies.values.get('insforge_access_token')).toBe(
       freshAccess,
     );
-    expect(responseCookies.options.get('insforge_refresh_token')?.httpOnly).toBe(
-      true,
-    );
+    expect(
+      responseCookies.options.get('insforge_refresh_token')?.httpOnly,
+    ).toBe(true);
   });
 });

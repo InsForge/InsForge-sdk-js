@@ -414,7 +414,7 @@ For Next.js Proxy/Middleware, refresh before Server Components render:
 ```typescript
 // proxy.ts on Next.js 16+, middleware.ts on Next.js 15 and earlier
 import { NextResponse, type NextRequest } from "next/server";
-import { updateSession } from "@insforge/sdk/ssr";
+import { updateSession } from "@insforge/sdk/ssr/middleware";
 
 export async function proxy(request: NextRequest) {
   const response = NextResponse.next({ request });
@@ -427,6 +427,9 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 ```
+
+Use the `/ssr/middleware` subpath in Proxy/Middleware files. It only includes
+the session refresh helpers and avoids bundling the full SDK client.
 
 ## TypeScript Support
 
