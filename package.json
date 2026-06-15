@@ -1,6 +1,6 @@
 {
   "name": "@insforge/sdk",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Official JavaScript/TypeScript client for InsForge Backend-as-a-Service platform",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -15,6 +15,11 @@
       "types": "./dist/ssr.d.ts",
       "import": "./dist/ssr.mjs",
       "require": "./dist/ssr.js"
+    },
+    "./ssr/middleware": {
+      "types": "./dist/ssr/middleware.d.ts",
+      "import": "./dist/ssr/middleware.mjs",
+      "require": "./dist/ssr/middleware.js"
     }
   },
   "files": [

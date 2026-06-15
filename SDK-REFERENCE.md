@@ -124,10 +124,14 @@ export async function POST(request: Request) {
 
 ### `updateSession()`
 
+Import `updateSession()` from `@insforge/sdk/ssr/middleware` in Proxy/Middleware
+files. This subpath only includes the session refresh helpers and avoids
+bundling the full SDK client.
+
 ```typescript
 // proxy.ts on Next.js 16+, middleware.ts on Next.js 15 and earlier
 import { NextResponse, type NextRequest } from "next/server";
-import { updateSession } from "@insforge/sdk/ssr";
+import { updateSession } from "@insforge/sdk/ssr/middleware";
 
 export async function proxy(request: NextRequest) {
   const response = NextResponse.next({ request });
