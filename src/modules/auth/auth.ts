@@ -293,7 +293,7 @@ export class Auth {
       const { provider } = signInOptions;
       const providerKey = encodeURIComponent(provider.toLowerCase());
 
-      const codeVerifier = generateCodeVerifier();
+      const codeVerifier = await generateCodeVerifier();
       const codeChallenge = await generateCodeChallenge(codeVerifier);
       storePkceVerifier(codeVerifier);
 

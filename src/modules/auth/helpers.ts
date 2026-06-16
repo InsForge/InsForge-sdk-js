@@ -10,6 +10,25 @@ import { InsForgeError } from '../../types';
 
 const PKCE_VERIFIER_KEY = 'insforge_pkce_verifier';
 
+type WebCrypto = Pick<Crypto, 'getRandomValues' | 'subtle'>;
+
+async function getWebCrypto(): Promise<WebCrypto> {
+  const webCrypto = (globalThis as typeof globalThis & {
+    crypto?: Partial<WebCrypto>;
+  }).crypto;
+
+  if (typeof webCrypto?.getRandomValues === 'function' && webCrypto.subtle) {
+    return webCrypto as WebCrypto;
+  }
+
+  if (typeof process !== 'undefined' && process.versions?.node) {
+    const { webcrypto } = await import('node:crypto');
+    return webcrypto as unknown as WebCrypto;
+  }
+
+  throw new Error('Web Crypto API is not available in this environment');
+}
+
 /**
  * Base64 URL encode without padding (per RFC 7636)
  */
@@ -24,9 +43,10 @@ function base64UrlEncode(buffer: Uint8Array): string {
 /**
  * Generate a cryptographically random code verifier for PKCE
  */
-export function generateCodeVerifier(): string {
+export async function generateCodeVerifier(): Promise<string> {
+  const webCrypto = await getWebCrypto();
   const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
+  webCrypto.getRandomValues(array);
   return base64UrlEncode(array);
 }
 
@@ -34,9 +54,10 @@ export function generateCodeVerifier(): string {
  * Generate code challenge from verifier using SHA-256 (S256 method)
  */
 export async function generateCodeChallenge(verifier: string): Promise<string> {
+  const webCrypto = await getWebCrypto();
   const encoder = new TextEncoder();
   const data = encoder.encode(verifier);
-  const hash = await crypto.subtle.digest('SHA-256', data);
+  const hash = await webCrypto.subtle.digest('SHA-256', data);
   return base64UrlEncode(new Uint8Array(hash));
 }
 
