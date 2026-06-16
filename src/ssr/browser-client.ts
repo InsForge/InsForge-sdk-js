@@ -253,5 +253,7 @@ export function createBrowserClient(
     void refreshFromRoute().catch(() => undefined);
   }
 
+  // Runtime still returns the normal client object; SSR auth mutation guardrails
+  // are enforced by the public TypeScript surface.
   return client as unknown as BrowserInsForgeClient;
 }

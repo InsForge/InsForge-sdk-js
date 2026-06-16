@@ -389,7 +389,9 @@ export const { POST } = createRefreshAuthRouter();
 ```
 
 For sign-in, sign-up, and sign-out, use `createAuthActions()` in a Server
-Action file. Server Actions are stable in Next.js 14+.
+Action file. Server Actions are stable in Next.js 14+. Do not return raw auth
+responses from Server Actions; return only the user or app-specific safe fields
+so access and refresh tokens stay server-owned.
 
 ```typescript
 // app/actions.ts
@@ -401,19 +403,92 @@ import { createAuthActions } from "@insforge/sdk/ssr";
 export async function signIn(formData: FormData) {
   const auth = createAuthActions({ cookies: await cookies() });
 
-  return auth.signInWithPassword({
+  const { data, error } = await auth.signInWithPassword({
     email: String(formData.get("email")),
     password: String(formData.get("password")),
   });
+
+  return { user: data?.user ?? null, error };
 }
 ```
+
+For OAuth in SSR apps, start and finish the flow on the server. Store the PKCE
+verifier in an httpOnly app cookie and exchange the callback code with
+`createAuthActions()`:
+
+```typescript
+// app/actions.ts
+"use server";
+
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { createAuthActions } from "@insforge/sdk/ssr";
+
+export async function signInWithGoogle() {
+  const cookieStore = await cookies();
+  const auth = createAuthActions({ cookies: cookieStore });
+  const { data, error } = await auth.signInWithOAuth("google", {
+    redirectTo: new URL(
+      "/api/auth/callback",
+      process.env.NEXT_PUBLIC_APP_URL
+    ).toString(),
+    skipBrowserRedirect: true,
+  });
+
+  if (error || !data.url || !data.codeVerifier) {
+    throw new Error(error?.message ?? "OAuth init failed");
+  }
+
+  cookieStore.set("insforge_code_verifier", data.codeVerifier, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 600,
+  });
+
+  redirect(data.url);
+}
+```
+
+```typescript
+// app/api/auth/callback/route.ts
+import { cookies } from "next/headers";
+import { NextResponse, type NextRequest } from "next/server";
+import { createAuthActions } from "@insforge/sdk/ssr";
+
+export async function GET(request: NextRequest) {
+  const code = request.nextUrl.searchParams.get("insforge_code");
+  const verifier = (await cookies()).get("insforge_code_verifier")?.value;
+  if (!code || !verifier) {
+    return NextResponse.redirect(new URL("/login?error=oauth", request.url));
+  }
+
+  const response = NextResponse.redirect(new URL("/dashboard", request.url));
+  const auth = createAuthActions({
+    requestCookies: request.cookies,
+    responseCookies: response.cookies,
+  });
+  const { error } = await auth.exchangeOAuthCode(code, verifier);
+  if (error) {
+    return NextResponse.redirect(new URL("/login?error=oauth", request.url));
+  }
+
+  response.cookies.delete("insforge_code_verifier");
+  return response;
+}
+```
+
+SSR browser clients do not exchange OAuth callbacks automatically. OAuth
+callbacks must be completed on the server so the refresh token lands in the
+httpOnly app cookie.
 
 For Route Handlers, pass request cookies for reading the current session and
 response cookies for writing the next session:
 
 ```typescript
 // app/api/auth/sign-out/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { createAuthActions } from "@insforge/sdk/ssr";
 
 export async function POST(request: NextRequest) {
