@@ -59,6 +59,19 @@ export interface InsForgeConfig {
   isServerMode?: boolean;
 
   /**
+   * Advanced auth module options.
+   */
+  auth?: {
+    /**
+     * Detect and exchange OAuth callback parameters on browser client
+     * initialization. SSR browser clients disable this so auth mutations can
+     * stay server-owned.
+     * @default true
+     */
+    detectOAuthCallback?: boolean;
+  };
+
+  /**
    * Custom headers to include with every request
    */
   headers?: Record<string, string>;

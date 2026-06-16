@@ -81,6 +81,7 @@ export class InsForgeClient {
 
     this.auth = new Auth(this.http, this.tokenManager, {
       isServerMode: config.isServerMode ?? !!accessToken,
+      detectOAuthCallback: config.auth?.detectOAuthCallback,
     });
     this.database = new Database(this.http);
     this.storage = new Storage(this.http);

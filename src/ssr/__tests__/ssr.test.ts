@@ -3,6 +3,7 @@ import { ERROR_CODES } from '@insforge/shared-schemas';
 import {
   accessTokenCookieOptions,
   clearAuthCookies,
+  createAuthActions,
   createBrowserClient,
   createRefreshAuthRouter,
   createServerClient,
@@ -300,6 +301,299 @@ describe('@insforge/sdk/ssr cookies', () => {
 
     expect(response.status).toBe(401);
     expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('does not exchange OAuth callbacks during SSR browser client initialization', async () => {
+    const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 3600);
+    vi.stubGlobal('document', {
+      cookie: `insforge_access_token=${encodeURIComponent(accessToken)}`,
+      title: 'App',
+    });
+    vi.stubGlobal('window', {
+      location: {
+        search: '?insforge_code=oauth-code',
+        href: 'https://app.test/callback?insforge_code=oauth-code',
+      },
+      history: {
+        replaceState: vi.fn(),
+      },
+    });
+    vi.stubGlobal('sessionStorage', {
+      getItem: vi.fn(() => 'code-verifier'),
+      removeItem: vi.fn(),
+    });
+    const fetch = vi.fn(async () => jsonResponse(200, { ok: true }));
+
+    createBrowserClient({
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    await Promise.resolve();
+
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('@insforge/sdk/ssr auth actions', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it('signs in with password through the mobile flow and writes auth cookies', async () => {
+    const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
+    const refreshToken = jwtWithExp(Math.floor(Date.now() / 1000) + 86400);
+    const cookies = cookieStore();
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe(
+        'https://api.insforge.test/api/auth/sessions?client_type=mobile',
+      );
+      expect(JSON.parse(String(init.body))).toEqual({
+        email: 'user@example.com',
+        password: 'secret',
+      });
+      return jsonResponse(200, {
+        accessToken,
+        refreshToken,
+        user: { id: 'user-1' },
+      });
+    });
+
+    const auth = createAuthActions({
+      cookies,
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const result = await auth.signInWithPassword({
+      email: 'user@example.com',
+      password: 'secret',
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual({ user: { id: 'user-1' } });
+    expect('accessToken' in result.data!).toBe(false);
+    expect('refreshToken' in result.data!).toBe(false);
+    expect(cookies.values.get('insforge_access_token')).toBe(accessToken);
+    expect(cookies.values.get('insforge_refresh_token')).toBe(refreshToken);
+    expect(cookies.options.get('insforge_refresh_token')?.httpOnly).toBe(true);
+  });
+
+  it('does not write cookies or return tokens when sign-up requires verification', async () => {
+    const cookies = cookieStore();
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe(
+        'https://api.insforge.test/api/auth/users?client_type=mobile',
+      );
+      expect(JSON.parse(String(init.body))).toEqual({
+        email: 'new@example.com',
+        password: 'secret',
+      });
+      return jsonResponse(200, {
+        accessToken: null,
+        requireEmailVerification: true,
+      });
+    });
+
+    const auth = createAuthActions({
+      cookies,
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const result = await auth.signUp({
+      email: 'new@example.com',
+      password: 'secret',
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual({ requireEmailVerification: true });
+    expect(cookies.set).not.toHaveBeenCalled();
+  });
+
+  it('signs in with an ID token and returns sanitized data', async () => {
+    const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
+    const refreshToken = jwtWithExp(Math.floor(Date.now() / 1000) + 86400);
+    const cookies = cookieStore();
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe('https://api.insforge.test/api/auth/id-token?client_type=mobile');
+      expect(JSON.parse(String(init.body))).toEqual({
+        provider: 'google',
+        token: 'id-token',
+      });
+      return jsonResponse(200, {
+        accessToken,
+        refreshToken,
+        csrfToken: 'csrf-token',
+        user: { id: 'user-1' },
+      });
+    });
+
+    const auth = createAuthActions({
+      cookies,
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const result = await auth.signInWithIdToken({
+      provider: 'google',
+      token: 'id-token',
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual({ user: { id: 'user-1' } });
+    expect('accessToken' in result.data!).toBe(false);
+    expect('refreshToken' in result.data!).toBe(false);
+    expect('csrfToken' in result.data!).toBe(false);
+    expect(cookies.values.get('insforge_refresh_token')).toBe(refreshToken);
+  });
+
+  it('starts OAuth through server mode without writing session cookies', async () => {
+    const cookies = cookieStore();
+    const fetch = vi.fn(async (url: string) => {
+      const oauthUrl = new URL(url);
+      expect(oauthUrl.origin + oauthUrl.pathname).toBe(
+        'https://api.insforge.test/api/auth/oauth/google',
+      );
+      expect(oauthUrl.searchParams.get('redirect_uri')).toBe(
+        'https://app.test/api/auth/callback',
+      );
+      expect(oauthUrl.searchParams.get('code_challenge')).toBeTruthy();
+      return jsonResponse(200, {
+        authUrl: 'https://accounts.example/oauth',
+      });
+    });
+
+    const auth = createAuthActions({
+      cookies,
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const result = await auth.signInWithOAuth('google', {
+      redirectTo: 'https://app.test/api/auth/callback',
+      skipBrowserRedirect: true,
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.data.url).toBe('https://accounts.example/oauth');
+    expect(result.data.codeVerifier).toBeTruthy();
+    expect(cookies.set).not.toHaveBeenCalled();
+  });
+
+  it('exchanges OAuth codes and returns sanitized data', async () => {
+    const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
+    const refreshToken = jwtWithExp(Math.floor(Date.now() / 1000) + 86400);
+    const cookies = cookieStore();
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe(
+        'https://api.insforge.test/api/auth/oauth/exchange?client_type=mobile',
+      );
+      expect(JSON.parse(String(init.body))).toEqual({
+        code: 'oauth-code',
+        code_verifier: 'code-verifier',
+      });
+      return jsonResponse(200, {
+        accessToken,
+        refreshToken,
+        user: { id: 'user-1' },
+      });
+    });
+
+    const auth = createAuthActions({
+      cookies,
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const result = await auth.exchangeOAuthCode('oauth-code', 'code-verifier');
+
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual({ user: { id: 'user-1' } });
+    expect('accessToken' in result.data!).toBe(false);
+    expect(cookies.values.get('insforge_access_token')).toBe(accessToken);
+    expect(cookies.values.get('insforge_refresh_token')).toBe(refreshToken);
+  });
+
+  it('verifies email and returns sanitized data', async () => {
+    const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
+    const refreshToken = jwtWithExp(Math.floor(Date.now() / 1000) + 86400);
+    const cookies = cookieStore();
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe(
+        'https://api.insforge.test/api/auth/email/verify?client_type=mobile',
+      );
+      expect(JSON.parse(String(init.body))).toEqual({
+        email: 'user@example.com',
+        otp: '123456',
+      });
+      return jsonResponse(200, {
+        accessToken,
+        refreshToken,
+        user: { id: 'user-1' },
+      });
+    });
+
+    const auth = createAuthActions({
+      cookies,
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const result = await auth.verifyEmail({
+      email: 'user@example.com',
+      otp: '123456',
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual({ user: { id: 'user-1' } });
+    expect('refreshToken' in result.data!).toBe(false);
+    expect(cookies.values.get('insforge_refresh_token')).toBe(refreshToken);
+  });
+
+  it('throws when auth actions cannot resolve a writable cookie store', () => {
+    expect(() =>
+      createAuthActions({
+        baseUrl: 'https://api.insforge.test',
+        anonKey: 'anon-key',
+        fetch: vi.fn() as any,
+      }),
+    ).toThrow('requires a writable cookie store');
+  });
+
+  it('supports split request and response cookies for route handlers', async () => {
+    const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
+    const requestCookies = cookieStore({
+      insforge_access_token: accessToken,
+      insforge_refresh_token: 'old-refresh',
+    });
+    const responseCookies = cookieStore();
+    const fetch = vi.fn(async (_url: string, init: RequestInit) => {
+      expect(new Headers(init.headers).get('Authorization')).toBe(
+        `Bearer ${accessToken}`,
+      );
+      return new Response(null, { status: 204 });
+    });
+
+    const auth = createAuthActions({
+      requestCookies,
+      responseCookies,
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const result = await auth.signOut();
+
+    expect(result.error).toBeNull();
+    expect(responseCookies.values.get('insforge_access_token')).toBe('');
+    expect(responseCookies.values.get('insforge_refresh_token')).toBe('');
+    expect(responseCookies.options.get('insforge_refresh_token')?.maxAge).toBe(
+      0,
+    );
+    expect(requestCookies.values.get('insforge_refresh_token')).toBe(
+      'old-refresh',
+    );
   });
 });
 

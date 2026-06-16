@@ -45,6 +45,7 @@ import { ERROR_CODES, oAuthProvidersSchema } from '@insforge/shared-schemas';
 
 interface AuthOptions {
   isServerMode?: boolean;
+  detectOAuthCallback?: boolean;
 }
 
 type OAuthSignInOptions = {
@@ -65,7 +66,10 @@ export class Auth {
     private tokenManager: TokenManager,
     private options: AuthOptions = {},
   ) {
-    this.authCallbackHandled = this.detectAuthCallback();
+    this.authCallbackHandled =
+      options.detectOAuthCallback === false
+        ? Promise.resolve()
+        : this.detectAuthCallback();
   }
 
   private isServerMode(): boolean {
@@ -289,7 +293,7 @@ export class Auth {
       const { provider } = signInOptions;
       const providerKey = encodeURIComponent(provider.toLowerCase());
 
-      const codeVerifier = generateCodeVerifier();
+      const codeVerifier = await generateCodeVerifier();
       const codeChallenge = await generateCodeChallenge(codeVerifier);
       storePkceVerifier(codeVerifier);
 

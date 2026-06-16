@@ -59,6 +59,10 @@ const insforge = createBrowserClient({
 
 The browser client reads the access-token cookie, uses it for Database, Storage, Functions, and Realtime, and calls the refresh route when the access token is missing or near expiry.
 
+The browser client consumes an existing SSR session. Its TypeScript surface does
+not include auth mutations such as `signInWithPassword()`, `signUp()`, or
+`signOut()`.
+
 ### `createServerClient()`
 
 ```typescript
@@ -81,33 +85,39 @@ import { createRefreshAuthRouter } from "@insforge/sdk/ssr";
 export const { POST } = createRefreshAuthRouter();
 ```
 
-For server-owned refresh cookies, sign-in should also run through a Route Handler or Server Action that can set cookies:
+For server-owned refresh cookies, sign-in, sign-up, and sign-out should run
+through a Server Action or Route Handler that can set cookies. Do not return
+raw auth responses from Server Actions; return only the user or app-specific
+safe fields.
 
 ```typescript
-import { NextResponse } from "next/server";
-import { createServerClient, setAuthCookies } from "@insforge/sdk/ssr";
+// app/actions.ts
+"use server";
 
-export async function POST(request: Request) {
-  const client = createServerClient();
-  const { data, error } = await client.auth.signInWithPassword(
-    await request.json(),
-  );
-  if (error || !data?.accessToken) {
-    return Response.json(error, { status: error?.statusCode ?? 400 });
-  }
+import { cookies } from "next/headers";
+import { createAuthActions } from "@insforge/sdk/ssr";
 
-  const response = NextResponse.json({
-    accessToken: data.accessToken,
-    user: data.user,
-  });
-  setAuthCookies(response.cookies, {
-    accessToken: data.accessToken,
-    refreshToken: data.refreshToken,
+export async function signIn(formData: FormData) {
+  const auth = createAuthActions({ cookies: await cookies() });
+
+  const { data, error } = await auth.signInWithPassword({
+    email: String(formData.get("email")),
+    password: String(formData.get("password")),
   });
 
-  return response;
+  return { user: data?.user ?? null, error };
 }
 ```
+
+In Route Handlers, pass `requestCookies` and `responseCookies` to the same
+helper when request and response cookie stores are separate.
+
+For OAuth, initiate and exchange on the server. Use
+`createAuthActions().signInWithOAuth(provider, { redirectTo, skipBrowserRedirect: true })`
+in a Server Action, store the returned `codeVerifier` in an httpOnly app cookie,
+redirect to `data.url`, then call `createAuthActions().exchangeOAuthCode(code,
+codeVerifier)` from the callback Route Handler. SSR browser clients do not
+auto-exchange OAuth callbacks.
 
 Use `refreshAuth()` directly when the route needs app-specific logic:
 
