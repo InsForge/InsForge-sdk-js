@@ -12,6 +12,15 @@ import {
   type AuthCookieSettings,
 } from './cookies';
 
+type BrowserAuth = Pick<
+  InsForgeClient['auth'],
+  'getCurrentUser' | 'getProfile' | 'getPublicAuthConfig'
+>;
+
+export type BrowserInsForgeClient = Omit<InsForgeClient, 'auth'> & {
+  readonly auth: BrowserAuth;
+};
+
 export interface CreateBrowserClientOptions
   extends Omit<
       InsForgeConfig,
@@ -101,7 +110,7 @@ function getRequestUrl(input: RequestInfo | URL): string {
 
 export function createBrowserClient(
   options: CreateBrowserClientOptions = {},
-): InsForgeClient {
+): BrowserInsForgeClient {
   let { baseUrl, anonKey } = options;
   try {
     baseUrl ||= process.env.NEXT_PUBLIC_INSFORGE_URL;
@@ -223,6 +232,9 @@ export function createBrowserClient(
     // Browser clients manage tokens via the refresh route, not a static
     // config token; shadow any untyped accessToken in the options spread.
     accessToken: undefined,
+    auth: {
+      detectOAuthCallback: false,
+    },
   });
   const setAccessToken = client.setAccessToken.bind(client);
   client.setAccessToken = (token: string | null) => {
@@ -241,5 +253,5 @@ export function createBrowserClient(
     void refreshFromRoute().catch(() => undefined);
   }
 
-  return client;
+  return client as unknown as BrowserInsForgeClient;
 }

@@ -14,6 +14,11 @@ export {
   type RefreshAuthRouteHandler,
 } from './ssr/refresh';
 export {
+  createAuthActions,
+  type AuthActions,
+  type CreateAuthActionsOptions,
+} from './ssr/auth-actions';
+export {
   updateSession,
   type UpdateSessionOptions,
   type UpdateSessionResult,

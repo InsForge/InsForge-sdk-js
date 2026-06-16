@@ -366,6 +366,11 @@ import { createBrowserClient } from "@insforge/sdk/ssr";
 export const insforge = createBrowserClient();
 ```
 
+`createBrowserClient()` is for Client Components that consume an existing SSR
+session. Its TypeScript surface does not include auth mutations such as
+`signInWithPassword()`, `signUp()`, or `signOut()`. Run auth mutations on the
+server so the app can write server-owned auth cookies.
+
 ```typescript
 // app/lib/insforge/server.ts
 import { cookies } from "next/headers";
@@ -383,18 +388,51 @@ import { createRefreshAuthRouter } from "@insforge/sdk/ssr";
 export const { POST } = createRefreshAuthRouter();
 ```
 
-For server-owned refresh cookies, run sign-in in a Route Handler or Server Action and use `setAuthCookies()` from `@insforge/sdk/ssr` with the framework cookie writer. In Next.js Route Handlers, pass `response.cookies`:
+For sign-in, sign-up, and sign-out, use `createAuthActions()` in a Server
+Action file. Server Actions are stable in Next.js 14+.
 
 ```typescript
-import { NextResponse } from "next/server";
-import { setAuthCookies } from "@insforge/sdk/ssr";
+// app/actions.ts
+"use server";
 
-const response = NextResponse.json({ user: data.user });
-setAuthCookies(response.cookies, {
-  accessToken: data.accessToken,
-  refreshToken: data.refreshToken,
-});
-return response;
+import { cookies } from "next/headers";
+import { createAuthActions } from "@insforge/sdk/ssr";
+
+export async function signIn(formData: FormData) {
+  const auth = createAuthActions({ cookies: await cookies() });
+
+  return auth.signInWithPassword({
+    email: String(formData.get("email")),
+    password: String(formData.get("password")),
+  });
+}
+```
+
+For Route Handlers, pass request cookies for reading the current session and
+response cookies for writing the next session:
+
+```typescript
+// app/api/auth/sign-out/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { createAuthActions } from "@insforge/sdk/ssr";
+
+export async function POST(request: NextRequest) {
+  const response = NextResponse.json({ ok: true });
+  const auth = createAuthActions({
+    requestCookies: request.cookies,
+    responseCookies: response.cookies,
+  });
+
+  const { error } = await auth.signOut();
+  if (error) {
+    return NextResponse.json(
+      { error: error.error, message: error.message },
+      { status: error.statusCode }
+    );
+  }
+
+  return response;
+}
 ```
 
 If your refresh route needs custom side effects:

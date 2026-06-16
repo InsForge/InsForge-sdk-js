@@ -59,6 +59,10 @@ const insforge = createBrowserClient({
 
 The browser client reads the access-token cookie, uses it for Database, Storage, Functions, and Realtime, and calls the refresh route when the access token is missing or near expiry.
 
+The browser client consumes an existing SSR session. Its TypeScript surface does
+not include auth mutations such as `signInWithPassword()`, `signUp()`, or
+`signOut()`.
+
 ### `createServerClient()`
 
 ```typescript
@@ -81,33 +85,28 @@ import { createRefreshAuthRouter } from "@insforge/sdk/ssr";
 export const { POST } = createRefreshAuthRouter();
 ```
 
-For server-owned refresh cookies, sign-in should also run through a Route Handler or Server Action that can set cookies:
+For server-owned refresh cookies, sign-in, sign-up, and sign-out should run
+through a Server Action or Route Handler that can set cookies.
 
 ```typescript
-import { NextResponse } from "next/server";
-import { createServerClient, setAuthCookies } from "@insforge/sdk/ssr";
+// app/actions.ts
+"use server";
 
-export async function POST(request: Request) {
-  const client = createServerClient();
-  const { data, error } = await client.auth.signInWithPassword(
-    await request.json(),
-  );
-  if (error || !data?.accessToken) {
-    return Response.json(error, { status: error?.statusCode ?? 400 });
-  }
+import { cookies } from "next/headers";
+import { createAuthActions } from "@insforge/sdk/ssr";
 
-  const response = NextResponse.json({
-    accessToken: data.accessToken,
-    user: data.user,
+export async function signIn(formData: FormData) {
+  const auth = createAuthActions({ cookies: await cookies() });
+
+  return auth.signInWithPassword({
+    email: String(formData.get("email")),
+    password: String(formData.get("password")),
   });
-  setAuthCookies(response.cookies, {
-    accessToken: data.accessToken,
-    refreshToken: data.refreshToken,
-  });
-
-  return response;
 }
 ```
+
+In Route Handlers, pass `requestCookies` and `responseCookies` to the same
+helper when request and response cookie stores are separate.
 
 Use `refreshAuth()` directly when the route needs app-specific logic:
 
