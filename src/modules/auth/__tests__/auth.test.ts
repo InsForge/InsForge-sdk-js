@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HttpClient } from '../../../lib/http-client';
 import { TokenManager } from '../../../lib/token-manager';
 import * as tokenManagerModule from '../../../lib/token-manager';
@@ -30,6 +30,9 @@ function createJsonResponse(status: number, body: any): Response {
 }
 
 describe('Auth', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
   describe('signInWithOAuth()', () => {
     it('sends provider-specific additionalParams during OAuth init', async () => {
       const fetchMock = vi.fn().mockResolvedValue(
@@ -223,13 +226,11 @@ describe('Auth', () => {
 
       expect(error).toBeNull();
       expect(fetchMock).toHaveBeenCalled();
-      
-      const lastCall = fetchMock.mock.calls[0];
-      const requestUrl = lastCall[0] as string;
-      const requestInit = lastCall[1] as RequestInit;
-      
+
+      const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+
       expect(requestUrl).toContain('/api/auth/logout');
-      
+
       const headers = new Headers(requestInit.headers);
       expect(headers.get('X-CSRF-Token')).toBe('test-csrf-token-abc');
     });
@@ -253,13 +254,11 @@ describe('Auth', () => {
 
       expect(error).toBeNull();
       expect(fetchMock).toHaveBeenCalled();
-      
-      const lastCall = fetchMock.mock.calls[0];
-      const requestUrl = lastCall[0] as string;
-      const requestInit = lastCall[1] as RequestInit;
-      
+
+      const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+
       expect(requestUrl).toContain('/api/auth/logout');
-      
+
       const headers = new Headers(requestInit.headers);
       expect(headers.has('X-CSRF-Token')).toBe(false);
     });
