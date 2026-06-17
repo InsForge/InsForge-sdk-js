@@ -262,5 +262,33 @@ describe('Auth', () => {
       const headers = new Headers(requestInit.headers);
       expect(headers.has('X-CSRF-Token')).toBe(false);
     });
+
+    it('does not send X-CSRF-Token header in browser mode when CSRF token is null', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(createJsonResponse(200, { success: true }));
+      const http = new HttpClient(
+        {
+          baseUrl: 'http://localhost:7130',
+          fetch: fetchMock as any,
+          retryCount: 0,
+          timeout: 0,
+        },
+        new TokenManager(),
+      );
+      const auth = new Auth(http, new TokenManager(), { isServerMode: false });
+
+      vi.spyOn(tokenManagerModule, 'getCsrfToken').mockReturnValue(null);
+
+      const { error } = await auth.signOut();
+
+      expect(error).toBeNull();
+      expect(fetchMock).toHaveBeenCalled();
+
+      const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+
+      expect(requestUrl).toContain('/api/auth/logout');
+
+      const headers = new Headers(requestInit.headers);
+      expect(headers.has('X-CSRF-Token')).toBe(false);
+    });
   });
 });

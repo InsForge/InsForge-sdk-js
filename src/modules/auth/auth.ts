@@ -200,16 +200,17 @@ export class Auth {
     try {
       // Try backend logout first
       try {
-        const csrfToken = !this.isServerMode() ? getCsrfToken() : null;
+        const serverMode = this.isServerMode();
+        const csrfToken = !serverMode ? getCsrfToken() : null;
         await this.http.post(
-          this.isServerMode()
+          serverMode
             ? '/api/auth/logout?client_type=mobile'
             : '/api/auth/logout',
           undefined,
           {
             credentials: 'include',
             skipAuthRefresh: true,
-            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+            ...(csrfToken ? { headers: { 'X-CSRF-Token': csrfToken } } : {}),
           },
         );
       } catch {
