@@ -169,6 +169,17 @@ describe('Database PostgREST auth refresh', () => {
     expect(new Headers(init.headers).get('Content-Profile')).toBe('analytics');
   });
 
+  it('sends the schema profile header for rpc calls', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(jsonResponse(200, [{ ok: true }]));
+    const { database } = makeDatabase(fetchFn);
+
+    await database.schema('analytics').rpc('rollup', { day: '2026-01-01' });
+
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe('http://localhost:7130/api/database/rpc/rollup');
+    expect(new Headers(init.headers).get('Content-Profile')).toBe('analytics');
+  });
+
   it('applies a default schema from config to every query', async () => {
     const fetchFn = vi.fn().mockResolvedValueOnce(jsonResponse(200, [{ id: 1 }]));
     const { database } = makeDatabase(fetchFn, {}, 'old-token', 'analytics');
