@@ -72,6 +72,19 @@ export interface InsForgeConfig {
   };
 
   /**
+   * Database module options.
+   */
+  db?: {
+    /**
+     * Default Postgres schema for database queries. Maps to PostgREST's
+     * `Accept-Profile`/`Content-Profile` headers. Override per-query with
+     * `client.database.schema('other')`.
+     * @default "public"
+     */
+    schema?: string;
+  };
+
+  /**
    * Custom headers to include with every request
    */
   headers?: Record<string, string>;

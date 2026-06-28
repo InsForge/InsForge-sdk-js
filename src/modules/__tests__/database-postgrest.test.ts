@@ -15,6 +15,7 @@ function makeDatabase(
   fetchFn: ReturnType<typeof vi.fn>,
   overrides: Record<string, unknown> = {},
   accessToken: string | null = 'old-token',
+  defaultSchema?: string,
 ) {
   const tokenManager = new TokenManager();
   if (accessToken) {
@@ -34,7 +35,7 @@ function makeDatabase(
   http.setAuthToken(accessToken);
 
   return {
-    database: new Database(http),
+    database: new Database(http, defaultSchema),
     tokenManager,
   };
 }
@@ -145,6 +146,48 @@ describe('Database PostgREST auth refresh', () => {
       error: 'AUTH_UNAUTHORIZED',
     });
     expect(fetchFn).toHaveBeenCalledOnce();
+  });
+
+  it('sends Accept-Profile when a schema is selected on a read', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(jsonResponse(200, [{ id: 1 }]));
+    const { database } = makeDatabase(fetchFn);
+
+    await database.schema('analytics').from('events').select('id');
+
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe('http://localhost:7130/api/database/records/events?select=id');
+    expect(new Headers(init.headers).get('Accept-Profile')).toBe('analytics');
+  });
+
+  it('sends Content-Profile when a schema is selected on a write', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(jsonResponse(201, [{ id: 1 }]));
+    const { database } = makeDatabase(fetchFn);
+
+    await database.schema('analytics').from('events').insert({ name: 'signup' });
+
+    const [, init] = fetchFn.mock.calls[0];
+    expect(new Headers(init.headers).get('Content-Profile')).toBe('analytics');
+  });
+
+  it('sends the schema profile header for rpc calls', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(jsonResponse(200, [{ ok: true }]));
+    const { database } = makeDatabase(fetchFn);
+
+    await database.schema('analytics').rpc('rollup', { day: '2026-01-01' });
+
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe('http://localhost:7130/api/database/rpc/rollup');
+    expect(new Headers(init.headers).get('Content-Profile')).toBe('analytics');
+  });
+
+  it('applies a default schema from config to every query', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(jsonResponse(200, [{ id: 1 }]));
+    const { database } = makeDatabase(fetchFn, {}, 'old-token', 'analytics');
+
+    await database.from('events').select('id');
+
+    const [, init] = fetchFn.mock.calls[0];
+    expect(new Headers(init.headers).get('Accept-Profile')).toBe('analytics');
   });
 
   it('does not refresh database requests in server mode', async () => {

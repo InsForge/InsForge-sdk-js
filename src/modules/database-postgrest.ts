@@ -51,12 +51,33 @@ function createInsForgePostgrestFetch(httpClient: HttpClient): typeof fetch {
 export class Database {
   private postgrest: PostgrestClient<any, any, any>;
 
-  constructor(httpClient: HttpClient) {
-    // Create postgrest client with custom fetch
+  constructor(httpClient: HttpClient, defaultSchema?: string) {
+    // Create postgrest client with custom fetch. `schema` sets the default
+    // profile; postgrest-js attaches Accept-Profile/Content-Profile headers,
+    // which the InsForge data API resolves to the target schema.
     this.postgrest = new PostgrestClient<any, any, any>('http://dummy', {
       fetch: createInsForgePostgrestFetch(httpClient),
       headers: {},
+      ...(defaultSchema ? { schema: defaultSchema } : {}),
     });
+  }
+
+  /**
+   * Select a non-default Postgres schema for the chained query. Maps to
+   * PostgREST's `Accept-Profile` (reads) / `Content-Profile` (writes) header.
+   * The schema must be exposed by the backend.
+   *
+   * @example
+   * const { data } = await client.database
+   *   .schema('analytics')
+   *   .from('events')
+   *   .select('*');
+   *
+   * @example
+   * await client.database.schema('analytics').rpc('rollup', { day: '2026-01-01' });
+   */
+  schema(schemaName: string) {
+    return this.postgrest.schema(schemaName);
   }
 
   /**

@@ -185,6 +185,31 @@ const { data, error } = await insforge.database
   .eq("id", postId);
 ```
 
+#### Selecting a schema
+
+Queries hit the `public` schema by default. Target a custom schema by chaining `.schema()` — the table name stays bare (it maps to PostgREST's `Accept-Profile`/`Content-Profile` header):
+
+```javascript
+const { data } = await insforge.database
+  .schema("analytics")
+  .from("events")
+  .select("*");
+
+await insforge.database.schema("analytics").rpc("rollup", { day: "2026-01-01" });
+```
+
+Or set a default schema for every query when creating the client:
+
+```javascript
+const insforge = createClient({
+  baseUrl: "...",
+  anonKey: "...",
+  db: { schema: "analytics" },
+});
+```
+
+The schema must be exposed by the backend, and access is still gated by grants + RLS like `public`. Older backends that don't expose the schema return PostgREST `PGRST106` rather than silently falling back.
+
 ### File Storage
 
 ```javascript
