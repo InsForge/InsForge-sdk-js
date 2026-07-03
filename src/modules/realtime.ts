@@ -1,5 +1,9 @@
 import type { Socket } from 'socket.io-client';
-import type { SubscribeResponse, RealtimeErrorPayload, SocketMessage } from '@insforge/shared-schemas';
+import type {
+  SubscribeResponse,
+  RealtimeErrorPayload,
+  SocketMessage,
+} from '@insforge/shared-schemas';
 import { TokenManager } from '../lib/token-manager';
 
 export type { SubscribeResponse, RealtimeErrorPayload, SocketMessage };
@@ -65,7 +69,9 @@ export class Realtime {
 
   private notifyListeners(event: string, payload?: unknown): void {
     const listeners = this.eventListeners.get(event);
-    if (!listeners) return;
+    if (!listeners) {
+      return;
+    }
     for (const cb of listeners) {
       try {
         cb(payload);
@@ -158,7 +164,9 @@ export class Realtime {
 
           // Route custom events to listeners (onAny doesn't catch socket reserved events)
           this.socket.onAny((event: string, message: SocketMessage) => {
-            if (event === 'realtime:error') return; // Already handled above
+            if (event === 'realtime:error') {
+              return;
+            } // Already handled above
             this.notifyListeners(event, message);
           });
         });
@@ -214,8 +222,12 @@ export class Realtime {
    * Get the current connection state
    */
   get connectionState(): ConnectionState {
-    if (!this.socket) return 'disconnected';
-    if (this.socket.connected) return 'connected';
+    if (!this.socket) {
+      return 'disconnected';
+    }
+    if (this.socket.connected) {
+      return 'connected';
+    }
     return 'connecting';
   }
 

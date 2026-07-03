@@ -7,6 +7,19 @@ on:
     branches: [main]
 
 jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+
   typecheck:
     name: Type Check
     runs-on: ubuntu-latest
@@ -86,7 +99,7 @@ jobs:
           server_port: ${{ secrets.MAIL_SMTP_PORT }}
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "[${{ github.repository }}] Coverage Report – ${{ github.sha }}"
+          subject: '[${{ github.repository }}] Coverage Report – ${{ github.sha }}'
           to: ${{ secrets.MAINTAINER_EMAIL }}
           from: ${{ secrets.MAIL_FROM || 'CI Bot <ci@insforge.dev>' }}
           body: |

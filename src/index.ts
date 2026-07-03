@@ -1,6 +1,6 @@
 /**
  * @insforge/sdk - TypeScript SDK for InsForge Backend-as-a-Service
- * 
+ *
  * @packageDocumentation
  */
 
@@ -10,7 +10,7 @@ export { InsForgeClient } from './client';
 // Types
 export type {
   InsForgeConfig,
-  InsForgeConfig as ClientOptions,  // Alias for compatibility
+  InsForgeConfig as ClientOptions, // Alias for compatibility
   InsForgeAdminConfig,
   AuthSession,
   ApiError,
@@ -76,9 +76,7 @@ export function createClient(config: InsForgeConfig = {}): InsForgeClient {
   return new InsForgeClient(config);
 }
 
-export function createAdminClient(
-  config: InsForgeAdminConfig,
-): InsForgeClient {
+export function createAdminClient(config: InsForgeAdminConfig): InsForgeClient {
   const { apiKey: rawApiKey, ...clientConfig } = config ?? {};
   const apiKey = rawApiKey?.trim();
   if (!apiKey) {

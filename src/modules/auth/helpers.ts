@@ -13,9 +13,11 @@ const PKCE_VERIFIER_KEY = 'insforge_pkce_verifier';
 type WebCrypto = Pick<Crypto, 'getRandomValues' | 'subtle'>;
 
 async function getWebCrypto(): Promise<WebCrypto> {
-  const webCrypto = (globalThis as typeof globalThis & {
-    crypto?: Partial<WebCrypto>;
-  }).crypto;
+  const webCrypto = (
+    globalThis as typeof globalThis & {
+      crypto?: Partial<WebCrypto>;
+    }
+  ).crypto;
 
   if (typeof webCrypto?.getRandomValues === 'function' && webCrypto.subtle) {
     return webCrypto as WebCrypto;
@@ -34,10 +36,7 @@ async function getWebCrypto(): Promise<WebCrypto> {
  */
 function base64UrlEncode(buffer: Uint8Array): string {
   const base64 = btoa(String.fromCharCode(...buffer));
-  return base64
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 /**

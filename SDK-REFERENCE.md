@@ -9,11 +9,11 @@ npm install @insforge/sdk
 ## Initialize
 
 ```javascript
-import { createClient } from "@insforge/sdk";
+import { createClient } from '@insforge/sdk';
 
 const insforge = createClient({
-  baseUrl: "http://localhost:7130",
-  anonKey: "your-anon-key",
+  baseUrl: 'http://localhost:7130',
+  anonKey: 'your-anon-key',
 });
 ```
 
@@ -22,10 +22,10 @@ const insforge = createClient({
 ## Admin Client
 
 ```typescript
-import { createAdminClient } from "@insforge/sdk";
+import { createAdminClient } from '@insforge/sdk';
 
 const admin = createAdminClient({
-  baseUrl: "http://localhost:7130",
+  baseUrl: 'http://localhost:7130',
   apiKey: process.env.INSFORGE_API_KEY!,
 });
 ```
@@ -50,10 +50,10 @@ Default cookies:
 ### `createBrowserClient()`
 
 ```typescript
-import { createBrowserClient } from "@insforge/sdk/ssr";
+import { createBrowserClient } from '@insforge/sdk/ssr';
 
 const insforge = createBrowserClient({
-  refreshUrl: "/api/auth/refresh", // default
+  refreshUrl: '/api/auth/refresh', // default
 });
 ```
 
@@ -66,8 +66,8 @@ not include auth mutations such as `signInWithPassword()`, `signUp()`, or
 ### `createServerClient()`
 
 ```typescript
-import { cookies } from "next/headers";
-import { createServerClient } from "@insforge/sdk/ssr";
+import { cookies } from 'next/headers';
+import { createServerClient } from '@insforge/sdk/ssr';
 
 const insforge = createServerClient({
   cookies: await cookies(),
@@ -80,7 +80,7 @@ The server client reads only the access-token cookie and passes it as the per-re
 
 ```typescript
 // app/api/auth/refresh/route.ts
-import { createRefreshAuthRouter } from "@insforge/sdk/ssr";
+import { createRefreshAuthRouter } from '@insforge/sdk/ssr';
 
 export const { POST } = createRefreshAuthRouter();
 ```
@@ -92,17 +92,17 @@ safe fields.
 
 ```typescript
 // app/actions.ts
-"use server";
+'use server';
 
-import { cookies } from "next/headers";
-import { createAuthActions } from "@insforge/sdk/ssr";
+import { cookies } from 'next/headers';
+import { createAuthActions } from '@insforge/sdk/ssr';
 
 export async function signIn(formData: FormData) {
   const auth = createAuthActions({ cookies: await cookies() });
 
   const { data, error } = await auth.signInWithPassword({
-    email: String(formData.get("email")),
-    password: String(formData.get("password")),
+    email: String(formData.get('email')),
+    password: String(formData.get('password')),
   });
 
   return { user: data?.user ?? null, error };
@@ -122,7 +122,7 @@ auto-exchange OAuth callbacks.
 Use `refreshAuth()` directly when the route needs app-specific logic:
 
 ```typescript
-import { refreshAuth } from "@insforge/sdk/ssr";
+import { refreshAuth } from '@insforge/sdk/ssr';
 
 export async function POST(request: Request) {
   await beforeRefresh(request);
@@ -140,8 +140,8 @@ bundling the full SDK client.
 
 ```typescript
 // proxy.ts on Next.js 16+, middleware.ts on Next.js 15 and earlier
-import { NextResponse, type NextRequest } from "next/server";
-import { updateSession } from "@insforge/sdk/ssr/middleware";
+import { NextResponse, type NextRequest } from 'next/server';
+import { updateSession } from '@insforge/sdk/ssr/middleware';
 
 export async function proxy(request: NextRequest) {
   const response = NextResponse.next({ request });
@@ -171,7 +171,7 @@ The SDK automatically detects and handles OAuth callback parameters when initial
 ```javascript
 // Just initialize the client - OAuth is handled automatically
 const insforge = createClient({
-  baseUrl: "http://localhost:7130",
+  baseUrl: 'http://localhost:7130',
 });
 
 // If the URL contains OAuth callback parameters like:
@@ -192,10 +192,10 @@ const { data } = await insforge.auth.getCurrentUser();
 
 ```javascript
 await insforge.auth.signUp({
-  email: "user@example.com",
-  password: "password123",
-  name: "John Doe", // optional
-  redirectTo: "http://localhost:3000/sign-in", // optional, recommended for link-based verification
+  email: 'user@example.com',
+  password: 'password123',
+  name: 'John Doe', // optional
+  redirectTo: 'http://localhost:3000/sign-in', // optional, recommended for link-based verification
 });
 // Response: { data: { user, accessToken }, error }
 // user: { id, email, name, emailVerified, createdAt, updatedAt }
@@ -215,8 +215,8 @@ Recommended: use your sign-in page as `redirectTo`, then show a success message 
 
 ```javascript
 await insforge.auth.signInWithPassword({
-  email: "user@example.com",
-  password: "password123",
+  email: 'user@example.com',
+  password: 'password123',
 });
 // Response: { data: { user, accessToken }, error }
 // user: { id, email, name, emailVerified, createdAt, updatedAt }
@@ -226,9 +226,9 @@ await insforge.auth.signInWithPassword({
 ### `signInWithOAuth()`
 
 ```javascript
-await insforge.auth.signInWithOAuth("google", {
-  redirectTo: "http://localhost:3000/dashboard",
-  additionalParams: { prompt: "select_account" }, // optional provider-specific OAuth params
+await insforge.auth.signInWithOAuth('google', {
+  redirectTo: 'http://localhost:3000/dashboard',
+  additionalParams: { prompt: 'select_account' }, // optional provider-specific OAuth params
   skipBrowserRedirect: true, // optional, returns URL instead of redirecting
 });
 // Response: { data: { url, provider }, error }
@@ -280,10 +280,10 @@ await insforge.auth.getProfile(userId);
 
 ```javascript
 await insforge.auth.setProfile({
-  nickname: "JohnDoe",
-  avatar_url: "https://...",
-  bio: "Software developer",
-  birthday: "1990-01-01",
+  nickname: 'JohnDoe',
+  avatar_url: 'https://...',
+  bio: 'Software developer',
+  birthday: '1990-01-01',
 });
 // Response: { data: profile, error }
 // Updates current user's profile in users table
@@ -302,8 +302,8 @@ await insforge.auth.getPublicAuthConfig();
 
 ```javascript
 await insforge.auth.resendVerificationEmail({
-  email: "user@example.com",
-  redirectTo: "http://localhost:3000/sign-in", // optional, recommended for link-based verification
+  email: 'user@example.com',
+  redirectTo: 'http://localhost:3000/sign-in', // optional, recommended for link-based verification
 });
 // Response: { data: { success, message }, error }
 ```
@@ -312,8 +312,8 @@ await insforge.auth.resendVerificationEmail({
 
 ```javascript
 await insforge.auth.verifyEmail({
-  email: "user@example.com",
-  otp: "123456",
+  email: 'user@example.com',
+  otp: '123456',
 });
 // Response: { data: { user, accessToken, csrfToken?, refreshToken? }, error }
 // POST /api/auth/email/verify is code-only
@@ -328,8 +328,8 @@ await insforge.auth.verifyEmail({
 
 ```javascript
 await insforge.auth.sendResetPasswordEmail({
-  email: "user@example.com",
-  redirectTo: "http://localhost:3000/reset-password", // optional, recommended for link-based reset
+  email: 'user@example.com',
+  redirectTo: 'http://localhost:3000/reset-password', // optional, recommended for link-based reset
 });
 // Response: { data: { success, message }, error }
 ```
@@ -338,8 +338,8 @@ await insforge.auth.sendResetPasswordEmail({
 
 ```javascript
 await insforge.auth.exchangeResetPasswordToken({
-  email: "user@example.com",
-  code: "123456",
+  email: 'user@example.com',
+  code: '123456',
 });
 // Response: { data: { token, expiresAt }, error }
 ```
@@ -348,8 +348,8 @@ await insforge.auth.exchangeResetPasswordToken({
 
 ```javascript
 await insforge.auth.resetPassword({
-  newPassword: "newSecurePassword123",
-  otp: "reset-token",
+  newPassword: 'newSecurePassword123',
+  otp: 'reset-token',
 });
 // Response: { data: { message }, error }
 // Browser reset links use GET /api/auth/email/reset-password-link first,
@@ -401,16 +401,13 @@ Payments methods are provider-scoped and intended for generated app frontends. T
 ### `stripe.createCheckoutSession()`
 
 ```javascript
-const { data, error } = await insforge.payments.stripe.createCheckoutSession(
-  "test",
-  {
-    mode: "payment",
-    lineItems: [{ priceId: "price_123", quantity: 1 }],
-    successUrl: "https://example.com/success",
-    cancelUrl: "https://example.com/pricing",
-    idempotencyKey: "cart_123", // optional, recommended for retry-safe checkout creation
-  },
-);
+const { data, error } = await insforge.payments.stripe.createCheckoutSession('test', {
+  mode: 'payment',
+  lineItems: [{ priceId: 'price_123', quantity: 1 }],
+  successUrl: 'https://example.com/success',
+  cancelUrl: 'https://example.com/pricing',
+  idempotencyKey: 'cart_123', // optional, recommended for retry-safe checkout creation
+});
 
 if (!error && data?.checkoutSession.url) {
   window.location.assign(data.checkoutSession.url);
@@ -420,23 +417,22 @@ if (!error && data?.checkoutSession.url) {
 For one-time payments, `subject` is optional. For subscription checkout, `subject` is required because subscriptions represent ongoing entitlement for an app-defined billing owner.
 
 ```javascript
-await insforge.payments.stripe.createCheckoutSession("test", {
-  mode: "subscription",
-  subject: { type: "team", id: "team_123" },
-  lineItems: [{ priceId: "price_monthly_123", quantity: 1 }],
-  successUrl: "https://example.com/billing/success",
-  cancelUrl: "https://example.com/billing",
+await insforge.payments.stripe.createCheckoutSession('test', {
+  mode: 'subscription',
+  subject: { type: 'team', id: 'team_123' },
+  lineItems: [{ priceId: 'price_monthly_123', quantity: 1 }],
+  successUrl: 'https://example.com/billing/success',
+  cancelUrl: 'https://example.com/billing',
 });
 ```
 
 ### `stripe.createCustomerPortalSession()`
 
 ```javascript
-const { data, error } =
-  await insforge.payments.stripe.createCustomerPortalSession("test", {
-    subject: { type: "team", id: "team_123" },
-    returnUrl: "https://example.com/billing",
-  });
+const { data, error } = await insforge.payments.stripe.createCustomerPortalSession('test', {
+  subject: { type: 'team', id: 'team_123' },
+  returnUrl: 'https://example.com/billing',
+});
 
 if (!error && data?.customerPortalSession.url) {
   window.location.assign(data.customerPortalSession.url);
@@ -450,20 +446,20 @@ Customer portal sessions require an authenticated user and an existing Stripe cu
 Razorpay uses Checkout.js instead of a hosted redirect URL. Create an order through InsForge, pass `checkoutOptions` into Razorpay Checkout.js, then verify the signed payment response.
 
 ```javascript
-const { data, error } = await insforge.payments.razorpay.createOrder("test", {
+const { data, error } = await insforge.payments.razorpay.createOrder('test', {
   amount: 200000,
-  currency: "INR",
-  receipt: "cart_123",
-  subject: { type: "team", id: "team_123" },
-  customerName: "Ada Lovelace",
-  customerEmail: "ada@example.com",
+  currency: 'INR',
+  receipt: 'cart_123',
+  subject: { type: 'team', id: 'team_123' },
+  customerName: 'Ada Lovelace',
+  customerEmail: 'ada@example.com',
 });
 
 if (!error && data) {
   const checkout = new Razorpay({
     ...data.checkoutOptions,
     handler: async (response) => {
-      await insforge.payments.razorpay.verifyOrder("test", {
+      await insforge.payments.razorpay.verifyOrder('test', {
         orderId: response.razorpay_order_id,
         paymentId: response.razorpay_payment_id,
         signature: response.razorpay_signature,
@@ -478,22 +474,19 @@ if (!error && data) {
 ### `razorpay.createSubscription()`
 
 ```javascript
-const { data, error } = await insforge.payments.razorpay.createSubscription(
-  "test",
-  {
-    planId: "plan_123",
-    totalCount: 12,
-    subject: { type: "team", id: "team_123" },
-    customerName: "Ada Lovelace",
-    customerEmail: "ada@example.com",
-  },
-);
+const { data, error } = await insforge.payments.razorpay.createSubscription('test', {
+  planId: 'plan_123',
+  totalCount: 12,
+  subject: { type: 'team', id: 'team_123' },
+  customerName: 'Ada Lovelace',
+  customerEmail: 'ada@example.com',
+});
 
 if (!error && data) {
   const checkout = new Razorpay({
     ...data.checkoutOptions,
     handler: async (response) => {
-      await insforge.payments.razorpay.verifySubscription("test", {
+      await insforge.payments.razorpay.verifySubscription('test', {
         subscriptionId: response.razorpay_subscription_id,
         paymentId: response.razorpay_payment_id,
         signature: response.razorpay_signature,
@@ -508,7 +501,7 @@ if (!error && data) {
 ### `razorpay.cancelSubscription()`
 
 ```javascript
-await insforge.payments.razorpay.cancelSubscription("test", "sub_123", {
+await insforge.payments.razorpay.cancelSubscription('test', 'sub_123', {
   cancelAtCycleEnd: false,
 });
 ```
@@ -516,8 +509,8 @@ await insforge.payments.razorpay.cancelSubscription("test", "sub_123", {
 ### `razorpay.pauseSubscription()` / `razorpay.resumeSubscription()`
 
 ```javascript
-await insforge.payments.razorpay.pauseSubscription("test", "sub_123");
-await insforge.payments.razorpay.resumeSubscription("test", "sub_123");
+await insforge.payments.razorpay.pauseSubscription('test', 'sub_123');
+await insforge.payments.razorpay.resumeSubscription('test', 'sub_123');
 ```
 
 Razorpay webhook setup is manual in the Razorpay dashboard. Configure keys and copy the webhook URL, secret, and recommended events from the InsForge payments settings UI.
@@ -531,7 +524,7 @@ Razorpay webhook setup is manual in the Razorpay dashboard. Configure keys and c
 Create a query builder for a table:
 
 ```javascript
-const query = insforge.database.from("posts");
+const query = insforge.database.from('posts');
 // Returns a PostgREST query builder with all Supabase features
 ```
 
@@ -539,29 +532,27 @@ const query = insforge.database.from("posts");
 
 ```javascript
 // Basic select
-await insforge.database.from("posts").select(); // Default: '*'
+await insforge.database.from('posts').select(); // Default: '*'
 
 // Select specific columns
-await insforge.database.from("posts").select("id, title, created_at");
+await insforge.database.from('posts').select('id, title, created_at');
 
 // With filters
 await insforge.database
-  .from("posts")
+  .from('posts')
   .select()
-  .eq("user_id", "123")
-  .order("created_at", { ascending: false })
+  .eq('user_id', '123')
+  .order('created_at', { ascending: false })
   .limit(10);
 
 // With joins (PostgREST syntax)
-await insforge.database.from("posts").select("*, users!inner(*)"); // Inner join with users table
+await insforge.database.from('posts').select('*, users!inner(*)'); // Inner join with users table
 
 // Join with specific columns
-await insforge.database
-  .from("posts")
-  .select("id, title, users(nickname, avatar_url)");
+await insforge.database.from('posts').select('id, title, users(nickname, avatar_url)');
 
 // Aliased joins
-await insforge.database.from("posts").select("*, author:users(*)"); // Alias users as author
+await insforge.database.from('posts').select('*, author:users(*)'); // Alias users as author
 // Response: { data: [...], error }
 ```
 
@@ -569,25 +560,19 @@ await insforge.database.from("posts").select("*, author:users(*)"); // Alias use
 
 ```javascript
 // Single record - use .select() to return inserted data
-await insforge.database
-  .from("posts")
-  .insert({ title: "Hello", content: "World" })
-  .select();
+await insforge.database.from('posts').insert({ title: 'Hello', content: 'World' }).select();
 
 // Multiple records
 await insforge.database
-  .from("posts")
+  .from('posts')
   .insert([
-    { title: "Post 1", content: "Content 1" },
-    { title: "Post 2", content: "Content 2" },
+    { title: 'Post 1', content: 'Content 1' },
+    { title: 'Post 2', content: 'Content 2' },
   ])
   .select();
 
 // Upsert
-await insforge.database
-  .from("posts")
-  .upsert({ id: "123", title: "Updated or New" })
-  .select();
+await insforge.database.from('posts').upsert({ id: '123', title: 'Updated or New' }).select();
 // Response: { data: [...], error }
 
 // Note: Without .select(), mutations return { data: null, error }
@@ -596,18 +581,14 @@ await insforge.database
 ### UPDATE Operations
 
 ```javascript
-await insforge.database
-  .from("posts")
-  .update({ title: "Updated Title" })
-  .eq("id", "123")
-  .select();
+await insforge.database.from('posts').update({ title: 'Updated Title' }).eq('id', '123').select();
 // Response: { data: [...], error }
 ```
 
 ### DELETE Operations
 
 ```javascript
-await insforge.database.from("posts").delete().eq("id", "123").select();
+await insforge.database.from('posts').delete().eq('id', '123').select();
 // Response: { data: [...], error }
 ```
 
@@ -635,28 +616,25 @@ await insforge.database.from("posts").delete().eq("id", "123").select();
 
 ```javascript
 // Simple OR: status = 'active' OR status = 'pending'
-await insforge.database
-  .from("posts")
-  .select()
-  .or("status.eq.active,status.eq.pending");
+await insforge.database.from('posts').select().or('status.eq.active,status.eq.pending');
 
 // OR with other filters (implicit AND)
 await insforge.database
-  .from("posts")
+  .from('posts')
   .select()
-  .eq("user_id", "123") // AND
-  .or("status.eq.draft,status.eq.published"); // OR
+  .eq('user_id', '123') // AND
+  .or('status.eq.draft,status.eq.published'); // OR
 
 // Complex OR with NOT
-await insforge.database.from("users").select().or("age.lt.18,age.gt.65");
+await insforge.database.from('users').select().or('age.lt.18,age.gt.65');
 // age < 18 OR age > 65
 
 // Combining AND and OR
 await insforge.database
-  .from("products")
+  .from('products')
   .select()
-  .eq("category", "electronics")
-  .or("price.lt.100,rating.gte.4.5");
+  .eq('category', 'electronics')
+  .or('price.lt.100,rating.gte.4.5');
 // category = 'electronics' AND (price < 100 OR rating >= 4.5)
 ```
 
@@ -678,13 +656,13 @@ Use with `select()` to get counts:
 ```javascript
 // Get exact count with data
 const { data, count, error } = await insforge.database
-  .from("posts")
-  .select("*", { count: "exact" });
+  .from('posts')
+  .select('*', { count: 'exact' });
 
 // Get count without data (HEAD request)
 const { count, error } = await insforge.database
-  .from("posts")
-  .select("*", { count: "exact", head: true });
+  .from('posts')
+  .select('*', { count: 'exact', head: true });
 
 // Count strategies:
 // 'exact' - Accurate but slower for large tables
@@ -698,26 +676,26 @@ All methods return the query builder for chaining:
 
 ```javascript
 const { data, error } = await insforge.database
-  .from("posts")
-  .select("id, title, content")
-  .eq("status", "published")
-  .gte("likes", 100)
-  .order("created_at", { ascending: false })
+  .from('posts')
+  .select('id, title, content')
+  .eq('status', 'published')
+  .gte('likes', 100)
+  .order('created_at', { ascending: false })
   .limit(10);
 
 // With count (Supabase-style)
 const { data, error, count } = await insforge.database
-  .from("posts")
-  .select("*", { count: "exact" }) // Request exact count
-  .eq("status", "published")
+  .from('posts')
+  .select('*', { count: 'exact' }) // Request exact count
+  .eq('status', 'published')
   .range(0, 9); // Get first 10
 // Returns: data (array), error (PostgrestError), count (number)
 
 // Count without data (head request)
 const { count, error } = await insforge.database
-  .from("posts")
-  .select("*", { count: "exact", head: true })
-  .eq("status", "published");
+  .from('posts')
+  .select('*', { count: 'exact', head: true })
+  .eq('status', 'published');
 // Returns only count, no data
 ```
 
@@ -726,14 +704,14 @@ const { count, error } = await insforge.database
 ### `storage.from()`
 
 ```javascript
-const bucket = insforge.storage.from("avatars");
+const bucket = insforge.storage.from('avatars');
 // Returns StorageBucket instance for file operations
 ```
 
 ### `bucket.upload()`
 
 ```javascript
-await bucket.upload("path/file.jpg", file);
+await bucket.upload('path/file.jpg', file);
 // Response: { data: StorageFileSchema, error }
 // data: { bucket, key, size, mimeType, uploadedAt, url }
 ```
@@ -749,14 +727,14 @@ await bucket.uploadAuto(file);
 ### `bucket.download()`
 
 ```javascript
-await bucket.download("path/file.jpg");
+await bucket.download('path/file.jpg');
 // Response: { data: Blob, error }
 ```
 
 ### `bucket.list()`
 
 ```javascript
-await bucket.list({ prefix: "users/", limit: 10 });
+await bucket.list({ prefix: 'users/', limit: 10 });
 // Response: { data: ListObjectsResponseSchema, error }
 // data: { bucketName, objects[], pagination }
 ```
@@ -764,14 +742,14 @@ await bucket.list({ prefix: "users/", limit: 10 });
 ### `bucket.remove()`
 
 ```javascript
-await bucket.remove("path/file.jpg");
+await bucket.remove('path/file.jpg');
 // Response: { data: { message }, error }
 ```
 
 ### `bucket.getPublicUrl()`
 
 ```javascript
-bucket.getPublicUrl("path/file.jpg");
+bucket.getPublicUrl('path/file.jpg');
 // Returns: string URL (no API call)
 ```
 
@@ -785,10 +763,10 @@ Create AI chat completions with support for both streaming and non-streaming res
 
 ```javascript
 const completion = await insforge.ai.chat.completions.create({
-  model: "anthropic/claude-3.5-haiku",
+  model: 'anthropic/claude-3.5-haiku',
   messages: [
-    { role: "system", content: "You are a helpful assistant" },
-    { role: "user", content: "Hello, how are you?" },
+    { role: 'system', content: 'You are a helpful assistant' },
+    { role: 'user', content: 'Hello, how are you?' },
   ],
   temperature: 0.7,
   maxTokens: 500,
@@ -805,8 +783,8 @@ console.log(completion.choices[0].message.content);
 ```javascript
 // Returns an async iterable of OpenAI-like chunks for real-time streaming
 const stream = await insforge.ai.chat.completions.create({
-  model: "anthropic/claude-3.5-haiku",
-  messages: [{ role: "user", content: "Tell me a story" }],
+  model: 'anthropic/claude-3.5-haiku',
+  messages: [{ role: 'user', content: 'Tell me a story' }],
   stream: true,
 });
 
@@ -835,8 +813,8 @@ Generate images using AI models.
 ```javascript
 // Text-to-image
 const image = await insforge.ai.images.generate({
-  model: "google/gemini-3-pro-image-preview",
-  prompt: "A serene landscape with mountains at sunset",
+  model: 'google/gemini-3-pro-image-preview',
+  prompt: 'A serene landscape with mountains at sunset',
 });
 // Returns an OpenAI-like image object directly (not a { data, error } envelope):
 // image.data[i].b64_json - base64-encoded image (no `data:` URI prefix)
@@ -846,9 +824,9 @@ const base64Png = image.data[0].b64_json;
 
 // Image-to-image — pass source images as URLs or base64 data URIs
 const edited = await insforge.ai.images.generate({
-  model: "google/gemini-3-pro-image-preview",
-  prompt: "Turn this into a watercolor painting",
-  images: [{ url: "https://example.com/input.jpg" }],
+  model: 'google/gemini-3-pro-image-preview',
+  prompt: 'Turn this into a watercolor painting',
+  images: [{ url: 'https://example.com/input.jpg' }],
 });
 ```
 
@@ -866,8 +844,8 @@ Create embeddings for one or more text inputs.
 
 ```javascript
 const embeddings = await insforge.ai.embeddings.create({
-  model: "openai/text-embedding-3-small",
-  input: "Hello world", // or string[] for batch input
+  model: 'openai/text-embedding-3-small',
+  input: 'Hello world', // or string[] for batch input
 });
 // Returns an OpenAI-like embeddings object directly (not a { data, error } envelope):
 // embeddings.data[i].embedding - the vector (number[]) for input i
@@ -886,27 +864,27 @@ console.log(embeddings.data[0].embedding);
 ### Complete AI Example
 
 ```javascript
-import { createClient } from "@insforge/sdk";
+import { createClient } from '@insforge/sdk';
 
 const insforge = createClient({
-  baseUrl: "http://localhost:7130",
+  baseUrl: 'http://localhost:7130',
 });
 
 // Chat completion
 const chat = await insforge.ai.chat.completions.create({
-  model: "anthropic/claude-3.5-haiku",
-  messages: [{ role: "user", content: "What is the capital of France?" }],
+  model: 'anthropic/claude-3.5-haiku',
+  messages: [{ role: 'user', content: 'What is the capital of France?' }],
 });
 console.log(chat.choices[0].message.content); // "The capital of France is Paris."
 
 // Streaming chat
 const stream = await insforge.ai.chat.completions.create({
-  model: "anthropic/claude-3.5-haiku",
-  messages: [{ role: "user", content: "Write a haiku about coding" }],
+  model: 'anthropic/claude-3.5-haiku',
+  messages: [{ role: 'user', content: 'Write a haiku about coding' }],
   stream: true,
 });
 
-let fullResponse = "";
+let fullResponse = '';
 for await (const chunk of stream) {
   const delta = chunk.choices[0]?.delta?.content;
   if (delta) {
@@ -917,15 +895,15 @@ for await (const chunk of stream) {
 
 // Image generation
 const image = await insforge.ai.images.generate({
-  model: "google/gemini-3-pro-image-preview",
-  prompt: "A futuristic city with flying cars",
+  model: 'google/gemini-3-pro-image-preview',
+  prompt: 'A futuristic city with flying cars',
 });
 const base64Png = image.data[0].b64_json; // base64-encoded image
 
 // Embeddings
 const embeddings = await insforge.ai.embeddings.create({
-  model: "openai/text-embedding-3-small",
-  input: "Vectorize this sentence",
+  model: 'openai/text-embedding-3-small',
+  input: 'Vectorize this sentence',
 });
 console.log(embeddings.data[0].embedding); // number[]
 ```
@@ -943,7 +921,7 @@ import type {
   ListObjectsResponseSchema,
   PublicOAuthProvider,
   GetPublicEmailAuthConfigResponse,
-} from "@insforge/shared-schemas";
+} from '@insforge/shared-schemas';
 
 // Database response type
 interface DatabaseResponse<T> {

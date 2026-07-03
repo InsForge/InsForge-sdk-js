@@ -1,9 +1,6 @@
 function decodeBase64Url(input: string): string {
   const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = normalized.padEnd(
-    normalized.length + ((4 - (normalized.length % 4)) % 4),
-    '=',
-  );
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), '=');
 
   const binary = atob(padded);
   const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
@@ -11,10 +8,14 @@ function decodeBase64Url(input: string): string {
 }
 
 export function getJwtExpiration(token: string | null | undefined): Date | null {
-  if (!token) return null;
+  if (!token) {
+    return null;
+  }
 
   const [, payload] = token.split('.');
-  if (!payload) return null;
+  if (!payload) {
+    return null;
+  }
 
   try {
     const parsed = JSON.parse(decodeBase64Url(payload)) as { exp?: unknown };
@@ -29,11 +30,15 @@ export function getJwtExpiration(token: string | null | undefined): Date | null 
 
 export function isJwtExpiredOrExpiring(
   token: string | null | undefined,
-  leewaySeconds = 60,
+  leewaySeconds = 60
 ): boolean {
-  if (!token) return false;
+  if (!token) {
+    return false;
+  }
   const expires = getJwtExpiration(token);
-  if (!expires) return true;
+  if (!expires) {
+    return true;
+  }
 
   return expires.getTime() <= Date.now() + leewaySeconds * 1000;
 }

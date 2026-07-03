@@ -39,10 +39,15 @@ describe('Storage Module', () => {
     const { error } = await client.storage.from(BUCKET).upload(probeKey, probe);
     if (error) {
       bucketAvailable = false;
-      console.warn(`⚠ Bucket "${BUCKET}" not available – storage tests will verify error handling only.`);
+      console.warn(
+        `⚠ Bucket "${BUCKET}" not available – storage tests will verify error handling only.`
+      );
     } else {
       // Clean up probe file (best-effort)
-      await client.storage.from(BUCKET).remove(probeKey).catch(() => {});
+      await client.storage
+        .from(BUCKET)
+        .remove(probeKey)
+        .catch(() => {});
     }
   });
 
@@ -139,7 +144,9 @@ describe('Storage Module', () => {
     const fileContent = 'Upload test – ' + new Date().toISOString();
 
     it('should upload a file with a specific path', async () => {
-      if (!bucketAvailable) return;
+      if (!bucketAvailable) {
+        return;
+      }
 
       const blob = new Blob([fileContent], { type: 'text/plain' });
       const { data, error } = await client.storage.from(BUCKET).upload(filePath, blob);
@@ -150,7 +157,9 @@ describe('Storage Module', () => {
     });
 
     it('should find the uploaded file in listings', async () => {
-      if (!bucketAvailable) return;
+      if (!bucketAvailable) {
+        return;
+      }
 
       const { data } = await client.storage.from(BUCKET).list({ prefix: 'sdk-test/' });
       // File may or may not show immediately, but listing should work
@@ -158,7 +167,9 @@ describe('Storage Module', () => {
     });
 
     it('should delete the uploaded file', async () => {
-      if (!bucketAvailable) return;
+      if (!bucketAvailable) {
+        return;
+      }
 
       const { data, error } = await client.storage.from(BUCKET).remove(filePath);
 
@@ -173,7 +184,9 @@ describe('Storage Module', () => {
 
   describe('uploadAuto()', () => {
     it('should upload a file with auto-generated key', async () => {
-      if (!bucketAvailable) return;
+      if (!bucketAvailable) {
+        return;
+      }
 
       const content = 'Auto upload – ' + Date.now();
       const blob = new Blob([content], { type: 'text/plain' });
@@ -196,7 +209,9 @@ describe('Storage Module', () => {
 
   describe('download()', () => {
     it('should download a previously uploaded file', async () => {
-      if (!bucketAvailable) return;
+      if (!bucketAvailable) {
+        return;
+      }
 
       const path = `sdk-test/download-${Date.now()}.txt`;
       const originalContent = 'Download test – ' + Date.now();
@@ -219,9 +234,7 @@ describe('Storage Module', () => {
     });
 
     it('should return error for non-existent file', async () => {
-      const { error } = await client.storage
-        .from(BUCKET)
-        .download(`nonexistent-${Date.now()}.txt`);
+      const { error } = await client.storage.from(BUCKET).download(`nonexistent-${Date.now()}.txt`);
 
       expect(error).not.toBeNull();
     });

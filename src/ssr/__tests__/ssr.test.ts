@@ -61,11 +61,9 @@ class NextCookiesLike {
   set(name: string, value: string, options?: NextCookieOptions): this;
   set(options: { name: string; value: string } & NextCookieOptions): this;
   set(
-    nameOrOptions:
-      | string
-      | ({ name: string; value: string } & NextCookieOptions),
+    nameOrOptions: string | ({ name: string; value: string } & NextCookieOptions),
     value?: string,
-    options?: NextCookieOptions,
+    options?: NextCookieOptions
   ): this {
     if (typeof nameOrOptions === 'string') {
       this.values.set(nameOrOptions, value ?? '');
@@ -82,8 +80,7 @@ class NextCookiesLike {
   delete(name: string): this;
   delete(options: { name: string } & NextCookieOptions): this;
   delete(nameOrOptions: string | ({ name: string } & NextCookieOptions)): this {
-    const name =
-      typeof nameOrOptions === 'string' ? nameOrOptions : nameOrOptions.name;
+    const name = typeof nameOrOptions === 'string' ? nameOrOptions : nameOrOptions.name;
     this.values.delete(name);
     return this;
   }
@@ -135,9 +132,7 @@ describe('@insforge/sdk/ssr cookies', () => {
 
     expect(cookies.values.get('insforge_access_token')).toBe('');
     expect(cookies.values.get('insforge_refresh_token')).toBe('');
-    expect(
-      cookies.options.get('insforge_access_token')?.expires?.getTime(),
-    ).toBe(0);
+    expect(cookies.options.get('insforge_access_token')?.expires?.getTime()).toBe(0);
   });
 
   it('keeps deletion expiry fields when clearing cookies with overrides', () => {
@@ -170,9 +165,7 @@ describe('@insforge/sdk/ssr cookies', () => {
       anonKey: 'anon-key',
     });
 
-    expect(client.getHttpClient().getHeaders().Authorization).toBe(
-      `Bearer ${token}`,
-    );
+    expect(client.getHttpClient().getHeaders().Authorization).toBe(`Bearer ${token}`);
   });
 
   it('creates a browser client from the access-token cookie', () => {
@@ -187,9 +180,7 @@ describe('@insforge/sdk/ssr cookies', () => {
       fetch: vi.fn() as any,
     });
 
-    expect(client.getHttpClient().getHeaders().Authorization).toBe(
-      `Bearer ${token}`,
-    );
+    expect(client.getHttpClient().getHeaders().Authorization).toBe(`Bearer ${token}`);
   });
 
   it('refreshes through the app route before a browser request when access token is missing', async () => {
@@ -212,16 +203,16 @@ describe('@insforge/sdk/ssr cookies', () => {
     });
     const result = await client.getHttpClient().get('/api/protected');
     const protectedCall = fetch.mock.calls.find(
-      ([url]: [string]) => url === 'https://api.insforge.test/api/protected',
+      ([url]: [string]) => url === 'https://api.insforge.test/api/protected'
     );
 
     expect(result).toMatchObject({ ok: true });
     expect(fetch).toHaveBeenCalledWith(
       '/api/auth/refresh',
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({ method: 'POST' })
     );
     expect(new Headers(protectedCall?.[1]?.headers).get('Authorization')).toBe(
-      `Bearer ${accessToken}`,
+      `Bearer ${accessToken}`
     );
   });
 
@@ -258,22 +249,21 @@ describe('@insforge/sdk/ssr cookies', () => {
     });
     const result = await client.getHttpClient().get('/api/protected');
     const protectedCalls = fetch.mock.calls.filter(
-      ([url]: [string]) => url === 'https://api.insforge.test/api/protected',
+      ([url]: [string]) => url === 'https://api.insforge.test/api/protected'
     );
 
     expect(result).toEqual({ ok: true });
     expect(protectedCalls).toHaveLength(2);
     expect(new Headers(protectedCalls[0][1].headers).get('Authorization')).toBe(
-      `Bearer ${oldAccessToken}`,
+      `Bearer ${oldAccessToken}`
     );
     expect(new Headers(protectedCalls[1][1].headers).get('Authorization')).toBe(
-      `Bearer ${freshAccessToken}`,
+      `Bearer ${freshAccessToken}`
     );
     expect(
       fetch.mock.calls.some(
-        ([url]: [string]) =>
-          url === 'https://api.insforge.test/api/auth/refresh',
-      ),
+        ([url]: [string]) => url === 'https://api.insforge.test/api/auth/refresh'
+      )
     ).toBe(false);
   });
 
@@ -287,7 +277,7 @@ describe('@insforge/sdk/ssr cookies', () => {
         error: ERROR_CODES.AUTH_TOKEN_EXPIRED,
         message: 'Access token expired',
         statusCode: 401,
-      }),
+      })
     );
 
     const client = createBrowserClient({
@@ -346,9 +336,7 @@ describe('@insforge/sdk/ssr auth actions', () => {
     const refreshToken = jwtWithExp(Math.floor(Date.now() / 1000) + 86400);
     const cookies = cookieStore();
     const fetch = vi.fn(async (url: string, init: RequestInit) => {
-      expect(url).toBe(
-        'https://api.insforge.test/api/auth/sessions?client_type=mobile',
-      );
+      expect(url).toBe('https://api.insforge.test/api/auth/sessions?client_type=mobile');
       expect(JSON.parse(String(init.body))).toEqual({
         email: 'user@example.com',
         password: 'secret',
@@ -383,9 +371,7 @@ describe('@insforge/sdk/ssr auth actions', () => {
   it('does not write cookies or return tokens when sign-up requires verification', async () => {
     const cookies = cookieStore();
     const fetch = vi.fn(async (url: string, init: RequestInit) => {
-      expect(url).toBe(
-        'https://api.insforge.test/api/auth/users?client_type=mobile',
-      );
+      expect(url).toBe('https://api.insforge.test/api/auth/users?client_type=mobile');
       expect(JSON.parse(String(init.body))).toEqual({
         email: 'new@example.com',
         password: 'secret',
@@ -454,11 +440,9 @@ describe('@insforge/sdk/ssr auth actions', () => {
     const fetch = vi.fn(async (url: string) => {
       const oauthUrl = new URL(url);
       expect(oauthUrl.origin + oauthUrl.pathname).toBe(
-        'https://api.insforge.test/api/auth/oauth/google',
+        'https://api.insforge.test/api/auth/oauth/google'
       );
-      expect(oauthUrl.searchParams.get('redirect_uri')).toBe(
-        'https://app.test/api/auth/callback',
-      );
+      expect(oauthUrl.searchParams.get('redirect_uri')).toBe('https://app.test/api/auth/callback');
       expect(oauthUrl.searchParams.get('code_challenge')).toBeTruthy();
       return jsonResponse(200, {
         authUrl: 'https://accounts.example/oauth',
@@ -487,9 +471,7 @@ describe('@insforge/sdk/ssr auth actions', () => {
     const refreshToken = jwtWithExp(Math.floor(Date.now() / 1000) + 86400);
     const cookies = cookieStore();
     const fetch = vi.fn(async (url: string, init: RequestInit) => {
-      expect(url).toBe(
-        'https://api.insforge.test/api/auth/oauth/exchange?client_type=mobile',
-      );
+      expect(url).toBe('https://api.insforge.test/api/auth/oauth/exchange?client_type=mobile');
       expect(JSON.parse(String(init.body))).toEqual({
         code: 'oauth-code',
         code_verifier: 'code-verifier',
@@ -521,9 +503,7 @@ describe('@insforge/sdk/ssr auth actions', () => {
     const refreshToken = jwtWithExp(Math.floor(Date.now() / 1000) + 86400);
     const cookies = cookieStore();
     const fetch = vi.fn(async (url: string, init: RequestInit) => {
-      expect(url).toBe(
-        'https://api.insforge.test/api/auth/email/verify?client_type=mobile',
-      );
+      expect(url).toBe('https://api.insforge.test/api/auth/email/verify?client_type=mobile');
       expect(JSON.parse(String(init.body))).toEqual({
         email: 'user@example.com',
         otp: '123456',
@@ -558,7 +538,7 @@ describe('@insforge/sdk/ssr auth actions', () => {
         baseUrl: 'https://api.insforge.test',
         anonKey: 'anon-key',
         fetch: vi.fn() as any,
-      }),
+      })
     ).toThrow('requires a writable cookie store');
   });
 
@@ -570,9 +550,7 @@ describe('@insforge/sdk/ssr auth actions', () => {
     });
     const responseCookies = cookieStore();
     const fetch = vi.fn(async (_url: string, init: RequestInit) => {
-      expect(new Headers(init.headers).get('Authorization')).toBe(
-        `Bearer ${accessToken}`,
-      );
+      expect(new Headers(init.headers).get('Authorization')).toBe(`Bearer ${accessToken}`);
       return new Response(null, { status: 204 });
     });
 
@@ -588,12 +566,8 @@ describe('@insforge/sdk/ssr auth actions', () => {
     expect(result.error).toBeNull();
     expect(responseCookies.values.get('insforge_access_token')).toBe('');
     expect(responseCookies.values.get('insforge_refresh_token')).toBe('');
-    expect(responseCookies.options.get('insforge_refresh_token')?.maxAge).toBe(
-      0,
-    );
-    expect(requestCookies.values.get('insforge_refresh_token')).toBe(
-      'old-refresh',
-    );
+    expect(responseCookies.options.get('insforge_refresh_token')?.maxAge).toBe(0);
+    expect(requestCookies.values.get('insforge_refresh_token')).toBe('old-refresh');
   });
 });
 
@@ -631,9 +605,7 @@ describe('@insforge/sdk/ssr config', () => {
       fetch: vi.fn() as any,
     });
 
-    expect(client.getHttpClient().baseUrl).toBe(
-      'https://explicit.insforge.test',
-    );
+    expect(client.getHttpClient().baseUrl).toBe('https://explicit.insforge.test');
   });
 
   it('uses public env defaults for server clients', () => {
@@ -653,7 +625,7 @@ describe('@insforge/sdk/ssr config', () => {
     expect(() =>
       createBrowserClient({
         fetch: vi.fn() as any,
-      }),
+      })
     ).toThrow('NEXT_PUBLIC_INSFORGE_URL');
   });
 
@@ -686,12 +658,8 @@ describe('@insforge/sdk/ssr refresh route', () => {
     const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
     const refreshToken = jwtWithExp(Math.floor(Date.now() / 1000) + 86400);
     const fetch = vi.fn(async (url: string, init: RequestInit) => {
-      expect(url).toBe(
-        'https://api.insforge.test/api/auth/refresh?client_type=mobile',
-      );
-      expect(new Headers(init.headers).get('Authorization')).toBe(
-        'Bearer anon-key',
-      );
+      expect(url).toBe('https://api.insforge.test/api/auth/refresh?client_type=mobile');
+      expect(new Headers(init.headers).get('Authorization')).toBe('Bearer anon-key');
       expect(JSON.parse(init.body as string)).toEqual({
         refresh_token: 'old-refresh',
       });
@@ -721,10 +689,8 @@ describe('@insforge/sdk/ssr refresh route', () => {
     expect(setCookies.some((cookie) => cookie.includes('HttpOnly'))).toBe(true);
     expect(
       setCookies.some(
-        (cookie) =>
-          cookie.startsWith('insforge_access_token=') &&
-          !cookie.includes('HttpOnly'),
-      ),
+        (cookie) => cookie.startsWith('insforge_access_token=') && !cookie.includes('HttpOnly')
+      )
     ).toBe(true);
   });
 
@@ -734,7 +700,7 @@ describe('@insforge/sdk/ssr refresh route', () => {
       jsonResponse(200, {
         accessToken,
         user: { id: 'user-1' },
-      }),
+      })
     );
     const { POST } = createRefreshAuthRouter({
       baseUrl: 'https://api.insforge.test',
@@ -746,7 +712,7 @@ describe('@insforge/sdk/ssr refresh route', () => {
       new Request('https://app.test/api/auth/refresh', {
         method: 'POST',
         headers: { cookie: 'insforge_refresh_token=old-refresh' },
-      }),
+      })
     );
 
     expect(response.status).toBe(200);
@@ -814,7 +780,7 @@ describe('@insforge/sdk/ssr updateSession', () => {
         accessToken: freshAccess,
         refreshToken: freshRefresh,
         user: { id: 'user-1' },
-      }),
+      })
     );
 
     const result = await updateSession({
@@ -827,14 +793,8 @@ describe('@insforge/sdk/ssr updateSession', () => {
 
     expect(result.refreshed).toBe(true);
     expect(result.accessToken).toBe(freshAccess);
-    expect(requestCookies.values.get('insforge_access_token')).toBe(
-      freshAccess,
-    );
-    expect(responseCookies.values.get('insforge_access_token')).toBe(
-      freshAccess,
-    );
-    expect(
-      responseCookies.options.get('insforge_refresh_token')?.httpOnly,
-    ).toBe(true);
+    expect(requestCookies.values.get('insforge_access_token')).toBe(freshAccess);
+    expect(responseCookies.values.get('insforge_access_token')).toBe(freshAccess);
+    expect(responseCookies.options.get('insforge_refresh_token')?.httpOnly).toBe(true);
   });
 });

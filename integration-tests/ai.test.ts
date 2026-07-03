@@ -65,7 +65,9 @@ describe('AI Module', () => {
           input: 'Hello world',
         });
       } catch (err: any) {
-        if (!isModelUnavailable(err)) throw err;
+        if (!isModelUnavailable(err)) {
+          throw err;
+        }
         console.warn('Embeddings model not available:', err.message);
         return;
       }
@@ -90,7 +92,9 @@ describe('AI Module', () => {
           input: ['Hello world', 'Goodbye world', 'Testing embeddings'],
         });
       } catch (err: any) {
-        if (!isModelUnavailable(err)) throw err;
+        if (!isModelUnavailable(err)) {
+          throw err;
+        }
         console.warn('Embeddings model not available:', err.message);
         return;
       }
@@ -116,7 +120,9 @@ describe('AI Module', () => {
           dimensions: 256,
         });
       } catch (err: any) {
-        if (!isModelUnavailable(err)) throw err;
+        if (!isModelUnavailable(err)) {
+          throw err;
+        }
         console.warn('Embeddings model not available:', err.message);
         return;
       }
@@ -138,7 +144,9 @@ describe('AI Module', () => {
           messages: [{ role: 'user', content: 'Reply with exactly the word: pong' }],
         });
       } catch (err: any) {
-        if (!isModelUnavailable(err)) throw err;
+        if (!isModelUnavailable(err)) {
+          throw err;
+        }
         console.warn('Chat model not available:', err.message);
         return;
       }
@@ -167,7 +175,9 @@ describe('AI Module', () => {
           ],
         });
       } catch (err: any) {
-        if (!isModelUnavailable(err)) throw err;
+        if (!isModelUnavailable(err)) {
+          throw err;
+        }
         console.warn('Chat model not available:', err.message);
         return;
       }
@@ -187,7 +197,9 @@ describe('AI Module', () => {
           ],
         });
       } catch (err: any) {
-        if (!isModelUnavailable(err)) throw err;
+        if (!isModelUnavailable(err)) {
+          throw err;
+        }
         console.warn('Chat model not available:', err.message);
         return;
       }
@@ -210,7 +222,9 @@ describe('AI Module', () => {
           stream: true,
         });
       } catch (err: any) {
-        if (!isModelUnavailable(err)) throw err;
+        if (!isModelUnavailable(err)) {
+          throw err;
+        }
         console.warn('Streaming not available:', err.message);
         return;
       }
@@ -260,7 +274,9 @@ describe('AI Module', () => {
           tools: [weatherTool],
         });
       } catch (err: any) {
-        if (!isModelUnavailable(err)) throw err;
+        if (!isModelUnavailable(err)) {
+          throw err;
+        }
         console.warn('Chat model not available:', err.message);
         return;
       }
@@ -288,7 +304,9 @@ describe('AI Module', () => {
           toolChoice: 'none',
         });
       } catch (err: any) {
-        if (!isModelUnavailable(err)) throw err;
+        if (!isModelUnavailable(err)) {
+          throw err;
+        }
         console.warn('Chat model not available:', err.message);
         return;
       }
@@ -313,7 +331,9 @@ describe('AI Module', () => {
           webSearch: { enabled: true, maxResults: 3 },
         });
       } catch (err: any) {
-        if (!isModelUnavailable(err)) throw err;
+        if (!isModelUnavailable(err)) {
+          throw err;
+        }
         console.warn('Web search not available:', err.message);
         return;
       }
@@ -338,7 +358,9 @@ describe('AI Module', () => {
           prompt: 'A simple blue circle on white background',
         });
       } catch (err: any) {
-        if (!isModelUnavailable(err)) throw err;
+        if (!isModelUnavailable(err)) {
+          throw err;
+        }
         console.warn('Image generation not available:', err.message);
         return;
       }

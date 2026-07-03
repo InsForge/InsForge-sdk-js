@@ -3,9 +3,18 @@ type LogFunction = (message: string, ...args: any[]) => void;
 const SENSITIVE_HEADERS = ['authorization', 'x-api-key', 'cookie', 'set-cookie'];
 
 const SENSITIVE_BODY_KEYS = [
-  'password', 'token', 'accesstoken', 'refreshtoken',
-  'authorization', 'secret', 'apikey', 'api_key',
-  'email', 'ssn', 'creditcard', 'credit_card',
+  'password',
+  'token',
+  'accesstoken',
+  'refreshtoken',
+  'authorization',
+  'secret',
+  'apikey',
+  'api_key',
+  'email',
+  'ssn',
+  'creditcard',
+  'credit_card',
 ];
 
 /**
@@ -32,7 +41,9 @@ function redactHeaders(headers: Record<string, string>): Record<string, string> 
  * @returns A sanitized copy of the body with sensitive values masked
  */
 function sanitizeBody(body: any): any {
-  if (body === null || body === undefined) return body;
+  if (body === null || body === undefined) {
+    return body;
+  }
   if (typeof body === 'string') {
     try {
       const parsed = JSON.parse(body);
@@ -41,7 +52,9 @@ function sanitizeBody(body: any): any {
       return body;
     }
   }
-  if (Array.isArray(body)) return body.map(sanitizeBody);
+  if (Array.isArray(body)) {
+    return body.map(sanitizeBody);
+  }
   if (typeof body === 'object') {
     const sanitized: Record<string, any> = {};
     for (const [key, value] of Object.entries(body)) {
@@ -63,7 +76,9 @@ function sanitizeBody(body: any): any {
  * @returns A formatted string representation of the body, or empty string if null/undefined
  */
 function formatBody(body: any): string {
-  if (body === undefined || body === null) return '';
+  if (body === undefined || body === null) {
+    return '';
+  }
   if (typeof body === 'string') {
     try {
       return JSON.stringify(JSON.parse(body), null, 2);
@@ -121,7 +136,9 @@ export class Logger {
    * @param args - Additional arguments to pass to the log function
    */
   log(message: string, ...args: any[]): void {
-    if (!this.enabled) return;
+    if (!this.enabled) {
+      return;
+    }
     const formatted = `[InsForge Debug] ${message}`;
     if (this.customLog) {
       this.customLog(formatted, ...args);
@@ -136,7 +153,9 @@ export class Logger {
    * @param args - Additional arguments to pass to the log function
    */
   warn(message: string, ...args: any[]): void {
-    if (!this.enabled) return;
+    if (!this.enabled) {
+      return;
+    }
     const formatted = `[InsForge Debug] ${message}`;
     if (this.customLog) {
       this.customLog(formatted, ...args);
@@ -151,7 +170,9 @@ export class Logger {
    * @param args - Additional arguments to pass to the log function
    */
   error(message: string, ...args: any[]): void {
-    if (!this.enabled) return;
+    if (!this.enabled) {
+      return;
+    }
     const formatted = `[InsForge Debug] ${message}`;
     if (this.customLog) {
       this.customLog(formatted, ...args);
@@ -168,24 +189,20 @@ export class Logger {
    * @param headers - Request headers (sensitive values will be redacted)
    * @param body - Request body (sensitive fields will be masked)
    */
-  logRequest(
-    method: string,
-    url: string,
-    headers?: Record<string, string>,
-    body?: any
-  ): void {
-    if (!this.enabled) return;
-    const parts: string[] = [
-      `→ ${method} ${url}`,
-    ];
+  logRequest(method: string, url: string, headers?: Record<string, string>, body?: any): void {
+    if (!this.enabled) {
+      return;
+    }
+    const parts: string[] = [`→ ${method} ${url}`];
     if (headers && Object.keys(headers).length > 0) {
       parts.push(`  Headers: ${JSON.stringify(redactHeaders(headers))}`);
     }
     const formattedBody = formatBody(sanitizeBody(body));
     if (formattedBody) {
-      const truncated = formattedBody.length > 1000
-        ? formattedBody.slice(0, 1000) + '... [truncated]'
-        : formattedBody;
+      const truncated =
+        formattedBody.length > 1000
+          ? formattedBody.slice(0, 1000) + '... [truncated]'
+          : formattedBody;
       parts.push(`  Body: ${truncated}`);
     }
     this.log(parts.join('\n'));
@@ -200,22 +217,17 @@ export class Logger {
    * @param durationMs - Request duration in milliseconds
    * @param body - Response body (sensitive fields will be masked, large bodies truncated)
    */
-  logResponse(
-    method: string,
-    url: string,
-    status: number,
-    durationMs: number,
-    body?: any
-  ): void {
-    if (!this.enabled) return;
-    const parts: string[] = [
-      `← ${method} ${url} ${status} (${durationMs}ms)`,
-    ];
+  logResponse(method: string, url: string, status: number, durationMs: number, body?: any): void {
+    if (!this.enabled) {
+      return;
+    }
+    const parts: string[] = [`← ${method} ${url} ${status} (${durationMs}ms)`];
     const formattedBody = formatBody(sanitizeBody(body));
     if (formattedBody) {
-      const truncated = formattedBody.length > 1000
-        ? formattedBody.slice(0, 1000) + '... [truncated]'
-        : formattedBody;
+      const truncated =
+        formattedBody.length > 1000
+          ? formattedBody.slice(0, 1000) + '... [truncated]'
+          : formattedBody;
       parts.push(`  Body: ${truncated}`);
     }
     if (status >= 400) {

@@ -1,8 +1,4 @@
-import {
-  InsForgeError,
-  type AuthRefreshResponse,
-  type InsForgeConfig,
-} from '../types';
+import { InsForgeError, type AuthRefreshResponse, type InsForgeConfig } from '../types';
 import { ERROR_CODES } from '@insforge/shared-schemas';
 import {
   clearAuthCookieHeaders,
@@ -15,10 +11,8 @@ import {
 } from './cookies';
 
 export interface RefreshAuthOptions
-  extends Omit<
-      InsForgeConfig,
-      'accessToken' | 'edgeFunctionToken' | 'isServerMode' | 'auth'
-    >,
+  extends
+    Omit<InsForgeConfig, 'accessToken' | 'edgeFunctionToken' | 'isServerMode' | 'auth'>,
     AuthCookieSettings {
   request?: Request;
   cookies?: Pick<CookieStore, 'get'>;
@@ -38,7 +32,7 @@ export type RefreshAuthRouteHandler = (request: Request) => Promise<Response>;
 function jsonResponse(
   body: unknown,
   init: ResponseInit = {},
-  headers = new Headers(init.headers),
+  headers = new Headers(init.headers)
 ): Response {
   headers.set('Content-Type', 'application/json');
   return new Response(JSON.stringify(body), {
@@ -48,7 +42,9 @@ function jsonResponse(
 }
 
 function normalizeError(error: unknown): InsForgeError {
-  if (error instanceof InsForgeError) return error;
+  if (error instanceof InsForgeError) {
+    return error;
+  }
 
   if (error && typeof error === 'object') {
     const body = error as {
@@ -57,45 +53,42 @@ function normalizeError(error: unknown): InsForgeError {
       statusCode?: unknown;
     };
     return new InsForgeError(
-      typeof body.message === 'string'
-        ? body.message
-        : 'Failed to refresh auth session',
+      typeof body.message === 'string' ? body.message : 'Failed to refresh auth session',
       typeof body.statusCode === 'number' ? body.statusCode : 500,
-      typeof body.error === 'string'
-        ? body.error
-        : ERROR_CODES.UNKNOWN_ERROR,
+      typeof body.error === 'string' ? body.error : ERROR_CODES.UNKNOWN_ERROR
     );
   }
 
   return new InsForgeError(
     error instanceof Error ? error.message : 'Failed to refresh auth session',
     500,
-    ERROR_CODES.UNKNOWN_ERROR,
+    ERROR_CODES.UNKNOWN_ERROR
   );
 }
 
 async function readJson(response: Response): Promise<unknown> {
   const contentType = response.headers.get('content-type');
-  if (!contentType?.includes('json')) return null;
+  if (!contentType?.includes('json')) {
+    return null;
+  }
   return response.json();
 }
 
 function readRefreshToken(options: RefreshAuthOptions): string | null {
-  if (options.refreshToken) return options.refreshToken;
+  if (options.refreshToken) {
+    return options.refreshToken;
+  }
 
   const refreshCookieName = getRefreshTokenCookieName(options.names);
   const cookieValue = getCookieValue(options.cookies, refreshCookieName);
-  if (cookieValue) return cookieValue;
+  if (cookieValue) {
+    return cookieValue;
+  }
 
-  return getCookieValueFromHeader(
-    options.request?.headers.get('cookie'),
-    refreshCookieName,
-  );
+  return getCookieValueFromHeader(options.request?.headers.get('cookie'), refreshCookieName);
 }
 
-export async function refreshAuth(
-  options: RefreshAuthOptions = {},
-): Promise<RefreshAuthResult> {
+export async function refreshAuth(options: RefreshAuthOptions = {}): Promise<RefreshAuthResult> {
   const headers = new Headers();
   const refreshToken = readRefreshToken(options);
 
@@ -104,7 +97,7 @@ export async function refreshAuth(
     const error = new InsForgeError(
       'Refresh token cookie is missing',
       401,
-      ERROR_CODES.AUTH_UNAUTHORIZED,
+      ERROR_CODES.AUTH_UNAUTHORIZED
     );
     return {
       response: jsonResponse(
@@ -114,7 +107,7 @@ export async function refreshAuth(
           statusCode: error.statusCode,
         },
         { status: error.statusCode },
-        headers,
+        headers
       ),
       data: null,
       accessToken: null,
@@ -132,7 +125,7 @@ export async function refreshAuth(
   }
   if (!baseUrl || !anonKey) {
     throw new Error(
-      'Missing InsForge baseUrl or anonKey. Pass baseUrl and anonKey to refreshAuth() or set NEXT_PUBLIC_INSFORGE_URL and NEXT_PUBLIC_INSFORGE_ANON_KEY.',
+      'Missing InsForge baseUrl or anonKey. Pass baseUrl and anonKey to refreshAuth() or set NEXT_PUBLIC_INSFORGE_URL and NEXT_PUBLIC_INSFORGE_ANON_KEY.'
     );
   }
 
@@ -142,9 +135,7 @@ export async function refreshAuth(
       ? globalThis.fetch.bind(globalThis)
       : (undefined as typeof fetch | undefined));
   if (!fetchImpl) {
-    throw new Error(
-      'Fetch is not available. Please provide a fetch implementation.',
-    );
+    throw new Error('Fetch is not available. Please provide a fetch implementation.');
   }
 
   const requestHeaders = new Headers(options.headers);
@@ -162,7 +153,7 @@ export async function refreshAuth(
         method: 'POST',
         headers: requestHeaders,
         body: JSON.stringify({ refresh_token: refreshToken }),
-      },
+      }
     );
     const body = await readJson(response);
     if (!response.ok) {
@@ -171,7 +162,7 @@ export async function refreshAuth(
           message: 'Failed to refresh auth session',
           statusCode: response.status,
           error: ERROR_CODES.UNKNOWN_ERROR,
-        },
+        }
       );
     } else {
       data = body as AuthRefreshResponse;
@@ -191,7 +182,7 @@ export async function refreshAuth(
           statusCode: normalized.statusCode,
         },
         { status: normalized.statusCode || 500 },
-        headers,
+        headers
       ),
       data: null,
       accessToken: null,
@@ -207,7 +198,7 @@ export async function refreshAuth(
       accessToken: data.accessToken,
       refreshToken: nextRefreshToken,
     },
-    options,
+    options
   );
 
   const responseBody: AuthRefreshResponse = {
@@ -225,11 +216,10 @@ export async function refreshAuth(
   };
 }
 
-export function createRefreshAuthRouter(
-  options: Omit<RefreshAuthOptions, 'request'> = {},
-): { POST: RefreshAuthRouteHandler } {
+export function createRefreshAuthRouter(options: Omit<RefreshAuthOptions, 'request'> = {}): {
+  POST: RefreshAuthRouteHandler;
+} {
   return {
-    POST: async (request: Request) =>
-      (await refreshAuth({ ...options, request })).response,
+    POST: async (request: Request) => (await refreshAuth({ ...options, request })).response,
   };
 }

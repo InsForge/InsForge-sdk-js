@@ -1,11 +1,5 @@
-export {
-  createBrowserClient,
-  type CreateBrowserClientOptions,
-} from './ssr/browser-client';
-export {
-  createServerClient,
-  type CreateServerClientOptions,
-} from './ssr/server-client';
+export { createBrowserClient, type CreateBrowserClientOptions } from './ssr/browser-client';
+export { createServerClient, type CreateServerClientOptions } from './ssr/server-client';
 export {
   createRefreshAuthRouter,
   refreshAuth,
