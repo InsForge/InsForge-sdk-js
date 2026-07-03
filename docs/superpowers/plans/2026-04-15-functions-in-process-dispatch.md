@@ -14,14 +14,14 @@
 
 ## File Map
 
-| File | Action | Responsibility |
-|---|---|---|
-| `src/lib/http-client.ts` | Modify | Extract `serializeBody` and `parseResponse` as exported helpers; refactor `handleRequest` to call them |
-| `src/lib/__tests__/http-client.test.ts` | Modify | Add direct unit tests for the two extracted helpers |
-| `src/types/globals.d.ts` | Create | Declare type for `globalThis.__insforge_dispatch__` |
-| `src/modules/functions.ts` | Modify | Add in-process dispatch branch + `buildInProcessRequest` |
-| `src/modules/__tests__/functions.test.ts` | Create | Cover both HTTP path and in-process path for `Functions.invoke` |
-| **`generateRouter()` in InsForge backend repo** | **Modify (out of this repo)** | Wrap handler in named `dispatch` const; publish on `globalThis` |
+| File                                            | Action                        | Responsibility                                                                                         |
+| ----------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `src/lib/http-client.ts`                        | Modify                        | Extract `serializeBody` and `parseResponse` as exported helpers; refactor `handleRequest` to call them |
+| `src/lib/__tests__/http-client.test.ts`         | Modify                        | Add direct unit tests for the two extracted helpers                                                    |
+| `src/types/globals.d.ts`                        | Create                        | Declare type for `globalThis.__insforge_dispatch__`                                                    |
+| `src/modules/functions.ts`                      | Modify                        | Add in-process dispatch branch + `buildInProcessRequest`                                               |
+| `src/modules/__tests__/functions.test.ts`       | Create                        | Cover both HTTP path and in-process path for `Functions.invoke`                                        |
+| **`generateRouter()` in InsForge backend repo** | **Modify (out of this repo)** | Wrap handler in named `dispatch` const; publish on `globalThis`                                        |
 
 Two helpers (`serializeBody`, `parseResponse`) stay co-located in `http-client.ts` because they encode the SDK's wire-format conventions and the file already owns that domain. Pulling them into separate files would scatter cohesive logic without a clear win.
 
@@ -30,6 +30,7 @@ Two helpers (`serializeBody`, `parseResponse`) stay co-located in `http-client.t
 ## Task 1: Extract `serializeBody` Helper from `HttpClient.handleRequest`
 
 **Files:**
+
 - Modify: `src/lib/http-client.ts` (current body-serialization block at lines 165-179)
 - Test: `src/lib/__tests__/http-client.test.ts`
 
@@ -97,7 +98,7 @@ In `src/lib/http-client.ts`, add this top-level function above the `HttpClient` 
 export function serializeBody(
   method: string,
   body: unknown,
-  headers: Record<string, string>,
+  headers: Record<string, string>
 ): BodyInit | undefined {
   if (body === undefined) return undefined;
   if (typeof FormData !== 'undefined' && body instanceof FormData) {
@@ -115,27 +116,27 @@ export function serializeBody(
 In `src/lib/http-client.ts`, replace lines 165-179 (the inline `processedBody` block):
 
 ```ts
-    // Handle body serialization
-    let processedBody: any;
-    if (body !== undefined) {
-      // Check if body is FormData (for file uploads)
-      if (typeof FormData !== 'undefined' && body instanceof FormData) {
-        // Don't set Content-Type for FormData, let browser set it with boundary
-        processedBody = body;
-      } else {
-        // JSON body
-        if (method !== 'GET') {
-          requestHeaders['Content-Type'] = 'application/json;charset=UTF-8';
-        }
-        processedBody = JSON.stringify(body);
-      }
+// Handle body serialization
+let processedBody: any;
+if (body !== undefined) {
+  // Check if body is FormData (for file uploads)
+  if (typeof FormData !== 'undefined' && body instanceof FormData) {
+    // Don't set Content-Type for FormData, let browser set it with boundary
+    processedBody = body;
+  } else {
+    // JSON body
+    if (method !== 'GET') {
+      requestHeaders['Content-Type'] = 'application/json;charset=UTF-8';
     }
+    processedBody = JSON.stringify(body);
+  }
+}
 ```
 
 with:
 
 ```ts
-    const processedBody = serializeBody(method, body, requestHeaders);
+const processedBody = serializeBody(method, body, requestHeaders);
 ```
 
 - [ ] **Step 5: Run all unit tests to verify nothing regressed**
@@ -160,6 +161,7 @@ git commit -m "refactor(http-client): extract serializeBody helper"
 ## Task 2: Extract `parseResponse` Helper from `HttpClient.handleRequest`
 
 **Files:**
+
 - Modify: `src/lib/http-client.ts` (current response-parsing block at lines 275-345)
 - Test: `src/lib/__tests__/http-client.test.ts`
 
@@ -188,9 +190,7 @@ function makeResponse(init: {
     statusText: init.statusText ?? '',
     headers,
     json: () =>
-      init.jsonThrows
-        ? Promise.reject(new Error('bad json'))
-        : Promise.resolve(init.jsonValue),
+      init.jsonThrows ? Promise.reject(new Error('bad json')) : Promise.resolve(init.jsonValue),
     text: () => Promise.resolve(init.bodyText ?? ''),
   } as Response;
 }
@@ -327,7 +327,7 @@ export async function parseResponse<T>(response: Response): Promise<T> {
     throw new InsForgeError(
       `Failed to parse response body: ${parseErr?.message || 'Unknown error'}`,
       response.status,
-      response.ok ? 'PARSE_ERROR' : 'REQUEST_FAILED',
+      response.ok ? 'PARSE_ERROR' : 'REQUEST_FAILED'
     );
   }
 
@@ -347,7 +347,7 @@ export async function parseResponse<T>(response: Response): Promise<T> {
     throw new InsForgeError(
       `Request failed: ${response.statusText}`,
       response.status,
-      'REQUEST_FAILED',
+      'REQUEST_FAILED'
     );
   }
 
@@ -360,33 +360,27 @@ export async function parseResponse<T>(response: Response): Promise<T> {
 In `src/lib/http-client.ts`, replace the block from line 275 (`// Handle 204 No Content`) through line 345 (`return data as T;`) with:
 
 ```ts
-        // Parse body via shared helper; logger fires after either way
-        let data: T;
-        try {
-          data = await parseResponse<T>(response);
-        } catch (err) {
-          if (timer !== undefined) clearTimeout(timer);
-          if (err instanceof InsForgeError) {
-            this.logger.logResponse(
-              method,
-              url,
-              err.statusCode || response.status,
-              Date.now() - startTime,
-              err,
-            );
-          }
-          throw err;
-        }
+// Parse body via shared helper; logger fires after either way
+let data: T;
+try {
+  data = await parseResponse<T>(response);
+} catch (err) {
+  if (timer !== undefined) clearTimeout(timer);
+  if (err instanceof InsForgeError) {
+    this.logger.logResponse(
+      method,
+      url,
+      err.statusCode || response.status,
+      Date.now() - startTime,
+      err
+    );
+  }
+  throw err;
+}
 
-        if (timer !== undefined) clearTimeout(timer);
-        this.logger.logResponse(
-          method,
-          url,
-          response.status,
-          Date.now() - startTime,
-          data,
-        );
-        return data;
+if (timer !== undefined) clearTimeout(timer);
+this.logger.logResponse(method, url, response.status, Date.now() - startTime, data);
+return data;
 ```
 
 - [ ] **Step 5: Run all unit tests**
@@ -411,6 +405,7 @@ git commit -m "refactor(http-client): extract parseResponse helper"
 ## Task 3: Add Global Type Declaration
 
 **Files:**
+
 - Create: `src/types/globals.d.ts`
 
 Lets the SDK reference `globalThis.__insforge_dispatch__` without `as any`. `tsconfig.json` already includes `src/**/*`, so no config change is needed.
@@ -428,9 +423,7 @@ declare global {
   // function-to-function calls in-process and avoid Deno Subhosting's
   // 508 Loop Detected. Undefined everywhere else (browser, external server).
   // eslint-disable-next-line no-var
-  var __insforge_dispatch__:
-    | ((req: Request) => Promise<Response>)
-    | undefined;
+  var __insforge_dispatch__: ((req: Request) => Promise<Response>) | undefined;
 }
 ```
 
@@ -451,6 +444,7 @@ git commit -m "feat(types): declare globalThis.__insforge_dispatch__"
 ## Task 4: Add In-Process Dispatch to `Functions.invoke`
 
 **Files:**
+
 - Modify: `src/modules/functions.ts`
 - Create: `src/modules/__tests__/functions.test.ts`
 
@@ -484,7 +478,7 @@ function makeHttp(fetchFn: ReturnType<typeof vi.fn>) {
       retryCount: 0,
       timeout: 0,
     },
-    makeTokenManager(),
+    makeTokenManager()
   );
 }
 
@@ -660,7 +654,7 @@ Expected: HTTP-path tests PASS (existing behavior); in-process tests FAIL becaus
 
 Replace the entire `src/modules/functions.ts` file with:
 
-```ts
+````ts
 import { HttpClient, parseResponse, serializeBody } from '../lib/http-client';
 import { InsForgeError } from '../types';
 
@@ -725,7 +719,7 @@ export class Functions {
     slug: string,
     method: string,
     body: unknown,
-    callerHeaders: Record<string, string>,
+    callerHeaders: Record<string, string>
   ): Request {
     const url = new URL('/' + slug, 'http://insforge.local').toString();
     // Start from HttpClient defaults (Authorization, anon key, etc.) so
@@ -755,7 +749,7 @@ export class Functions {
    */
   async invoke<T = any>(
     slug: string,
-    options: FunctionInvokeOptions = {},
+    options: FunctionInvokeOptions = {}
   ): Promise<{ data: T | null; error: InsForgeError | null }> {
     const { method = 'POST', body, headers = {} } = options;
 
@@ -777,7 +771,7 @@ export class Functions {
               : new InsForgeError(
                   error instanceof Error ? error.message : 'Function invocation failed',
                   500,
-                  'FUNCTION_ERROR',
+                  'FUNCTION_ERROR'
                 ),
         };
       }
@@ -804,7 +798,7 @@ export class Functions {
                 : new InsForgeError(
                     error instanceof Error ? error.message : 'Function invocation failed',
                     500,
-                    'FUNCTION_ERROR',
+                    'FUNCTION_ERROR'
                   ),
           };
         }
@@ -826,13 +820,13 @@ export class Functions {
             : new InsForgeError(
                 error instanceof Error ? error.message : 'Function invocation failed',
                 500,
-                'FUNCTION_ERROR',
+                'FUNCTION_ERROR'
               ),
       };
     }
   }
 }
-```
+````
 
 - [ ] **Step 4: Run the new test file to verify all cases pass**
 
@@ -866,6 +860,7 @@ git commit -m "feat(functions): in-process dispatch via globalThis.__insforge_di
 ## Task 5: Build Verification
 
 **Files:**
+
 - None modified.
 
 End-to-end check that the SDK still bundles cleanly with the new types and exports.
@@ -1024,6 +1019,7 @@ Run the backend's existing test/typecheck/build for the function-deployment serv
 - [ ] **Step 4: Deploy a test function pair to verify end-to-end**
 
 Deploy two functions to the same project where function B uses `@insforge/sdk` (with this repo's changes published) to call function A. Confirm:
+
 - B → A succeeds, returns A's response.
 - No `508 Loop Detected` in logs.
 - External callers (curl from outside the deployment) still hit both A and B normally over HTTPS.

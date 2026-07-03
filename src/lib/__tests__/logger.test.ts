@@ -95,7 +95,7 @@ describe('Logger', () => {
       const logger = new Logger(true);
 
       logger.logRequest('GET', 'http://localhost/api', {
-        'Authorization': 'Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.secret',
+        Authorization: 'Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.secret',
         'Content-Type': 'application/json',
       });
 
@@ -109,7 +109,12 @@ describe('Logger', () => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       const logger = new Logger(true);
 
-      logger.logRequest('POST', 'http://localhost/api', {}, JSON.stringify({ email: 'test@test.com', name: 'John' }));
+      logger.logRequest(
+        'POST',
+        'http://localhost/api',
+        {},
+        JSON.stringify({ email: 'test@test.com', name: 'John' })
+      );
 
       const output = logSpy.mock.calls[0][0] as string;
       expect(output).toContain('***REDACTED***');
@@ -121,7 +126,12 @@ describe('Logger', () => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       const logger = new Logger(true);
 
-      logger.logRequest('POST', 'http://localhost/api', {}, { password: 'secret123', username: 'admin' });
+      logger.logRequest(
+        'POST',
+        'http://localhost/api',
+        {},
+        { password: 'secret123', username: 'admin' }
+      );
 
       const output = logSpy.mock.calls[0][0] as string;
       expect(output).not.toContain('secret123');
@@ -132,7 +142,12 @@ describe('Logger', () => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       const logger = new Logger(true);
 
-      logger.logRequest('POST', 'http://localhost/api', {}, { user: { token: 'abc123', name: 'Jane' } });
+      logger.logRequest(
+        'POST',
+        'http://localhost/api',
+        {},
+        { user: { token: 'abc123', name: 'Jane' } }
+      );
 
       const output = logSpy.mock.calls[0][0] as string;
       expect(output).not.toContain('abc123');

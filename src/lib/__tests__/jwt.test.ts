@@ -17,7 +17,7 @@ describe('jwt helpers', () => {
     try {
       vi.stubGlobal('Buffer', undefined);
       expect(getJwtExpiration(jwtWithPayload({ exp: expiresAt }))).toEqual(
-        new Date(expiresAt * 1000),
+        new Date(expiresAt * 1000)
       );
     } finally {
       vi.stubGlobal('Buffer', originalBuffer);

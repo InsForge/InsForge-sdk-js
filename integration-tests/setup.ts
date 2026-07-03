@@ -23,7 +23,9 @@ export interface TestEnv {
 let _env: TestEnv | null = null;
 
 export function getTestEnv(): TestEnv {
-  if (_env) return _env;
+  if (_env) {
+    return _env;
+  }
 
   const baseUrl = (
     process.env.INSFORGE_INTEGRATION_BASE_URL ||
@@ -32,9 +34,7 @@ export function getTestEnv(): TestEnv {
   ).replace(/\/+$/, '');
 
   const anonKey =
-    process.env.INSFORGE_INTEGRATION_ANON_KEY ||
-    process.env.INSFORGE_TEST_ANON_KEY ||
-    '';
+    process.env.INSFORGE_INTEGRATION_ANON_KEY || process.env.INSFORGE_TEST_ANON_KEY || '';
 
   if (!baseUrl) {
     throw new Error(
@@ -46,9 +46,7 @@ export function getTestEnv(): TestEnv {
   }
 
   if (!anonKey) {
-    throw new Error(
-      'Missing INSFORGE_INTEGRATION_ANON_KEY. Provide the project anon key.'
-    );
+    throw new Error('Missing INSFORGE_INTEGRATION_ANON_KEY. Provide the project anon key.');
   }
 
   _env = { baseUrl, anonKey };

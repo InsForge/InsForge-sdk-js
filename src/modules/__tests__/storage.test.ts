@@ -21,7 +21,7 @@ function makeHttp(fetchFn: ReturnType<typeof vi.fn>) {
       retryCount: 0,
       timeout: 0,
     },
-    makeTokenManager(),
+    makeTokenManager()
   );
 }
 
@@ -74,7 +74,7 @@ describe('StorageBucket.createSignedUrl', () => {
         method: 'presigned',
         url: 'https://cdn.insforge.dev/storage/app/docs/invoice.pdf?Signature=abc',
         expiresAt: '2026-01-01T00:00:00.000Z',
-      }),
+      })
     );
     const bucket = new StorageBucket('docs', makeHttp(fetchFn));
 
@@ -82,7 +82,7 @@ describe('StorageBucket.createSignedUrl', () => {
 
     expect(result.error).toBeNull();
     expect(result.data?.signedUrl).toBe(
-      'https://cdn.insforge.dev/storage/app/docs/invoice.pdf?Signature=abc',
+      'https://cdn.insforge.dev/storage/app/docs/invoice.pdf?Signature=abc'
     );
     expect(result.data?.expiresAt).toBe('2026-01-01T00:00:00.000Z');
 
@@ -93,9 +93,9 @@ describe('StorageBucket.createSignedUrl', () => {
   });
 
   it('defaults expiresIn to 3600 and returns expiresAt: null when absent', async () => {
-    const fetchFn = vi.fn().mockResolvedValue(
-      jsonRes(200, { method: 'presigned', url: 'https://cdn.insforge.dev/x' }),
-    );
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValue(jsonRes(200, { method: 'presigned', url: 'https://cdn.insforge.dev/x' }));
     const bucket = new StorageBucket('docs', makeHttp(fetchFn));
 
     const result = await bucket.createSignedUrl('x.pdf');
@@ -107,9 +107,11 @@ describe('StorageBucket.createSignedUrl', () => {
   });
 
   it('maps a non-2xx response to { data: null, error: InsForgeError }', async () => {
-    const fetchFn = vi.fn().mockResolvedValue(
-      jsonRes(404, { error: 'STORAGE_NOT_FOUND', message: 'Object not found' }, 'Not Found'),
-    );
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValue(
+        jsonRes(404, { error: 'STORAGE_NOT_FOUND', message: 'Object not found' }, 'Not Found')
+      );
     const bucket = new StorageBucket('docs', makeHttp(fetchFn));
 
     const result = await bucket.createSignedUrl('missing.pdf');
@@ -135,10 +137,10 @@ describe('StorageBucket.createSignedUrl', () => {
     expect(fetchFn).toHaveBeenCalledTimes(2);
     // First the canonical GET, then the legacy POST alias.
     expect(new URL(String(fetchFn.mock.calls[0][0])).pathname).toBe(
-      '/api/storage/buckets/docs/download-strategy/objects/invoice.pdf',
+      '/api/storage/buckets/docs/download-strategy/objects/invoice.pdf'
     );
     expect(new URL(String(fetchFn.mock.calls[1][0])).pathname).toBe(
-      '/api/storage/buckets/docs/objects/invoice.pdf/download-strategy',
+      '/api/storage/buckets/docs/objects/invoice.pdf/download-strategy'
     );
     expect(String(fetchFn.mock.calls[1][1]?.method)).toBe('POST');
   });
@@ -154,7 +156,7 @@ describe('StorageBucket.createSignedUrls', () => {
       .fn()
       .mockResolvedValueOnce(jsonRes(200, { method: 'presigned', url: 'https://cdn/ok1' }))
       .mockResolvedValueOnce(
-        jsonRes(404, { error: 'STORAGE_NOT_FOUND', message: 'nope' }, 'Not Found'),
+        jsonRes(404, { error: 'STORAGE_NOT_FOUND', message: 'nope' }, 'Not Found')
       )
       .mockResolvedValueOnce(jsonRes(200, { method: 'presigned', url: 'https://cdn/ok3' }));
     const bucket = new StorageBucket('docs', makeHttp(fetchFn));

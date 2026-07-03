@@ -159,9 +159,7 @@ export {};
 
 declare global {
   // eslint-disable-next-line no-var
-  var __insforge_dispatch__:
-    | ((req: Request) => Promise<Response>)
-    | undefined;
+  var __insforge_dispatch__: ((req: Request) => Promise<Response>) | undefined;
 }
 ```
 
@@ -171,25 +169,25 @@ Confirm `tsconfig.json` includes the file (typically picked up by default `inclu
 
 ## Error Handling Summary
 
-| Scenario | Outcome |
-|---|---|
-| `dispatch` returns 2xx with JSON | `{ data, error: null }` |
-| `dispatch` returns 2xx with non-JSON | `{ data: <text>, error: null }` |
-| `dispatch` returns 204 | `{ data: undefined, error: null }` |
+| Scenario                                                  | Outcome                                                                     |
+| --------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `dispatch` returns 2xx with JSON                          | `{ data, error: null }`                                                     |
+| `dispatch` returns 2xx with non-JSON                      | `{ data: <text>, error: null }`                                             |
+| `dispatch` returns 204                                    | `{ data: undefined, error: null }`                                          |
 | `dispatch` returns non-2xx with `{ error, message }` body | `{ data: null, error: InsForgeError(status, code) }` (preserves all fields) |
-| `dispatch` returns non-2xx with non-error body | `{ data: null, error: InsForgeError(status, 'REQUEST_FAILED') }` |
-| `dispatch` returns 404 (slug not in routes) | Returned as error (no HTTP fallback) |
-| `dispatch` throws synchronously or rejects | `{ data: null, error: InsForgeError(500, 'FUNCTION_ERROR') }` |
-| `AbortError` propagates from caller-cancellation | re-throw, matches HTTP path |
+| `dispatch` returns non-2xx with non-error body            | `{ data: null, error: InsForgeError(status, 'REQUEST_FAILED') }`            |
+| `dispatch` returns 404 (slug not in routes)               | Returned as error (no HTTP fallback)                                        |
+| `dispatch` throws synchronously or rejects                | `{ data: null, error: InsForgeError(500, 'FUNCTION_ERROR') }`               |
+| `AbortError` propagates from caller-cancellation          | re-throw, matches HTTP path                                                 |
 
 ## Backward Compatibility
 
-| SDK | Router | Behavior |
-|---|---|---|
-| Old | Old | HTTP, loop bug present (status quo) |
-| New | Old | HTTP (global absent → fallthrough), loop bug present until router updated |
-| Old | New | HTTP (old SDK doesn't read global), loop bug present until SDK updated |
-| New | New | In-process dispatch, no loop |
+| SDK | Router | Behavior                                                                  |
+| --- | ------ | ------------------------------------------------------------------------- |
+| Old | Old    | HTTP, loop bug present (status quo)                                       |
+| New | Old    | HTTP (global absent → fallthrough), loop bug present until router updated |
+| Old | New    | HTTP (old SDK doesn't read global), loop bug present until SDK updated    |
+| New | New    | In-process dispatch, no loop                                              |
 
 Both sides degrade safely. Mixed deployments work; no synchronized rollout required.
 
@@ -197,18 +195,18 @@ Both sides degrade safely. Mixed deployments work; no synchronized rollout requi
 
 New file `src/modules/__tests__/functions.test.ts`. Each test sets/clears `globalThis.__insforge_dispatch__` in setup/teardown. Mock `dispatch` with `jest.fn()` returning crafted `Response` objects.
 
-| # | Setup | Assertion |
-|---|---|---|
-| 1 | No global, mock `http.request` returns data | Returns `{ data, error: null }`; HTTP path used (existing behavior preserved) |
-| 2 | No global, mock `http.request` throws 404, then returns data on second call | Subhosting → proxy fallback (existing behavior preserved) |
-| 3 | global present, dispatch returns `Response('{"x":1}', { headers: { 'content-type': 'application/json' } })` | Returns `{ data: { x: 1 }, error: null }`; underlying `fetch` mock **never called** |
-| 4 | global present, dispatch returns 500 with `{"error":"E","message":"M"}` JSON | Returns `{ data: null, error }` with `error.statusCode === 500`, `error.error === 'E'` |
-| 5 | global present, dispatch throws `new Error('boom')` | Returns `{ data: null, error: InsForgeError('boom', 500, 'FUNCTION_ERROR') }` |
-| 6 | global present, body is `{ a: 1 }` | dispatch's received Request has `content-type: application/json`; `await req.json()` deep-equals `{ a: 1 }` |
-| 7 | global present, options `headers: { Authorization: 'Bearer xyz' }` | dispatch's received Request has `Authorization: Bearer xyz` |
-| 8 | global present, `slug = 'foo/bar'` | dispatch's received Request `new URL(req.url).pathname === '/foo/bar'` |
-| 9 | global present, `method: 'GET'`, no body | dispatch's received Request has method `GET`, no `content-type` set by SDK |
-| 10 | global present, dispatch returns 204 | Returns `{ data: undefined, error: null }` |
+| #   | Setup                                                                                                       | Assertion                                                                                                   |
+| --- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 1   | No global, mock `http.request` returns data                                                                 | Returns `{ data, error: null }`; HTTP path used (existing behavior preserved)                               |
+| 2   | No global, mock `http.request` throws 404, then returns data on second call                                 | Subhosting → proxy fallback (existing behavior preserved)                                                   |
+| 3   | global present, dispatch returns `Response('{"x":1}', { headers: { 'content-type': 'application/json' } })` | Returns `{ data: { x: 1 }, error: null }`; underlying `fetch` mock **never called**                         |
+| 4   | global present, dispatch returns 500 with `{"error":"E","message":"M"}` JSON                                | Returns `{ data: null, error }` with `error.statusCode === 500`, `error.error === 'E'`                      |
+| 5   | global present, dispatch throws `new Error('boom')`                                                         | Returns `{ data: null, error: InsForgeError('boom', 500, 'FUNCTION_ERROR') }`                               |
+| 6   | global present, body is `{ a: 1 }`                                                                          | dispatch's received Request has `content-type: application/json`; `await req.json()` deep-equals `{ a: 1 }` |
+| 7   | global present, options `headers: { Authorization: 'Bearer xyz' }`                                          | dispatch's received Request has `Authorization: Bearer xyz`                                                 |
+| 8   | global present, `slug = 'foo/bar'`                                                                          | dispatch's received Request `new URL(req.url).pathname === '/foo/bar'`                                      |
+| 9   | global present, `method: 'GET'`, no body                                                                    | dispatch's received Request has method `GET`, no `content-type` set by SDK                                  |
+| 10  | global present, dispatch returns 204                                                                        | Returns `{ data: undefined, error: null }`                                                                  |
 
 Existing HTTP-path tests (if any) must continue to pass unchanged.
 

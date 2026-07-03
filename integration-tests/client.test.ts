@@ -134,10 +134,10 @@ describe('InsForgeClient', () => {
       const errMsg = (error!.message || '').toLowerCase();
       expect(
         errMsg.includes('custom-functions-host') ||
-        errMsg.includes('enotfound') ||
-        errMsg.includes('fetch failed') ||
-        errMsg.includes('network') ||
-        error!.statusCode === 500
+          errMsg.includes('enotfound') ||
+          errMsg.includes('fetch failed') ||
+          errMsg.includes('network') ||
+          error!.statusCode === 500
       ).toBe(true);
     });
   });

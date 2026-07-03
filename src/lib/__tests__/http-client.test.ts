@@ -4,11 +4,7 @@ import { InsForgeError } from '../../types';
 import { TokenManager } from '../token-manager';
 import * as tokenManagerModule from '../token-manager';
 
-function createJsonResponse(
-  status: number,
-  body: any,
-  statusText = 'OK',
-): Response {
+function createJsonResponse(status: number, body: any, statusText = 'OK'): Response {
   const response = {
     ok: status >= 200 && status < 300,
     status,
@@ -36,7 +32,7 @@ function createMockTokenManager(): TokenManager {
 function createClient(
   fetchFn: ReturnType<typeof vi.fn>,
   overrides: Record<string, any> = {},
-  tokenManager?: TokenManager,
+  tokenManager?: TokenManager
 ) {
   return new HttpClient(
     {
@@ -46,7 +42,7 @@ function createClient(
       timeout: 0,
       ...overrides,
     },
-    tokenManager ?? createMockTokenManager(),
+    tokenManager ?? createMockTokenManager()
   );
 }
 
@@ -74,9 +70,7 @@ describe('HttpClient', () => {
 
   describe('basic requests', () => {
     it('should make a successful GET request', async () => {
-      const mockFetch = vi
-        .fn()
-        .mockResolvedValue(createJsonResponse(200, { id: 1, name: 'test' }));
+      const mockFetch = vi.fn().mockResolvedValue(createJsonResponse(200, { id: 1, name: 'test' }));
 
       const client = createClient(mockFetch);
       const result = await client.get('/api/items');
@@ -86,9 +80,7 @@ describe('HttpClient', () => {
     });
 
     it('should make a successful POST request', async () => {
-      const mockFetch = vi
-        .fn()
-        .mockResolvedValue(createJsonResponse(201, { id: 2 }));
+      const mockFetch = vi.fn().mockResolvedValue(createJsonResponse(201, { id: 2 }));
 
       const client = createClient(mockFetch);
       const result = await client.post('/api/items', { name: 'new' });
@@ -98,9 +90,7 @@ describe('HttpClient', () => {
     });
 
     it('should merge headers from a Headers instance', async () => {
-      const mockFetch = vi
-        .fn()
-        .mockResolvedValue(createJsonResponse(200, { ok: true }));
+      const mockFetch = vi.fn().mockResolvedValue(createJsonResponse(200, { ok: true }));
 
       const client = createClient(mockFetch);
       await client.get('/api/items', {
@@ -113,9 +103,7 @@ describe('HttpClient', () => {
     });
 
     it('should merge headers from a [string, string][] array', async () => {
-      const mockFetch = vi
-        .fn()
-        .mockResolvedValue(createJsonResponse(200, { ok: true }));
+      const mockFetch = vi.fn().mockResolvedValue(createJsonResponse(200, { ok: true }));
 
       const client = createClient(mockFetch);
       await client.get('/api/items', {
@@ -136,7 +124,7 @@ describe('HttpClient', () => {
           error: 'Unauthorized',
           message: 'Invalid token',
           statusCode: 401,
-        }),
+        })
       );
 
       const client = createClient(mockFetch);
@@ -150,41 +138,32 @@ describe('HttpClient', () => {
 
   describe('timeout', () => {
     it('should abort and throw REQUEST_TIMEOUT when request exceeds timeout', async () => {
-      const mockFetch = vi
-        .fn()
-        .mockImplementation((_url: string, opts: any) => {
-          return new Promise((_resolve, reject) => {
-            const onAbort = () => {
-              const err = new DOMException(
-                'The operation was aborted.',
-                'AbortError',
-              );
-              reject(err);
-            };
-            if (opts?.signal) {
-              if (opts.signal.aborted) {
-                onAbort();
-                return;
-              }
-              opts.signal.addEventListener('abort', onAbort);
+      const mockFetch = vi.fn().mockImplementation((_url: string, opts: any) => {
+        return new Promise((_resolve, reject) => {
+          const onAbort = () => {
+            const err = new DOMException('The operation was aborted.', 'AbortError');
+            reject(err);
+          };
+          if (opts?.signal) {
+            if (opts.signal.aborted) {
+              onAbort();
+              return;
             }
-          });
+            opts.signal.addEventListener('abort', onAbort);
+          }
         });
+      });
 
       const client = createClient(mockFetch, { timeout: 50 });
 
-      const error = (await client
-        .get('/api/slow')
-        .catch((e: unknown) => e)) as InsForgeError;
+      const error = (await client.get('/api/slow').catch((e: unknown) => e)) as InsForgeError;
       expect(error).toBeInstanceOf(InsForgeError);
       expect(error.error).toBe('REQUEST_TIMEOUT');
       expect(error.message).toContain('timed out');
     });
 
     it('should not timeout when timeout is 0 (disabled)', async () => {
-      const mockFetch = vi
-        .fn()
-        .mockResolvedValue(createJsonResponse(200, { ok: true }));
+      const mockFetch = vi.fn().mockResolvedValue(createJsonResponse(200, { ok: true }));
 
       const client = createClient(mockFetch, { timeout: 0 });
       const result = await client.get('/api/fast');
@@ -221,24 +200,18 @@ describe('HttpClient', () => {
     });
 
     it('should throw NETWORK_ERROR after exhausting all retries', async () => {
-      const mockFetch = vi
-        .fn()
-        .mockRejectedValue(new TypeError('Failed to fetch'));
+      const mockFetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
 
       const client = createClient(mockFetch, { retryCount: 2, retryDelay: 10 });
 
-      const error = (await client
-        .get('/api/down')
-        .catch((e: unknown) => e)) as InsForgeError;
+      const error = (await client.get('/api/down').catch((e: unknown) => e)) as InsForgeError;
       expect(error).toBeInstanceOf(InsForgeError);
       expect(error.error).toBe('NETWORK_ERROR');
       expect(mockFetch).toHaveBeenCalledTimes(3); // 1 initial + 2 retries
     });
 
     it('should not retry when retryCount is 0', async () => {
-      const mockFetch = vi
-        .fn()
-        .mockRejectedValue(new TypeError('Failed to fetch'));
+      const mockFetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
 
       const client = createClient(mockFetch, { retryCount: 0 });
 
@@ -252,11 +225,7 @@ describe('HttpClient', () => {
       const mockFetch = vi
         .fn()
         .mockResolvedValueOnce(
-          createJsonResponse(
-            503,
-            { error: 'Service Unavailable' },
-            'Service Unavailable',
-          ),
+          createJsonResponse(503, { error: 'Service Unavailable' }, 'Service Unavailable')
         )
         .mockResolvedValueOnce(createJsonResponse(200, { status: 'ok' }));
 
@@ -294,15 +263,13 @@ describe('HttpClient', () => {
             message: 'Something broke',
             statusCode: 500,
           },
-          'Internal Server Error',
-        ),
+          'Internal Server Error'
+        )
       );
 
       const client = createClient(mockFetch, { retryCount: 2, retryDelay: 10 });
 
-      const error = (await client
-        .get('/api/broken')
-        .catch((e: unknown) => e)) as InsForgeError;
+      const error = (await client.get('/api/broken').catch((e: unknown) => e)) as InsForgeError;
       expect(error).toBeInstanceOf(InsForgeError);
       expect(mockFetch).toHaveBeenCalledTimes(3);
     });
@@ -315,14 +282,12 @@ describe('HttpClient', () => {
           error: 'Bad Request',
           message: 'Invalid input',
           statusCode: 400,
-        }),
+        })
       );
 
       const client = createClient(mockFetch, { retryCount: 3, retryDelay: 10 });
 
-      await expect(client.post('/api/submit', { bad: 'data' })).rejects.toThrow(
-        InsForgeError,
-      );
+      await expect(client.post('/api/submit', { bad: 'data' })).rejects.toThrow(InsForgeError);
       expect(mockFetch).toHaveBeenCalledOnce();
     });
 
@@ -332,7 +297,7 @@ describe('HttpClient', () => {
           error: 'Unauthorized',
           message: 'No token',
           statusCode: 401,
-        }),
+        })
       );
 
       const client = createClient(mockFetch, { retryCount: 3, retryDelay: 10 });
@@ -347,7 +312,7 @@ describe('HttpClient', () => {
           error: 'Not Found',
           message: 'Resource missing',
           statusCode: 404,
-        }),
+        })
       );
 
       const client = createClient(mockFetch, { retryCount: 3, retryDelay: 10 });
@@ -359,28 +324,20 @@ describe('HttpClient', () => {
 
   describe('no retry on non-idempotent methods', () => {
     it('should not retry POST on network error by default', async () => {
-      const mockFetch = vi
-        .fn()
-        .mockRejectedValue(new TypeError('Failed to fetch'));
+      const mockFetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
 
       const client = createClient(mockFetch, { retryCount: 3, retryDelay: 10 });
 
-      await expect(
-        client.post('/api/create', { name: 'test' }),
-      ).rejects.toThrow(InsForgeError);
+      await expect(client.post('/api/create', { name: 'test' })).rejects.toThrow(InsForgeError);
       expect(mockFetch).toHaveBeenCalledOnce();
     });
 
     it('should not retry PATCH on network error by default', async () => {
-      const mockFetch = vi
-        .fn()
-        .mockRejectedValue(new TypeError('Failed to fetch'));
+      const mockFetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
 
       const client = createClient(mockFetch, { retryCount: 3, retryDelay: 10 });
 
-      await expect(
-        client.patch('/api/update', { name: 'test' }),
-      ).rejects.toThrow(InsForgeError);
+      await expect(client.patch('/api/update', { name: 'test' })).rejects.toThrow(InsForgeError);
       expect(mockFetch).toHaveBeenCalledOnce();
     });
 
@@ -391,11 +348,7 @@ describe('HttpClient', () => {
         .mockResolvedValueOnce(createJsonResponse(200, { created: true }));
 
       const client = createClient(mockFetch, { retryCount: 2, retryDelay: 10 });
-      const result = await client.post(
-        '/api/create',
-        { name: 'test' },
-        { idempotent: true },
-      );
+      const result = await client.post('/api/create', { name: 'test' }, { idempotent: true });
 
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(result).toEqual({ created: true });
@@ -419,23 +372,19 @@ describe('HttpClient', () => {
     it('should propagate caller abort as-is (not as REQUEST_TIMEOUT)', async () => {
       const callerController = new AbortController();
 
-      const mockFetch = vi
-        .fn()
-        .mockImplementation((_url: string, opts: any) => {
-          return new Promise((_resolve, reject) => {
-            const onAbort = () =>
-              reject(
-                new DOMException('The operation was aborted.', 'AbortError'),
-              );
-            if (opts?.signal) {
-              if (opts.signal.aborted) {
-                onAbort();
-                return;
-              }
-              opts.signal.addEventListener('abort', onAbort);
+      const mockFetch = vi.fn().mockImplementation((_url: string, opts: any) => {
+        return new Promise((_resolve, reject) => {
+          const onAbort = () =>
+            reject(new DOMException('The operation was aborted.', 'AbortError'));
+          if (opts?.signal) {
+            if (opts.signal.aborted) {
+              onAbort();
+              return;
             }
-          });
+            opts.signal.addEventListener('abort', onAbort);
+          }
         });
+      });
 
       const client = createClient(mockFetch, { timeout: 0 });
 
@@ -493,9 +442,7 @@ describe('HttpClient', () => {
 
       const client = createClient(mockFetch, { retryCount: 3, retryDelay: 10 });
 
-      const error = (await client
-        .get('/api/bad')
-        .catch((e: unknown) => e)) as InsForgeError;
+      const error = (await client.get('/api/bad').catch((e: unknown) => e)) as InsForgeError;
       expect(error).toBeInstanceOf(InsForgeError);
       expect(error.error).toBe('REQUEST_FAILED');
       expect(mockFetch).toHaveBeenCalledOnce(); // No retries
@@ -507,10 +454,12 @@ describe('HttpClient', () => {
       const delays: number[] = [];
       const originalSetTimeout = globalThis.setTimeout;
       vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
-        fn: Function,
-        ms?: number,
+        fn: (...args: unknown[]) => void,
+        ms?: number
       ) => {
-        if (ms && ms > 0) delays.push(ms);
+        if (ms && ms > 0) {
+          delays.push(ms);
+        }
         return originalSetTimeout(fn, 0);
       }) as any);
 
@@ -556,7 +505,7 @@ describe('HttpClient', () => {
           baseUrl: 'http://localhost:7130',
           fetch: mockFetch as any,
         },
-        createMockTokenManager(),
+        createMockTokenManager()
       );
 
       // Verify the client was created successfully (defaults are set internally)
@@ -578,14 +527,14 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, {
             accessToken: 'new-token',
             user: { id: '1' },
-          }),
+          })
         )
         .mockResolvedValueOnce(createJsonResponse(200, { data: 'secret' }));
 
@@ -606,14 +555,12 @@ describe('HttpClient', () => {
           createJsonResponse(
             401,
             { error: 'UNAUTHORIZED', message: 'Forbidden', statusCode: 401 },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         );
 
       const client = createClient(mockFetch, {}, tokenManager);
-      const error = (await client
-        .get('/api/protected')
-        .catch((e: unknown) => e)) as InsForgeError;
+      const error = (await client.get('/api/protected').catch((e: unknown) => e)) as InsForgeError;
 
       expect(error).toBeInstanceOf(InsForgeError);
       expect(error.error).toBe('UNAUTHORIZED');
@@ -630,14 +577,12 @@ describe('HttpClient', () => {
             message: 'No token provided',
             statusCode: 401,
           },
-          'Unauthorized',
-        ),
+          'Unauthorized'
+        )
       );
 
       const client = createClient(mockFetch, {}, tokenManager);
-      const error = (await client
-        .get('/api/protected')
-        .catch((e: unknown) => e)) as InsForgeError;
+      const error = (await client.get('/api/protected').catch((e: unknown) => e)) as InsForgeError;
 
       expect(error).toBeInstanceOf(InsForgeError);
       expect(error.error).toBe('AUTH_UNAUTHORIZED');
@@ -655,8 +600,8 @@ describe('HttpClient', () => {
             message: 'Invalid credentials',
             statusCode: 401,
           },
-          'Unauthorized',
-        ),
+          'Unauthorized'
+        )
       );
 
       const client = createClient(mockFetch, {}, tokenManager);
@@ -681,19 +626,13 @@ describe('HttpClient', () => {
             message: 'Invalid token',
             statusCode: 401,
           },
-          'Unauthorized',
-        ),
+          'Unauthorized'
+        )
       );
 
-      const client = createClient(
-        mockFetch,
-        { isServerMode: true },
-        tokenManager,
-      );
+      const client = createClient(mockFetch, { isServerMode: true }, tokenManager);
       client.setAuthToken('old-token');
-      const error = (await client
-        .get('/api/protected')
-        .catch((e: unknown) => e)) as InsForgeError;
+      const error = (await client.get('/api/protected').catch((e: unknown) => e)) as InsForgeError;
 
       expect(error).toBeInstanceOf(InsForgeError);
       expect(mockFetch).toHaveBeenCalledOnce();
@@ -710,19 +649,17 @@ describe('HttpClient', () => {
             message: 'Invalid token',
             statusCode: 401,
           },
-          'Unauthorized',
-        ),
+          'Unauthorized'
+        )
       );
 
       const client = createClient(
         mockFetch,
         { edgeFunctionToken: 'edge-token', isServerMode: false },
-        tokenManager,
+        tokenManager
       );
       client.setAuthToken('edge-token');
-      const error = (await client
-        .get('/api/protected')
-        .catch((e: unknown) => e)) as InsForgeError;
+      const error = (await client.get('/api/protected').catch((e: unknown) => e)) as InsForgeError;
 
       expect(error).toBeInstanceOf(InsForgeError);
       expect(mockFetch).toHaveBeenCalledOnce();
@@ -739,19 +676,17 @@ describe('HttpClient', () => {
             message: 'Invalid token',
             statusCode: 401,
           },
-          'Unauthorized',
-        ),
+          'Unauthorized'
+        )
       );
 
       const client = createClient(
         mockFetch,
         { accessToken: 'static-token', isServerMode: false },
-        tokenManager,
+        tokenManager
       );
       client.setAuthToken('static-token');
-      const error = (await client
-        .get('/api/protected')
-        .catch((e: unknown) => e)) as InsForgeError;
+      const error = (await client.get('/api/protected').catch((e: unknown) => e)) as InsForgeError;
 
       expect(error).toBeInstanceOf(InsForgeError);
       expect(mockFetch).toHaveBeenCalledOnce();
@@ -770,14 +705,14 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, {
             accessToken: 'fresh-token',
             user: { id: '1' },
-          }),
+          })
         )
         .mockResolvedValueOnce(createJsonResponse(200, { ok: true }));
 
@@ -802,14 +737,14 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, {
             accessToken: 'fresh-token',
             user: { id: '1' },
-          }),
+          })
         )
         .mockResolvedValueOnce(
           createJsonResponse(
@@ -819,28 +754,22 @@ describe('HttpClient', () => {
               message: 'Still invalid',
               statusCode: 401,
             },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         );
 
       const client = createClient(mockFetch, {}, tokenManager);
       client.setAuthToken('old-token');
 
-      const error = (await client
-        .get('/api/protected')
-        .catch((e: unknown) => e)) as InsForgeError;
+      const error = (await client.get('/api/protected').catch((e: unknown) => e)) as InsForgeError;
 
       expect(error).toBeInstanceOf(InsForgeError);
       expect(error.error).toBe('AUTH_UNAUTHORIZED');
       expect(mockFetch).toHaveBeenCalledTimes(3);
       expect(
-        mockFetch.mock.calls.filter(([url]: [string]) =>
-          url.includes('/api/auth/refresh'),
-        ),
+        mockFetch.mock.calls.filter(([url]: [string]) => url.includes('/api/auth/refresh'))
       ).toHaveLength(1);
-      expect(mockFetch.mock.calls[2][1].headers.Authorization).toBe(
-        'Bearer fresh-token',
-      );
+      expect(mockFetch.mock.calls[2][1].headers.Authorization).toBe('Bearer fresh-token');
     });
 
     it('should replay with current token instead of refreshing when request token is stale', async () => {
@@ -857,7 +786,7 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
+            'Unauthorized'
           );
         })
         .mockResolvedValueOnce(createJsonResponse(200, { ok: true }));
@@ -869,16 +798,12 @@ describe('HttpClient', () => {
 
       expect(result).toEqual({ ok: true });
       expect(mockFetch).toHaveBeenCalledTimes(2);
-      expect(mockFetch.mock.calls[0][1].headers.Authorization).toBe(
-        'Bearer old-token',
+      expect(mockFetch.mock.calls[0][1].headers.Authorization).toBe('Bearer old-token');
+      expect(new Headers(mockFetch.mock.calls[1][1].headers).get('Authorization')).toBe(
+        'Bearer new-token'
       );
       expect(
-        new Headers(mockFetch.mock.calls[1][1].headers).get('Authorization'),
-      ).toBe('Bearer new-token');
-      expect(
-        mockFetch.mock.calls.some(([url]: [string]) =>
-          url.includes('/api/auth/refresh'),
-        ),
+        mockFetch.mock.calls.some(([url]: [string]) => url.includes('/api/auth/refresh'))
       ).toBe(false);
       expect(tokenManager.saveSession).not.toHaveBeenCalled();
     });
@@ -895,14 +820,14 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, {
             accessToken: 'new-token',
             user: { id: '1' },
-          }),
+          })
         )
         .mockResolvedValueOnce(createJsonResponse(200, {}));
 
@@ -929,14 +854,14 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, {
             accessToken: 'new-token',
             user: { id: '1' },
-          }),
+          })
         )
         .mockResolvedValueOnce(createJsonResponse(200, {}));
 
@@ -960,14 +885,14 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, {
             accessToken: 'new-token',
             user: { id: '1' },
-          }),
+          })
         )
         .mockResolvedValueOnce(createJsonResponse(200, {}));
 
@@ -990,8 +915,8 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         )
         .mockResolvedValueOnce(
           createJsonResponse(
@@ -1001,15 +926,13 @@ describe('HttpClient', () => {
               message: 'Refresh token expired',
               statusCode: 401,
             },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         );
 
       const client = createClient(mockFetch, {}, tokenManager);
       client.setAuthToken('old-token');
-      const error = (await client
-        .get('/api/protected')
-        .catch((e: unknown) => e)) as InsForgeError;
+      const error = (await client.get('/api/protected').catch((e: unknown) => e)) as InsForgeError;
 
       expect(error).toBeInstanceOf(InsForgeError);
       expect(error.error).toBe('REFRESH_EXPIRED');
@@ -1028,16 +951,14 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         )
         .mockRejectedValueOnce(new TypeError('network down'));
 
       const client = createClient(mockFetch, {}, tokenManager);
       client.setAuthToken('old-token');
-      const error = (await client
-        .get('/api/protected')
-        .catch((e: unknown) => e)) as InsForgeError;
+      const error = (await client.get('/api/protected').catch((e: unknown) => e)) as InsForgeError;
 
       expect(error).toBeInstanceOf(InsForgeError);
       expect(error.error).toBe('NETWORK_ERROR');
@@ -1057,28 +978,26 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, {
             accessToken: 'new-token',
             user: { id: '1' },
-          }),
+          })
         )
         .mockResolvedValueOnce(
           createJsonResponse(
             500,
             { error: 'SERVER_ERROR', message: 'Retry failed', statusCode: 500 },
-            'Server Error',
-          ),
+            'Server Error'
+          )
         );
 
       const client = createClient(mockFetch, {}, tokenManager);
       client.setAuthToken('old-token');
-      const error = (await client
-        .get('/api/protected')
-        .catch((e: unknown) => e)) as InsForgeError;
+      const error = (await client.get('/api/protected').catch((e: unknown) => e)) as InsForgeError;
 
       expect(error).toBeInstanceOf(InsForgeError);
       expect(error.statusCode).toBe(500);
@@ -1099,8 +1018,8 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         )
         .mockResolvedValueOnce(
           createJsonResponse(
@@ -1110,14 +1029,14 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, {
             accessToken: 'new-token',
             user: { id: '1' },
-          }),
+          })
         )
         .mockResolvedValue(createJsonResponse(200, { ok: true }));
 
@@ -1128,7 +1047,7 @@ describe('HttpClient', () => {
 
       // Only one refresh call should have been made (call index 2, after the two 401s)
       const refreshCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
-        url.includes('/api/auth/refresh'),
+        url.includes('/api/auth/refresh')
       );
       expect(refreshCalls).toHaveLength(1);
     });
@@ -1145,14 +1064,14 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
-          ),
+            'Unauthorized'
+          )
         )
         .mockResolvedValueOnce(
           createJsonResponse(200, {
             accessToken: 'new-token',
             user: { id: '1' },
-          }),
+          })
         )
         .mockRejectedValueOnce(new TypeError('network down'));
 
@@ -1179,25 +1098,19 @@ describe('HttpClient', () => {
             message: 'Invalid token',
             statusCode: 401,
           },
-          'Unauthorized',
-        ),
+          'Unauthorized'
+        )
       );
 
-      const client = createClient(
-        mockFetch,
-        { anonKey: 'test-anon-key' },
-        tokenManager,
-      );
+      const client = createClient(mockFetch, { anonKey: 'test-anon-key' }, tokenManager);
 
-      const response = await client.rawFetch(
-        'http://localhost:7130/api/database/records/todos',
-      );
+      const response = await client.rawFetch('http://localhost:7130/api/database/records/todos');
 
       expect(response.status).toBe(401);
       expect(mockFetch).toHaveBeenCalledOnce();
-      expect(
-        new Headers(mockFetch.mock.calls[0][1].headers).get('Authorization'),
-      ).toBe('Bearer test-anon-key');
+      expect(new Headers(mockFetch.mock.calls[0][1].headers).get('Authorization')).toBe(
+        'Bearer test-anon-key'
+      );
       expect(tokenManager.saveSession).not.toHaveBeenCalled();
     });
 
@@ -1218,7 +1131,7 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
+            'Unauthorized'
           );
         })
         .mockImplementationOnce(async (_url: string, init?: RequestInit) => {
@@ -1237,16 +1150,14 @@ describe('HttpClient', () => {
       expect(response.status).toBe(200);
       expect(requestBodies).toEqual([payload, payload]);
       expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(new Headers(mockFetch.mock.calls[0][1].headers).get('Authorization')).toBe(
+        'Bearer old-token'
+      );
+      expect(new Headers(mockFetch.mock.calls[1][1].headers).get('Authorization')).toBe(
+        'Bearer new-token'
+      );
       expect(
-        new Headers(mockFetch.mock.calls[0][1].headers).get('Authorization'),
-      ).toBe('Bearer old-token');
-      expect(
-        new Headers(mockFetch.mock.calls[1][1].headers).get('Authorization'),
-      ).toBe('Bearer new-token');
-      expect(
-        mockFetch.mock.calls.some(([url]: [string]) =>
-          url.includes('/api/auth/refresh'),
-        ),
+        mockFetch.mock.calls.some(([url]: [string]) => url.includes('/api/auth/refresh'))
       ).toBe(false);
       expect(tokenManager.saveSession).not.toHaveBeenCalled();
     });
@@ -1274,7 +1185,7 @@ describe('HttpClient', () => {
               message: 'Invalid token',
               statusCode: 401,
             },
-            'Unauthorized',
+            'Unauthorized'
           );
         }
 
@@ -1284,20 +1195,15 @@ describe('HttpClient', () => {
       const client = createClient(mockFetch, {}, tokenManager);
       client.setAuthToken('old-token');
 
-      const response = await client.rawFetch(
-        'http://localhost:7130/api/database/records/todos',
-        {
-          method: 'POST',
-          body: createStreamBody(payload),
-        },
-      );
+      const response = await client.rawFetch('http://localhost:7130/api/database/records/todos', {
+        method: 'POST',
+        body: createStreamBody(payload),
+      });
 
       expect(response.status).toBe(200);
       expect(requestBodies).toEqual([payload, payload]);
       expect(
-        mockFetch.mock.calls.filter(([url]: [string]) =>
-          url.includes('/api/auth/refresh'),
-        ),
+        mockFetch.mock.calls.filter(([url]: [string]) => url.includes('/api/auth/refresh'))
       ).toHaveLength(1);
     });
 
@@ -1326,11 +1232,7 @@ describe('HttpClient', () => {
       });
 
       const createBlocked401 = (): Response => {
-        const response = createJsonResponse(
-          401,
-          unauthorizedBody,
-          'Unauthorized',
-        );
+        const response = createJsonResponse(401, unauthorizedBody, 'Unauthorized');
         return {
           ...response,
           clone: () =>
@@ -1382,12 +1284,12 @@ describe('HttpClient', () => {
         createJsonResponse(200, {
           accessToken: 'new-token',
           user: { id: '1' },
-        }),
+        })
       );
       await requests;
 
       const refreshCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
-        url.includes('/api/auth/refresh'),
+        url.includes('/api/auth/refresh')
       );
       expect(refreshCalls).toHaveLength(1);
     });
@@ -1399,15 +1301,13 @@ describe('HttpClient', () => {
           createJsonResponse(
             503,
             { error: 'SERVER_ERROR', message: 'Try again', statusCode: 503 },
-            'Unavailable',
-          ),
+            'Unavailable'
+          )
         )
         .mockResolvedValueOnce(createJsonResponse(200, { ok: true }));
 
       const client = createClient(mockFetch, { retryCount: 1, retryDelay: 1 });
-      const response = await client.rawFetch(
-        'http://localhost:7130/api/database/records/todos',
-      );
+      const response = await client.rawFetch('http://localhost:7130/api/database/records/todos');
 
       expect(response.status).toBe(200);
       expect(mockFetch).toHaveBeenCalledTimes(2);
@@ -1463,16 +1363,16 @@ function makeResponse(init: {
   jsonThrows?: boolean;
 }): Response {
   const headers = new Headers();
-  if (init.contentType) headers.set('content-type', init.contentType);
+  if (init.contentType) {
+    headers.set('content-type', init.contentType);
+  }
   return {
     ok: init.status >= 200 && init.status < 300,
     status: init.status,
     statusText: init.statusText ?? '',
     headers,
     json: () =>
-      init.jsonThrows
-        ? Promise.reject(new Error('bad json'))
-        : Promise.resolve(init.jsonValue),
+      init.jsonThrows ? Promise.reject(new Error('bad json')) : Promise.resolve(init.jsonValue),
     text: () => Promise.resolve(init.bodyText ?? ''),
   } as Response;
 }

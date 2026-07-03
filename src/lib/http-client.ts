@@ -1,16 +1,6 @@
-import {
-  InsForgeConfig,
-  ApiError,
-  InsForgeError,
-  AuthRefreshResponse,
-} from '../types';
+import { InsForgeConfig, ApiError, InsForgeError, AuthRefreshResponse } from '../types';
 import { Logger } from './logger';
-import {
-  clearCsrfToken,
-  getCsrfToken,
-  setCsrfToken,
-  TokenManager,
-} from './token-manager';
+import { clearCsrfToken, getCsrfToken, setCsrfToken, TokenManager } from './token-manager';
 
 type JsonRequestBody = Record<string, unknown> | unknown[] | null;
 export interface RequestOptions extends Omit<RequestInit, 'body'> {
@@ -24,10 +14,7 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
 
 const RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504]);
 const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']);
-const REFRESHABLE_AUTH_ERROR_CODES = new Set([
-  'AUTH_UNAUTHORIZED',
-  'PGRST301',
-]);
+const REFRESHABLE_AUTH_ERROR_CODES = new Set(['AUTH_UNAUTHORIZED', 'PGRST301']);
 
 /**
  * Serialize a request body into something fetch (or a Request constructor) accepts.
@@ -42,10 +29,14 @@ const REFRESHABLE_AUTH_ERROR_CODES = new Set([
 export function serializeBody(
   method: string,
   body: unknown,
-  headers: Record<string, string>,
+  headers: Record<string, string>
 ): BodyInit | undefined {
-  if (body === undefined) return undefined;
-  if (method === 'GET' || method === 'HEAD') return undefined;
+  if (body === undefined) {
+    return undefined;
+  }
+  if (method === 'GET' || method === 'HEAD') {
+    return undefined;
+  }
   if (typeof FormData !== 'undefined' && body instanceof FormData) {
     return body;
   }
@@ -63,7 +54,9 @@ export function serializeBody(
  * - non-2xx without that shape → InsForgeError(REQUEST_FAILED)
  */
 export async function parseResponse<T>(response: Response): Promise<T> {
-  if (response.status === 204) return undefined as T;
+  if (response.status === 204) {
+    return undefined as T;
+  }
 
   let data: any;
   const contentType = response.headers.get('content-type');
@@ -77,7 +70,7 @@ export async function parseResponse<T>(response: Response): Promise<T> {
     throw new InsForgeError(
       `Failed to parse response body: ${parseErr?.message || 'Unknown error'}`,
       response.status,
-      response.ok ? 'PARSE_ERROR' : 'REQUEST_FAILED',
+      response.ok ? 'PARSE_ERROR' : 'REQUEST_FAILED'
     );
   }
 
@@ -95,7 +88,7 @@ export async function parseResponse<T>(response: Response): Promise<T> {
     throw new InsForgeError(
       `Request failed: ${response.statusText}`,
       response.status,
-      'REQUEST_FAILED',
+      'REQUEST_FAILED'
     );
   }
 
@@ -128,19 +121,12 @@ export class HttpClient {
    * @param tokenManager - Token manager for session persistence.
    * @param logger - Optional logger instance for request/response debugging.
    */
-  constructor(
-    config: InsForgeConfig,
-    tokenManager?: TokenManager,
-    logger?: Logger,
-  ) {
+  constructor(config: InsForgeConfig, tokenManager?: TokenManager, logger?: Logger) {
     this.config = config;
     this.baseUrl = config.baseUrl || 'http://localhost:7130';
     // Properly bind fetch to maintain its context
     this.fetch =
-      config.fetch ||
-      (globalThis.fetch
-        ? globalThis.fetch.bind(globalThis)
-        : (undefined as any));
+      config.fetch || (globalThis.fetch ? globalThis.fetch.bind(globalThis) : (undefined as any));
     this.anonKey = config.anonKey;
     this.defaultHeaders = {
       ...config.headers,
@@ -153,7 +139,7 @@ export class HttpClient {
 
     if (!this.fetch) {
       throw new Error(
-        'Fetch is not available. Please provide a fetch implementation in the config.',
+        'Fetch is not available. Please provide a fetch implementation in the config.'
       );
     }
   }
@@ -205,7 +191,7 @@ export class HttpClient {
     statusCode: number,
     errorCode: string | null | undefined,
     authToken: string | null,
-    options: { skipAuthRefresh?: boolean } = {},
+    options: { skipAuthRefresh?: boolean } = {}
   ): boolean {
     return (
       statusCode === 401 &&
@@ -227,34 +213,27 @@ export class HttpClient {
     callerSignal?: AbortSignal | null;
     maxAttempts: number;
   }): Promise<Response> {
-    const {
-      method,
-      url,
-      headers,
-      body,
-      fetchOptions,
-      callerSignal,
-      maxAttempts,
-    } = args;
+    const { method, url, headers, body, fetchOptions, callerSignal, maxAttempts } = args;
 
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= maxAttempts; attempt++) {
       if (attempt > 0) {
         const delay = this.computeRetryDelay(attempt);
-        this.logger.warn(
-          `Retry ${attempt}/${maxAttempts} for ${method} ${url} in ${delay}ms`,
-        );
+        this.logger.warn(`Retry ${attempt}/${maxAttempts} for ${method} ${url} in ${delay}ms`);
         // Abortable backoff sleep - respects caller cancellation.
-        if (callerSignal?.aborted) throw callerSignal.reason;
+        if (callerSignal?.aborted) {
+          throw callerSignal.reason;
+        }
         await new Promise<void>((resolve, reject) => {
           const onAbort = () => {
             clearTimeout(timer);
             reject(callerSignal!.reason);
           };
           const timer = setTimeout(() => {
-            if (callerSignal)
+            if (callerSignal) {
               callerSignal.removeEventListener('abort', onAbort);
+            }
             resolve();
           }, delay);
           if (callerSignal) {
@@ -288,7 +267,7 @@ export class HttpClient {
               () => {
                 callerSignal.removeEventListener('abort', onCallerAbort);
               },
-              { once: true },
+              { once: true }
             );
           }
         }
@@ -305,21 +284,27 @@ export class HttpClient {
 
         // If server error and retries remaining, continue loop.
         if (this.isRetryableStatus(response.status) && attempt < maxAttempts) {
-          if (timer !== undefined) clearTimeout(timer);
+          if (timer !== undefined) {
+            clearTimeout(timer);
+          }
           // Drain the body to free the connection before retrying.
           await response.body?.cancel();
           lastError = new InsForgeError(
             `Server error: ${response.status} ${response.statusText}`,
             response.status,
-            'SERVER_ERROR',
+            'SERVER_ERROR'
           );
           continue;
         }
 
-        if (timer !== undefined) clearTimeout(timer);
+        if (timer !== undefined) {
+          clearTimeout(timer);
+        }
         return response;
       } catch (err: any) {
-        if (timer !== undefined) clearTimeout(timer);
+        if (timer !== undefined) {
+          clearTimeout(timer);
+        }
 
         // Determine if this was an SDK timeout or a caller abort.
         if (err?.name === 'AbortError') {
@@ -332,7 +317,7 @@ export class HttpClient {
             throw new InsForgeError(
               `Request timed out after ${this.timeout}ms`,
               408,
-              'REQUEST_TIMEOUT',
+              'REQUEST_TIMEOUT'
             );
           }
           // Caller-initiated abort - propagate as-is.
@@ -348,19 +333,14 @@ export class HttpClient {
         throw new InsForgeError(
           `Network request failed: ${err?.message || 'Unknown error'}`,
           0,
-          'NETWORK_ERROR',
+          'NETWORK_ERROR'
         );
       }
     }
 
     // Should not normally reach here, but safety net after exhausting retries.
     throw (
-      lastError ||
-      new InsForgeError(
-        'Request failed after all retry attempts',
-        0,
-        'NETWORK_ERROR',
-      )
+      lastError || new InsForgeError('Request failed after all retry attempts', 0, 'NETWORK_ERROR')
     );
   }
 
@@ -378,7 +358,7 @@ export class HttpClient {
     method: string,
     path: string,
     options: RequestOptions = {},
-    tokenOverride?: string | null,
+    tokenOverride?: string | null
   ): Promise<T> {
     const {
       params,
@@ -391,9 +371,7 @@ export class HttpClient {
 
     const url = this.buildUrl(path, params);
     const startTime = Date.now();
-    const canRetry =
-      IDEMPOTENT_METHODS.has(method.toUpperCase()) ||
-      options.idempotent === true;
+    const canRetry = IDEMPOTENT_METHODS.has(method.toUpperCase()) || options.idempotent === true;
     const maxAttempts = canRetry ? this.retryCount : 0;
 
     const requestHeaders: Record<string, string> = {
@@ -459,44 +437,24 @@ export class HttpClient {
           url,
           err.statusCode || response.status,
           Date.now() - startTime,
-          err,
+          err
         );
       }
       throw err;
     }
 
-    this.logger.logResponse(
-      method,
-      url,
-      response.status,
-      Date.now() - startTime,
-      data,
-    );
+    this.logger.logResponse(method, url, response.status, Date.now() - startTime, data);
     return data;
   }
 
-  async request<T>(
-    method: string,
-    path: string,
-    options: RequestOptions = {},
-  ): Promise<T> {
+  async request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
     const tokenUsed = this.userToken;
     try {
-      return await this.handleRequest<T>(
-        method,
-        path,
-        { ...options },
-        tokenUsed,
-      );
+      return await this.handleRequest<T>(method, path, { ...options }, tokenUsed);
     } catch (error) {
       if (
         !(error instanceof InsForgeError) ||
-        !this.shouldRefreshAccessToken(
-          error.statusCode,
-          error.error,
-          tokenUsed,
-          options,
-        )
+        !this.shouldRefreshAccessToken(error.statusCode, error.error, tokenUsed, options)
       ) {
         throw error;
       }
@@ -512,7 +470,7 @@ export class HttpClient {
             ...options,
             skipAuthRefresh: true,
           },
-          this.userToken,
+          this.userToken
         );
       }
 
@@ -542,12 +500,9 @@ export class HttpClient {
   async rawFetch(
     input: RequestInfo | URL,
     init?: RequestInit,
-    options: { skipAuthRefresh?: boolean } = {},
+    options: { skipAuthRefresh?: boolean } = {}
   ): Promise<Response> {
-    const request =
-      typeof Request !== 'undefined' && input instanceof Request
-        ? input
-        : undefined;
+    const request = typeof Request !== 'undefined' && input instanceof Request ? input : undefined;
     const {
       method: initMethod,
       headers: initHeaders,
@@ -581,17 +536,12 @@ export class HttpClient {
     const sourceBody = initBody ?? request?.body ?? undefined;
     let body = sourceBody;
     let retryInit: RequestInit | undefined = init;
-    if (
-      typeof ReadableStream !== 'undefined' &&
-      sourceBody instanceof ReadableStream
-    ) {
+    if (typeof ReadableStream !== 'undefined' && sourceBody instanceof ReadableStream) {
       body = await new Response(sourceBody).arrayBuffer();
       retryInit = { ...(init ?? {}), body };
     }
     const callerSignal = initSignal ?? request?.signal;
-    const maxAttempts = IDEMPOTENT_METHODS.has(method.toUpperCase())
-      ? this.retryCount
-      : 0;
+    const maxAttempts = IDEMPOTENT_METHODS.has(method.toUpperCase()) ? this.retryCount : 0;
 
     this.logger.logRequest(method, url, requestHeaders, body);
     const response = await this.fetchWithRetry({
@@ -603,12 +553,7 @@ export class HttpClient {
       callerSignal,
       maxAttempts,
     });
-    this.logger.logResponse(
-      method,
-      url,
-      response.status,
-      Date.now() - startTime,
-    );
+    this.logger.logResponse(method, url, response.status, Date.now() - startTime);
 
     let errorCode: string | null = null;
     if (response.status === 401) {
@@ -627,14 +572,7 @@ export class HttpClient {
       }
     }
 
-    if (
-      !this.shouldRefreshAccessToken(
-        response.status,
-        errorCode,
-        tokenUsed,
-        options,
-      )
-    ) {
+    if (!this.shouldRefreshAccessToken(response.status, errorCode, tokenUsed, options)) {
       return response;
     }
 
@@ -647,7 +585,7 @@ export class HttpClient {
       return await this.rawFetch(
         input,
         { ...retryInit, headers: retryHeaders },
-        { skipAuthRefresh: true },
+        { skipAuthRefresh: true }
       );
     }
 
@@ -669,7 +607,7 @@ export class HttpClient {
     return await this.rawFetch(
       input,
       { ...retryInit, headers: retryHeaders },
-      { skipAuthRefresh: true },
+      { skipAuthRefresh: true }
     );
   }
 
@@ -729,19 +667,15 @@ export class HttpClient {
     this.refreshPromise = (async () => {
       try {
         const csrfToken = getCsrfToken();
-        const body = this.refreshToken
-          ? { refreshToken: this.refreshToken }
-          : undefined;
+        const body = this.refreshToken ? { refreshToken: this.refreshToken } : undefined;
         const response = await this.handleRequest<AuthRefreshResponse>(
           'POST',
-          this.refreshToken
-            ? '/api/auth/refresh?client_type=mobile'
-            : '/api/auth/refresh',
+          this.refreshToken ? '/api/auth/refresh?client_type=mobile' : '/api/auth/refresh',
           {
             body,
             headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
             credentials: 'include',
-          },
+          }
         );
         return response;
       } finally {

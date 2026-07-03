@@ -5,10 +5,7 @@
 
 import { HttpClient } from '../lib/http-client';
 import { InsForgeError } from '../types';
-import type { 
-  StorageFileSchema,
-  ListObjectsResponseSchema
-} from '@insforge/shared-schemas';
+import type { StorageFileSchema, ListObjectsResponseSchema } from '@insforge/shared-schemas';
 
 export interface StorageResponse<T> {
   data: T | null;
@@ -46,10 +43,7 @@ export class StorageBucket {
    * @param path - The object key/path
    * @param file - File or Blob to upload
    */
-  async upload(
-    path: string,
-    file: File | Blob
-  ): Promise<StorageResponse<StorageFileSchema>> {
+  async upload(path: string, file: File | Blob): Promise<StorageResponse<StorageFileSchema>> {
     try {
       // Get upload strategy from backend - this is required
       const strategyResponse = await this.http.post<UploadStrategy>(
@@ -57,7 +51,7 @@ export class StorageBucket {
         {
           filename: path,
           contentType: file.type || 'application/octet-stream',
-          size: file.size
+          size: file.size,
         }
       );
 
@@ -78,7 +72,7 @@ export class StorageBucket {
             body: formData as any,
             headers: {
               // Don't set Content-Type, let browser set multipart boundary
-            }
+            },
           }
         );
 
@@ -91,13 +85,12 @@ export class StorageBucket {
         'STORAGE_ERROR'
       );
     } catch (error) {
-      return { 
-        data: null, 
-        error: error instanceof InsForgeError ? error : new InsForgeError(
-          'Upload failed',
-          500,
-          'STORAGE_ERROR'
-        )
+      return {
+        data: null,
+        error:
+          error instanceof InsForgeError
+            ? error
+            : new InsForgeError('Upload failed', 500, 'STORAGE_ERROR'),
       };
     }
   }
@@ -107,19 +100,17 @@ export class StorageBucket {
    * Uses the upload strategy from backend (direct or presigned)
    * @param file - File or Blob to upload
    */
-  async uploadAuto(
-    file: File | Blob
-  ): Promise<StorageResponse<StorageFileSchema>> {
+  async uploadAuto(file: File | Blob): Promise<StorageResponse<StorageFileSchema>> {
     try {
       const filename = file instanceof File ? file.name : 'file';
-      
+
       // Get upload strategy from backend - this is required
       const strategyResponse = await this.http.post<UploadStrategy>(
         `/api/storage/buckets/${this.bucketName}/upload-strategy`,
         {
           filename,
           contentType: file.type || 'application/octet-stream',
-          size: file.size
+          size: file.size,
         }
       );
 
@@ -140,7 +131,7 @@ export class StorageBucket {
             body: formData as any,
             headers: {
               // Don't set Content-Type, let browser set multipart boundary
-            }
+            },
           }
         );
 
@@ -153,13 +144,12 @@ export class StorageBucket {
         'STORAGE_ERROR'
       );
     } catch (error) {
-      return { 
-        data: null, 
-        error: error instanceof InsForgeError ? error : new InsForgeError(
-          'Upload failed',
-          500,
-          'STORAGE_ERROR'
-        )
+      return {
+        data: null,
+        error:
+          error instanceof InsForgeError
+            ? error
+            : new InsForgeError('Upload failed', 500, 'STORAGE_ERROR'),
       };
     }
   }
@@ -174,20 +164,20 @@ export class StorageBucket {
     try {
       // Upload to presigned URL (e.g., S3)
       const formData = new FormData();
-      
+
       // Add all fields from the presigned URL
       if (strategy.fields) {
         Object.entries(strategy.fields).forEach(([key, value]) => {
           formData.append(key, value);
         });
       }
-      
+
       // File must be the last field for S3
       formData.append('file', file);
 
       const uploadResponse = await fetch(strategy.uploadUrl, {
         method: 'POST',
-        body: formData
+        body: formData,
       });
 
       if (!uploadResponse.ok) {
@@ -200,13 +190,10 @@ export class StorageBucket {
 
       // Confirm upload with backend if required
       if (strategy.confirmRequired && strategy.confirmUrl) {
-        const confirmResponse = await this.http.post<StorageFileSchema>(
-          strategy.confirmUrl,
-          {
-            size: file.size,
-            contentType: file.type || 'application/octet-stream'
-          }
-        );
+        const confirmResponse = await this.http.post<StorageFileSchema>(strategy.confirmUrl, {
+          size: file.size,
+          contentType: file.type || 'application/octet-stream',
+        });
 
         return { data: confirmResponse, error: null };
       }
@@ -219,16 +206,14 @@ export class StorageBucket {
           size: file.size,
           mimeType: file.type || 'application/octet-stream',
           uploadedAt: new Date().toISOString(),
-          url: this.getPublicUrl(strategy.key).data!.publicUrl
+          url: this.getPublicUrl(strategy.key).data!.publicUrl,
         } as StorageFileSchema,
-        error: null
+        error: null,
       };
     } catch (error) {
-      throw error instanceof InsForgeError ? error : new InsForgeError(
-        'Presigned upload failed',
-        500,
-        'STORAGE_ERROR'
-      );
+      throw error instanceof InsForgeError
+        ? error
+        : new InsForgeError('Presigned upload failed', 500, 'STORAGE_ERROR');
     }
   }
 
@@ -266,18 +251,18 @@ export class StorageBucket {
 
       // Use URL from strategy
       const downloadUrl = strategyResponse.url;
-      
+
       // Download from the URL
       const headers: HeadersInit = {};
-      
+
       // Only add auth header for direct downloads (not presigned URLs)
       if (strategyResponse.method === 'direct') {
         Object.assign(headers, this.http.getHeaders());
       }
-      
+
       const response = await fetch(downloadUrl, {
         method: 'GET',
-        headers
+        headers,
       });
 
       if (!response.ok) {
@@ -296,13 +281,12 @@ export class StorageBucket {
       const blob = await response.blob();
       return { data: blob, error: null };
     } catch (error) {
-      return { 
-        data: null, 
-        error: error instanceof InsForgeError ? error : new InsForgeError(
-          'Download failed',
-          500,
-          'STORAGE_ERROR'
-        )
+      return {
+        data: null,
+        error:
+          error instanceof InsForgeError
+            ? error
+            : new InsForgeError('Download failed', 500, 'STORAGE_ERROR'),
       };
     }
   }
@@ -344,7 +328,9 @@ export class StorageBucket {
       const isMissingRoute =
         (status === 404 || status === 405) &&
         !(error instanceof InsForgeError && error.error === 'STORAGE_NOT_FOUND');
-      if (!isMissingRoute) throw error;
+      if (!isMissingRoute) {
+        throw error;
+      }
 
       return await this.http.post<DownloadStrategy>(
         `/api/storage/buckets/${this.bucketName}/objects/${encoded}/download-strategy`,
@@ -445,11 +431,19 @@ export class StorageBucket {
   }): Promise<StorageResponse<ListObjectsResponseSchema>> {
     try {
       const params: Record<string, string> = {};
-      
-      if (options?.prefix) params.prefix = options.prefix;
-      if (options?.search) params.search = options.search;
-      if (options?.limit) params.limit = options.limit.toString();
-      if (options?.offset) params.offset = options.offset.toString();
+
+      if (options?.prefix) {
+        params.prefix = options.prefix;
+      }
+      if (options?.search) {
+        params.search = options.search;
+      }
+      if (options?.limit) {
+        params.limit = options.limit.toString();
+      }
+      if (options?.offset) {
+        params.offset = options.offset.toString();
+      }
 
       const response = await this.http.get<ListObjectsResponseSchema>(
         `/api/storage/buckets/${this.bucketName}/objects`,
@@ -458,13 +452,12 @@ export class StorageBucket {
 
       return { data: response, error: null };
     } catch (error) {
-      return { 
-        data: null, 
-        error: error instanceof InsForgeError ? error : new InsForgeError(
-          'List failed',
-          500,
-          'STORAGE_ERROR'
-        )
+      return {
+        data: null,
+        error:
+          error instanceof InsForgeError
+            ? error
+            : new InsForgeError('List failed', 500, 'STORAGE_ERROR'),
       };
     }
   }
@@ -481,13 +474,12 @@ export class StorageBucket {
 
       return { data: response, error: null };
     } catch (error) {
-      return { 
-        data: null, 
-        error: error instanceof InsForgeError ? error : new InsForgeError(
-          'Delete failed',
-          500,
-          'STORAGE_ERROR'
-        )
+      return {
+        data: null,
+        error:
+          error instanceof InsForgeError
+            ? error
+            : new InsForgeError('Delete failed', 500, 'STORAGE_ERROR'),
       };
     }
   }

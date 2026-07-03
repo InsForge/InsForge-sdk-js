@@ -23,11 +23,7 @@ export interface AuthCookieOptions {
   refreshToken?: CookieOptions;
 }
 
-export type CookieStoreValue =
-  | string
-  | { value?: string | null }
-  | undefined
-  | null;
+export type CookieStoreValue = string | { value?: string | null } | undefined | null;
 
 export interface CookieReader {
   get(name: string): CookieStoreValue;
@@ -57,28 +53,35 @@ export function getRefreshTokenCookieName(names?: AuthCookieNames): string {
   return names?.refreshToken ?? DEFAULT_REFRESH_TOKEN_COOKIE;
 }
 
-export function getCookieValue(
-  cookies: CookieReader | undefined,
-  name: string,
-): string | null {
-  if (!cookies) return null;
+export function getCookieValue(cookies: CookieReader | undefined, name: string): string | null {
+  if (!cookies) {
+    return null;
+  }
 
   const value = cookies.get(name);
-  if (typeof value === 'string') return value || null;
-  if (value && typeof value.value === 'string') return value.value || null;
+  if (typeof value === 'string') {
+    return value || null;
+  }
+  if (value && typeof value.value === 'string') {
+    return value.value || null;
+  }
   return null;
 }
 
 export function getCookieValueFromHeader(
   cookieHeader: string | null | undefined,
-  name: string,
+  name: string
 ): string | null {
-  if (!cookieHeader) return null;
+  if (!cookieHeader) {
+    return null;
+  }
 
   const parts = cookieHeader.split(';');
   for (const part of parts) {
     const [rawName, ...rawValue] = part.trim().split('=');
-    if (rawName !== name) continue;
+    if (rawName !== name) {
+      continue;
+    }
     try {
       return decodeURIComponent(rawValue.join('='));
     } catch {
@@ -89,7 +92,9 @@ export function getCookieValueFromHeader(
 }
 
 export function getBrowserCookie(name: string): string | null {
-  if (typeof document === 'undefined') return null;
+  if (typeof document === 'undefined') {
+    return null;
+  }
   return getCookieValueFromHeader(document.cookie, name);
 }
 
@@ -106,10 +111,7 @@ function defaultCookieOptions(): CookieOptions {
   };
 }
 
-export function accessTokenCookieOptions(
-  token: string,
-  overrides?: CookieOptions,
-): CookieOptions {
+export function accessTokenCookieOptions(token: string, overrides?: CookieOptions): CookieOptions {
   return {
     ...defaultCookieOptions(),
     httpOnly: false,
@@ -118,10 +120,7 @@ export function accessTokenCookieOptions(
   };
 }
 
-export function refreshTokenCookieOptions(
-  token: string,
-  overrides?: CookieOptions,
-): CookieOptions {
+export function refreshTokenCookieOptions(token: string, overrides?: CookieOptions): CookieOptions {
   return {
     ...defaultCookieOptions(),
     httpOnly: true,
@@ -144,18 +143,22 @@ export function setCookie(
   cookies: CookieWriter | undefined,
   name: string,
   value: string,
-  options?: CookieOptions,
+  options?: CookieOptions
 ): void {
-  if (!cookies?.set) return;
+  if (!cookies?.set) {
+    return;
+  }
   cookies.set(name, value, options);
 }
 
 export function deleteCookie(
   cookies: CookieWriter | undefined,
   name: string,
-  options?: CookieOptions,
+  options?: CookieOptions
 ): void {
-  if (!cookies) return;
+  if (!cookies) {
+    return;
+  }
   if (cookies.set) {
     cookies.set(name, '', expiredCookieOptions(options));
     return;
@@ -163,22 +166,29 @@ export function deleteCookie(
   cookies.delete?.(name);
 }
 
-export function serializeCookie(
-  name: string,
-  value: string,
-  options: CookieOptions = {},
-): string {
+export function serializeCookie(name: string, value: string, options: CookieOptions = {}): string {
   const parts = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`];
 
-  if (options.maxAge !== undefined) parts.push(`Max-Age=${options.maxAge}`);
-  if (options.domain) parts.push(`Domain=${options.domain}`);
-  if (options.path) parts.push(`Path=${options.path}`);
-  if (options.expires) parts.push(`Expires=${options.expires.toUTCString()}`);
-  if (options.httpOnly) parts.push('HttpOnly');
-  if (options.secure) parts.push('Secure');
+  if (options.maxAge !== undefined) {
+    parts.push(`Max-Age=${options.maxAge}`);
+  }
+  if (options.domain) {
+    parts.push(`Domain=${options.domain}`);
+  }
+  if (options.path) {
+    parts.push(`Path=${options.path}`);
+  }
+  if (options.expires) {
+    parts.push(`Expires=${options.expires.toUTCString()}`);
+  }
+  if (options.httpOnly) {
+    parts.push('HttpOnly');
+  }
+  if (options.secure) {
+    parts.push('Secure');
+  }
   if (options.sameSite) {
-    const sameSite =
-      options.sameSite.charAt(0).toUpperCase() + options.sameSite.slice(1);
+    const sameSite = options.sameSite.charAt(0).toUpperCase() + options.sameSite.slice(1);
     parts.push(`SameSite=${sameSite}`);
   }
 
@@ -189,7 +199,7 @@ export function appendSetCookie(
   headers: Headers,
   name: string,
   value: string,
-  options?: CookieOptions,
+  options?: CookieOptions
 ): void {
   headers.append('Set-Cookie', serializeCookie(name, value, options));
 }
@@ -200,14 +210,11 @@ export function setAuthCookies(
     accessToken: string;
     refreshToken?: string | null;
   },
-  settings: AuthCookieSettings = {},
+  settings: AuthCookieSettings = {}
 ): void {
   const accessName = getAccessTokenCookieName(settings.names);
   const refreshName = getRefreshTokenCookieName(settings.names);
-  const accessOptions = accessTokenCookieOptions(
-    tokens.accessToken,
-    settings.options?.accessToken,
-  );
+  const accessOptions = accessTokenCookieOptions(tokens.accessToken, settings.options?.accessToken);
 
   setCookie(cookies, accessName, tokens.accessToken, accessOptions);
   if (tokens.refreshToken) {
@@ -215,17 +222,14 @@ export function setAuthCookies(
       cookies,
       refreshName,
       tokens.refreshToken,
-      refreshTokenCookieOptions(
-        tokens.refreshToken,
-        settings.options?.refreshToken,
-      ),
+      refreshTokenCookieOptions(tokens.refreshToken, settings.options?.refreshToken)
     );
   }
 }
 
 export function clearAuthCookies(
   cookies: CookieWriter | undefined,
-  settings: AuthCookieSettings = {},
+  settings: AuthCookieSettings = {}
 ): void {
   const accessName = getAccessTokenCookieName(settings.names);
   const refreshName = getRefreshTokenCookieName(settings.names);
@@ -242,7 +246,7 @@ export function setAuthCookieHeaders(
     accessToken: string;
     refreshToken?: string | null;
   },
-  settings: AuthCookieSettings = {},
+  settings: AuthCookieSettings = {}
 ): void {
   const accessName = getAccessTokenCookieName(settings.names);
   const refreshName = getRefreshTokenCookieName(settings.names);
@@ -251,35 +255,29 @@ export function setAuthCookieHeaders(
     headers,
     accessName,
     tokens.accessToken,
-    accessTokenCookieOptions(tokens.accessToken, settings.options?.accessToken),
+    accessTokenCookieOptions(tokens.accessToken, settings.options?.accessToken)
   );
   if (tokens.refreshToken) {
     appendSetCookie(
       headers,
       refreshName,
       tokens.refreshToken,
-      refreshTokenCookieOptions(
-        tokens.refreshToken,
-        settings.options?.refreshToken,
-      ),
+      refreshTokenCookieOptions(tokens.refreshToken, settings.options?.refreshToken)
     );
   }
 }
 
-export function clearAuthCookieHeaders(
-  headers: Headers,
-  settings: AuthCookieSettings = {},
-): void {
+export function clearAuthCookieHeaders(headers: Headers, settings: AuthCookieSettings = {}): void {
   appendSetCookie(
     headers,
     getAccessTokenCookieName(settings.names),
     '',
-    expiredCookieOptions(settings.options?.accessToken),
+    expiredCookieOptions(settings.options?.accessToken)
   );
   appendSetCookie(
     headers,
     getRefreshTokenCookieName(settings.names),
     '',
-    expiredCookieOptions(settings.options?.refreshToken),
+    expiredCookieOptions(settings.options?.refreshToken)
   );
 }

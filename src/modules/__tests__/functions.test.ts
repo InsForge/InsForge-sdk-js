@@ -21,7 +21,7 @@ function makeHttp(fetchFn: ReturnType<typeof vi.fn>) {
       retryCount: 0,
       timeout: 0,
     },
-    makeTokenManager(),
+    makeTokenManager()
   );
 }
 
@@ -33,7 +33,7 @@ function makeInsforgeHttp(fetchFn: ReturnType<typeof vi.fn> = vi.fn()) {
       retryCount: 0,
       timeout: 0,
     },
-    makeTokenManager(),
+    makeTokenManager()
   );
 }
 
@@ -94,7 +94,7 @@ describe('Functions.invoke', () => {
           retryCount: 0,
           timeout: 0,
         },
-        makeTokenManager(),
+        makeTokenManager()
       );
       const fns = new Functions(http, 'https://app.functions.insforge.app');
       const dispatch = vi.fn().mockResolvedValue(jsonRes(200, { ok: 1 }));
@@ -214,7 +214,7 @@ describe('Functions.invoke', () => {
           retryCount: 0,
           timeout: 0,
         },
-        makeTokenManager(),
+        makeTokenManager()
       );
       const fns = new Functions(http, 'https://app-b.functions.insforge.app');
       const dispatch = vi.fn();
@@ -225,9 +225,7 @@ describe('Functions.invoke', () => {
       expect(result).toEqual({ data: { remote: true }, error: null });
       expect(dispatch).not.toHaveBeenCalled();
       expect(fetchFn).toHaveBeenCalledOnce();
-      expect(String(fetchFn.mock.calls[0][0])).toBe(
-        'https://app-b.functions.insforge.app/hello',
-      );
+      expect(String(fetchFn.mock.calls[0][0])).toBe('https://app-b.functions.insforge.app/hello');
     });
   });
 });

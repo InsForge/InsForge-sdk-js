@@ -6,7 +6,7 @@
  * and returns a unified format. This SDK transforms responses to match OpenAI-like format.
  */
 
-import { HttpClient } from "../lib/http-client";
+import { HttpClient } from '../lib/http-client';
 import {
   ChatCompletionRequest,
   ChatCompletionResponse,
@@ -14,7 +14,7 @@ import {
   ImageGenerationResponse,
   EmbeddingsRequest,
   EmbeddingsResponse,
-} from "@insforge/shared-schemas";
+} from '@insforge/shared-schemas';
 
 export class AI {
   public readonly chat: Chat;
@@ -127,20 +127,17 @@ class ChatCompletions {
     // For streaming, return an async iterable that yields OpenAI-like chunks
     if (params.stream) {
       const headers = this.http.getHeaders();
-      headers["Content-Type"] = "application/json";
+      headers['Content-Type'] = 'application/json';
 
-      const response = await this.http.fetch(
-        `${this.http.baseUrl}/api/ai/chat/completion`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(backendParams),
-        }
-      );
+      const response = await this.http.fetch(`${this.http.baseUrl}/api/ai/chat/completion`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(backendParams),
+      });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Stream request failed");
+        throw new Error(error.error || 'Stream request failed');
       }
 
       // Return async iterable that parses SSE and transforms to OpenAI-like format
@@ -149,30 +146,30 @@ class ChatCompletions {
 
     // Non-streaming: transform response to OpenAI-like format
     const response: ChatCompletionResponse = await this.http.post(
-      "/api/ai/chat/completion",
+      '/api/ai/chat/completion',
       backendParams
     );
 
     // Transform to OpenAI-like format
-    const content = response.text || "";
+    const content = response.text || '';
 
     return {
       id: `chatcmpl-${Date.now()}`,
-      object: "chat.completion",
+      object: 'chat.completion',
       created: Math.floor(Date.now() / 1000),
       model: response.metadata?.model,
       choices: [
         {
           index: 0,
           message: {
-            role: "assistant",
+            role: 'assistant',
             content,
             // Include tool_calls if present (from tool calling)
             ...(response.tool_calls?.length && { tool_calls: response.tool_calls }),
             // Include annotations if present (from web search or file parsing)
             ...(response.annotations?.length && { annotations: response.annotations }),
           },
-          finish_reason: response.tool_calls?.length ? "tool_calls" : "stop",
+          finish_reason: response.tool_calls?.length ? 'tool_calls' : 'stop',
         },
       ],
       usage: response.metadata?.usage || {
@@ -186,25 +183,24 @@ class ChatCompletions {
   /**
    * Parse SSE stream into async iterable of OpenAI-like chunks
    */
-  private async *parseSSEStream(
-    response: Response,
-    model: string
-  ): AsyncIterableIterator<any> {
+  private async *parseSSEStream(response: Response, model: string): AsyncIterableIterator<any> {
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
-    let buffer = "";
+    let buffer = '';
 
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
+          if (line.startsWith('data: ')) {
             const dataStr = line.slice(6).trim();
             if (dataStr) {
               try {
@@ -214,7 +210,7 @@ class ChatCompletions {
                 if (data.chunk || data.content) {
                   yield {
                     id: `chatcmpl-${Date.now()}`,
-                    object: "chat.completion.chunk",
+                    object: 'chat.completion.chunk',
                     created: Math.floor(Date.now() / 1000),
                     model,
                     choices: [
@@ -233,7 +229,7 @@ class ChatCompletions {
                 if (data.tool_calls?.length) {
                   yield {
                     id: `chatcmpl-${Date.now()}`,
-                    object: "chat.completion.chunk",
+                    object: 'chat.completion.chunk',
                     created: Math.floor(Date.now() / 1000),
                     model,
                     choices: [
@@ -242,7 +238,7 @@ class ChatCompletions {
                         delta: {
                           tool_calls: data.tool_calls,
                         },
-                        finish_reason: "tool_calls",
+                        finish_reason: 'tool_calls',
                       },
                     ],
                   };
@@ -253,9 +249,9 @@ class ChatCompletions {
                   reader.releaseLock();
                   return;
                 }
-              } catch (e) {
+              } catch {
                 // Skip invalid JSON
-                console.warn("Failed to parse SSE data:", dataStr);
+                console.warn('Failed to parse SSE data:', dataStr);
               }
             }
           }
@@ -307,10 +303,7 @@ class Embeddings {
    * ```
    */
   async create(params: EmbeddingsRequest): Promise<any> {
-    const response: EmbeddingsResponse = await this.http.post(
-      "/api/ai/embeddings",
-      params
-    );
+    const response: EmbeddingsResponse = await this.http.post('/api/ai/embeddings', params);
 
     // Return OpenAI-compatible format
     return {
@@ -359,24 +352,24 @@ class Images {
    */
   async generate(params: ImageGenerationRequest): Promise<any> {
     const response: ImageGenerationResponse = await this.http.post(
-      "/api/ai/image/generation",
+      '/api/ai/image/generation',
       params
     );
-    
+
     // Build data array based on response content
     let data: Array<{ b64_json?: string; content?: string }> = [];
-    
+
     if (response.images && response.images.length > 0) {
       // Has images - extract base64 and include text
-      data = response.images.map(img => ({
+      data = response.images.map((img) => ({
         b64_json: img.imageUrl.replace(/^data:image\/\w+;base64,/, ''),
-        content: response.text
+        content: response.text,
       }));
     } else if (response.text) {
       // Text-only response
       data = [{ content: response.text }];
     }
-    
+
     // Return OpenAI-compatible format
     return {
       created: Math.floor(Date.now() / 1000),
@@ -386,8 +379,8 @@ class Images {
           total_tokens: response.metadata.usage.totalTokens || 0,
           input_tokens: response.metadata.usage.promptTokens || 0,
           output_tokens: response.metadata.usage.completionTokens || 0,
-        }
-      })
+        },
+      }),
     };
   }
 }

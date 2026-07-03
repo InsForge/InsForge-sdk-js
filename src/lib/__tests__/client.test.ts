@@ -9,16 +9,14 @@ describe('client factories', () => {
       apiKey: 'ik_test',
     });
 
-    expect(client.getHttpClient().getHeaders().Authorization).toBe(
-      'Bearer ik_test',
-    );
+    expect(client.getHttpClient().getHeaders().Authorization).toBe('Bearer ik_test');
   });
 
   it('requires apiKey on createAdminClient', () => {
     expect(() =>
       createAdminClient({
         baseUrl: 'http://localhost:7130',
-      } as any),
+      } as any)
     ).toThrow('Missing apiKey');
   });
 
@@ -27,7 +25,7 @@ describe('client factories', () => {
       createAdminClient({
         baseUrl: 'http://localhost:7130',
         apiKey: '   ',
-      }),
+      })
     ).toThrow('Missing apiKey');
   });
 });
@@ -40,9 +38,7 @@ describe('InsForgeClient – accessToken config', () => {
       accessToken: fakeToken,
     });
 
-    expect(client.getHttpClient().getHeaders().Authorization).toBe(
-      `Bearer ${fakeToken}`,
-    );
+    expect(client.getHttpClient().getHeaders().Authorization).toBe(`Bearer ${fakeToken}`);
 
     // Server path attempts a network call (no server running → error),
     // proving accessToken implies server mode just like the deprecated alias.
@@ -57,9 +53,7 @@ describe('InsForgeClient – accessToken config', () => {
       edgeFunctionToken: 'old-token',
     });
 
-    expect(client.getHttpClient().getHeaders().Authorization).toBe(
-      'Bearer new-token',
-    );
+    expect(client.getHttpClient().getHeaders().Authorization).toBe('Bearer new-token');
   });
 });
 
@@ -77,7 +71,7 @@ describe('InsForgeClient – edgeFunctionToken implies server mode', () => {
     // path finds no session and skips the cookie refresh (no window in Node).
     // With the fix, it hits the server endpoint — which will fail with a network error
     // since localhost:7130 isn't running, proving it took the server code path.
-    const { data, error } = await client.auth.getCurrentUser();
+    const { error } = await client.auth.getCurrentUser();
 
     // In server mode with a token, the SDK attempts a network call to /api/auth/sessions/current.
     // Since there's no server, we expect an error (network/connection error), NOT a silent { user: null }.
@@ -120,7 +114,9 @@ describe('InsForgeClient.setAccessToken', () => {
     // had to verify by hand before this method existed.
     let count = 0;
     // @ts-expect-error: tokenManager is private at compile-time; reaching in for the test
-    client.tokenManager.onTokenChange = () => { count++; };
+    client.tokenManager.onTokenChange = () => {
+      count++;
+    };
 
     client.setAccessToken('token-a');
     expect(count).toBe(1);
@@ -136,7 +132,9 @@ describe('InsForgeClient.setAccessToken', () => {
     const client = new InsForgeClient({ baseUrl: 'http://localhost:7130' });
     let count = 0;
     // @ts-expect-error: tokenManager is private at compile-time; reaching in for the test
-    client.tokenManager.onTokenChange = () => { count++; };
+    client.tokenManager.onTokenChange = () => {
+      count++;
+    };
 
     client.setAccessToken('same');
     client.setAccessToken('same');

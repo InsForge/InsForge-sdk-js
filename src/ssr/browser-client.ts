@@ -1,16 +1,8 @@
 import { InsForgeClient } from '../client';
-import {
-  InsForgeError,
-  type AuthRefreshResponse,
-  type InsForgeConfig,
-} from '../types';
+import { InsForgeError, type AuthRefreshResponse, type InsForgeConfig } from '../types';
 import { isJwtExpiredOrExpiring } from '../lib/jwt';
 import { ERROR_CODES } from '@insforge/shared-schemas';
-import {
-  getAccessTokenCookieName,
-  getBrowserCookie,
-  type AuthCookieSettings,
-} from './cookies';
+import { getAccessTokenCookieName, getBrowserCookie, type AuthCookieSettings } from './cookies';
 
 type BrowserAuth = Pick<
   InsForgeClient['auth'],
@@ -22,10 +14,8 @@ export type BrowserInsForgeClient = Omit<InsForgeClient, 'auth'> & {
 };
 
 export interface CreateBrowserClientOptions
-  extends Omit<
-      InsForgeConfig,
-      'accessToken' | 'edgeFunctionToken' | 'isServerMode' | 'auth'
-    >,
+  extends
+    Omit<InsForgeConfig, 'accessToken' | 'edgeFunctionToken' | 'isServerMode' | 'auth'>,
     AuthCookieSettings {
   refreshUrl?: string;
   refreshLeewaySeconds?: number;
@@ -47,36 +37,31 @@ function toRefreshError(response: Response, body: unknown): InsForgeError {
       statusCode?: unknown;
     };
     return new InsForgeError(
-      typeof errorBody.message === 'string'
-        ? errorBody.message
-        : 'Failed to refresh auth session',
-      typeof errorBody.statusCode === 'number'
-        ? errorBody.statusCode
-        : response.status,
-      typeof errorBody.error === 'string'
-        ? errorBody.error
-        : ERROR_CODES.UNKNOWN_ERROR,
+      typeof errorBody.message === 'string' ? errorBody.message : 'Failed to refresh auth session',
+      typeof errorBody.statusCode === 'number' ? errorBody.statusCode : response.status,
+      typeof errorBody.error === 'string' ? errorBody.error : ERROR_CODES.UNKNOWN_ERROR
     );
   }
 
   return new InsForgeError(
-    typeof body === 'string' && body
-      ? body
-      : 'Failed to refresh auth session',
+    typeof body === 'string' && body ? body : 'Failed to refresh auth session',
     response.status,
-    ERROR_CODES.UNKNOWN_ERROR,
+    ERROR_CODES.UNKNOWN_ERROR
   );
 }
 
 async function readErrorCode(response: Response): Promise<string | null> {
-  if (response.status !== 401) return null;
+  if (response.status !== 401) {
+    return null;
+  }
 
   try {
     const body = await response.clone().json();
-    if (!body || typeof body !== 'object') return null;
+    if (!body || typeof body !== 'object') {
+      return null;
+    }
     const candidate =
-      (body as { error?: unknown; code?: unknown }).error ??
-      (body as { code?: unknown }).code;
+      (body as { error?: unknown; code?: unknown }).error ?? (body as { code?: unknown }).code;
     return typeof candidate === 'string' ? candidate : null;
   } catch {
     return null;
@@ -101,7 +86,9 @@ function withAuthHeader(init: RequestInit | undefined, token: string): RequestIn
 }
 
 function getRequestUrl(input: RequestInfo | URL): string {
-  if (typeof input === 'string') return input;
+  if (typeof input === 'string') {
+    return input;
+  }
   if (typeof Request !== 'undefined' && input instanceof Request) {
     return input.url;
   }
@@ -109,7 +96,7 @@ function getRequestUrl(input: RequestInfo | URL): string {
 }
 
 export function createBrowserClient(
-  options: CreateBrowserClientOptions = {},
+  options: CreateBrowserClientOptions = {}
 ): BrowserInsForgeClient {
   let { baseUrl, anonKey } = options;
   try {
@@ -120,13 +107,11 @@ export function createBrowserClient(
   }
   if (!baseUrl || !anonKey) {
     throw new Error(
-      'Missing InsForge baseUrl or anonKey. Pass baseUrl and anonKey to createBrowserClient() or set NEXT_PUBLIC_INSFORGE_URL and NEXT_PUBLIC_INSFORGE_ANON_KEY.',
+      'Missing InsForge baseUrl or anonKey. Pass baseUrl and anonKey to createBrowserClient() or set NEXT_PUBLIC_INSFORGE_URL and NEXT_PUBLIC_INSFORGE_ANON_KEY.'
     );
   }
 
-  let accessToken = getBrowserCookie(
-    getAccessTokenCookieName(options.names),
-  );
+  let accessToken = getBrowserCookie(getAccessTokenCookieName(options.names));
   const refreshUrl = options.refreshUrl ?? '/api/auth/refresh';
   const fetchImpl =
     options.fetch ??
@@ -138,13 +123,13 @@ export function createBrowserClient(
   let refreshPromise: Promise<AuthRefreshResponse | null> | null = null;
 
   const refreshFromRoute = (): Promise<AuthRefreshResponse | null> => {
-    if (refreshPromise) return refreshPromise;
+    if (refreshPromise) {
+      return refreshPromise;
+    }
 
     refreshPromise = (async () => {
       if (!fetchImpl) {
-        throw new Error(
-          'Fetch is not available. Please provide a fetch implementation.',
-        );
+        throw new Error('Fetch is not available. Please provide a fetch implementation.');
       }
 
       const response = await fetchImpl(refreshUrl, {
@@ -168,9 +153,13 @@ export function createBrowserClient(
         throw error;
       }
 
-      if (!body || typeof body !== 'object') return null;
+      if (!body || typeof body !== 'object') {
+        return null;
+      }
       const refreshBody = body as Partial<AuthRefreshResponse>;
-      if (!refreshBody.accessToken || !refreshBody.user) return null;
+      if (!refreshBody.accessToken || !refreshBody.user) {
+        return null;
+      }
 
       accessToken = refreshBody.accessToken;
       client?.setAccessToken(refreshBody.accessToken);
@@ -190,9 +179,7 @@ export function createBrowserClient(
 
   const ssrFetch: typeof fetch = async (input, init) => {
     if (!fetchImpl) {
-      throw new Error(
-        'Fetch is not available. Please provide a fetch implementation.',
-      );
+      throw new Error('Fetch is not available. Please provide a fetch implementation.');
     }
     if (shouldSkipRefresh(input)) {
       return fetchImpl(input, init);
@@ -246,10 +233,7 @@ export function createBrowserClient(
     client.setAccessToken(accessToken);
   }
 
-  if (
-    !accessToken ||
-    isJwtExpiredOrExpiring(accessToken, options.refreshLeewaySeconds)
-  ) {
+  if (!accessToken || isJwtExpiredOrExpiring(accessToken, options.refreshLeewaySeconds)) {
     void refreshFromRoute().catch(() => undefined);
   }
 

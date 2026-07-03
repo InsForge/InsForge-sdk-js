@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { signUpAndSignIn, createClient, getTestEnv } from './setup';
+import { signUpAndSignIn, createClient } from './setup';
 import type { InsForgeClient } from '../src/client';
 
 /**
@@ -36,7 +36,11 @@ describe('Realtime Module', () => {
 
   afterAll(() => {
     // Always disconnect to avoid hanging sockets
-    try { client.realtime.disconnect(); } catch { /* ignore */ }
+    try {
+      client.realtime.disconnect();
+    } catch {
+      /* ignore */
+    }
   });
 
   // ================================================================
@@ -91,11 +95,17 @@ describe('Realtime Module', () => {
 
   describe('disconnect()', () => {
     it('should disconnect cleanly', async () => {
-      if (!realtimeAvailable) return;
+      if (!realtimeAvailable) {
+        return;
+      }
 
       // Ensure connected first
       if (!client.realtime.isConnected) {
-        try { await client.realtime.connect(); } catch { return; }
+        try {
+          await client.realtime.connect();
+        } catch {
+          return;
+        }
       }
 
       client.realtime.disconnect();
@@ -117,8 +127,14 @@ describe('Realtime Module', () => {
 
   describe('subscribe() / unsubscribe()', () => {
     beforeAll(async () => {
-      if (!realtimeAvailable) return;
-      try { await client.realtime.connect(); } catch { realtimeAvailable = false; }
+      if (!realtimeAvailable) {
+        return;
+      }
+      try {
+        await client.realtime.connect();
+      } catch {
+        realtimeAvailable = false;
+      }
     });
 
     afterEach(() => {
@@ -129,7 +145,9 @@ describe('Realtime Module', () => {
     });
 
     it('should subscribe to a channel', async () => {
-      if (!realtimeAvailable) return;
+      if (!realtimeAvailable) {
+        return;
+      }
 
       const channel = `test-${Date.now()}`;
       const response = await client.realtime.subscribe(channel);
@@ -141,7 +159,9 @@ describe('Realtime Module', () => {
     });
 
     it('should return success for duplicate subscribe', async () => {
-      if (!realtimeAvailable) return;
+      if (!realtimeAvailable) {
+        return;
+      }
 
       const channel = `dup-${Date.now()}`;
       await client.realtime.subscribe(channel);
@@ -152,7 +172,9 @@ describe('Realtime Module', () => {
     });
 
     it('unsubscribe() should remove the channel', async () => {
-      if (!realtimeAvailable) return;
+      if (!realtimeAvailable) {
+        return;
+      }
 
       const channel = `unsub-${Date.now()}`;
       await client.realtime.subscribe(channel);
@@ -204,10 +226,16 @@ describe('Realtime Module', () => {
     });
 
     it('should publish when connected', async () => {
-      if (!realtimeAvailable) return;
+      if (!realtimeAvailable) {
+        return;
+      }
 
       if (!client.realtime.isConnected) {
-        try { await client.realtime.connect(); } catch { return; }
+        try {
+          await client.realtime.connect();
+        } catch {
+          return;
+        }
       }
 
       const channel = `pub-${Date.now()}`;
@@ -224,10 +252,16 @@ describe('Realtime Module', () => {
 
   describe('getSubscribedChannels()', () => {
     it('should return an array of channel names', async () => {
-      if (!realtimeAvailable) return;
+      if (!realtimeAvailable) {
+        return;
+      }
 
       if (!client.realtime.isConnected) {
-        try { await client.realtime.connect(); } catch { return; }
+        try {
+          await client.realtime.connect();
+        } catch {
+          return;
+        }
       }
 
       const ch1 = `ch1-${Date.now()}`;

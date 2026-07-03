@@ -15,11 +15,15 @@ export const CSRF_TOKEN_COOKIE = 'insforge_csrf_token';
  * Used to include in X-CSRF-Token header for refresh requests
  */
 export function getCsrfToken(): string | null {
-  if (typeof document === 'undefined') return null;
+  if (typeof document === 'undefined') {
+    return null;
+  }
   const match = document.cookie
     .split(';')
     .find((c) => c.trim().startsWith(`${CSRF_TOKEN_COOKIE}=`));
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   return match.split('=')[1] || null;
 }
 
@@ -28,12 +32,12 @@ export function getCsrfToken(): string | null {
  * Called after login/register/refresh to store the CSRF token
  */
 export function setCsrfToken(token: string): void {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined') {
+    return;
+  }
   const maxAge = 7 * 24 * 60 * 60; // 7 days (same as refresh token)
   const secure =
-    typeof window !== 'undefined' && window.location.protocol === 'https:'
-      ? '; Secure'
-      : '';
+    typeof window !== 'undefined' && window.location.protocol === 'https:' ? '; Secure' : '';
   document.cookie = `${CSRF_TOKEN_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=${maxAge}; SameSite=Lax${secure}`;
 }
 
@@ -42,11 +46,11 @@ export function setCsrfToken(token: string): void {
  * Called on logout
  */
 export function clearCsrfToken(): void {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined') {
+    return;
+  }
   const secure =
-    typeof window !== 'undefined' && window.location.protocol === 'https:'
-      ? '; Secure'
-      : '';
+    typeof window !== 'undefined' && window.location.protocol === 'https:' ? '; Secure' : '';
   document.cookie = `${CSRF_TOKEN_COOKIE}=; path=/; max-age=0; SameSite=Lax${secure}`;
 }
 
@@ -77,7 +81,9 @@ export class TokenManager {
    * Get current session
    */
   getSession(): AuthSession | null {
-    if (!this.accessToken || !this.user) return null;
+    if (!this.accessToken || !this.user) {
+      return null;
+    }
     return {
       accessToken: this.accessToken,
       user: this.user,

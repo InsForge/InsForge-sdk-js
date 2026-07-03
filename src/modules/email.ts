@@ -2,7 +2,10 @@ import { HttpClient } from '../lib/http-client';
 import { InsForgeError } from '../types';
 import type { SendRawEmailRequest, SendEmailResponse } from '@insforge/shared-schemas';
 
-export type { SendRawEmailRequest as SendEmailOptions, SendEmailResponse } from '@insforge/shared-schemas';
+export type {
+  SendRawEmailRequest as SendEmailOptions,
+  SendEmailResponse,
+} from '@insforge/shared-schemas';
 
 /**
  * Emails client for sending custom emails
@@ -47,21 +50,23 @@ export class Emails {
     options: SendRawEmailRequest
   ): Promise<{ data: SendEmailResponse | null; error: InsForgeError | null }> {
     try {
-      const data = await this.http.post<SendEmailResponse>(
-        '/api/email/send-raw',
-        options
-      );
+      const data = await this.http.post<SendEmailResponse>('/api/email/send-raw', options);
 
       return { data, error: null };
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') throw error;
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw error;
+      }
       return {
         data: null,
-        error: error instanceof InsForgeError ? error : new InsForgeError(
-          error instanceof Error ? error.message : 'Email send failed',
-          500,
-          'EMAIL_ERROR'
-        ),
+        error:
+          error instanceof InsForgeError
+            ? error
+            : new InsForgeError(
+                error instanceof Error ? error.message : 'Email send failed',
+                500,
+                'EMAIL_ERROR'
+              ),
       };
     }
   }

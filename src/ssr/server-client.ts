@@ -8,18 +8,14 @@ import {
 } from './cookies';
 
 export interface CreateServerClientOptions
-  extends Omit<
-      InsForgeConfig,
-      'accessToken' | 'edgeFunctionToken' | 'isServerMode' | 'auth'
-    >,
+  extends
+    Omit<InsForgeConfig, 'accessToken' | 'edgeFunctionToken' | 'isServerMode' | 'auth'>,
     AuthCookieSettings {
   cookies?: Pick<CookieStore, 'get'>;
   accessToken?: string;
 }
 
-export function createServerClient(
-  options: CreateServerClientOptions = {},
-): InsForgeClient {
+export function createServerClient(options: CreateServerClientOptions = {}): InsForgeClient {
   let { baseUrl, anonKey } = options;
   try {
     baseUrl ||= process.env.NEXT_PUBLIC_INSFORGE_URL;
@@ -29,16 +25,12 @@ export function createServerClient(
   }
   if (!baseUrl || !anonKey) {
     throw new Error(
-      'Missing InsForge baseUrl or anonKey. Pass baseUrl and anonKey to createServerClient() or set NEXT_PUBLIC_INSFORGE_URL and NEXT_PUBLIC_INSFORGE_ANON_KEY.',
+      'Missing InsForge baseUrl or anonKey. Pass baseUrl and anonKey to createServerClient() or set NEXT_PUBLIC_INSFORGE_URL and NEXT_PUBLIC_INSFORGE_ANON_KEY.'
     );
   }
 
   const accessToken =
-    options.accessToken ??
-    getCookieValue(
-      options.cookies,
-      getAccessTokenCookieName(options.names),
-    );
+    options.accessToken ?? getCookieValue(options.cookies, getAccessTokenCookieName(options.names));
 
   return new InsForgeClient({
     ...options,
