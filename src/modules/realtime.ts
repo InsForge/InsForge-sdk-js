@@ -1,10 +1,28 @@
 import type { Socket } from 'socket.io-client';
-import type { SubscribeResponse, RealtimeErrorPayload, SocketMessage } from '@insforge/shared-schemas';
+import type {
+  SubscribeResponse,
+  RealtimeErrorPayload,
+  SocketMessage,
+  PresenceSnapshot,
+  PresenceMember,
+} from '@insforge/shared-schemas';
 import { TokenManager } from '../lib/token-manager';
+import { getJwtSubject } from '../lib/jwt';
 
-export type { SubscribeResponse, RealtimeErrorPayload, SocketMessage };
+export type { SubscribeResponse, RealtimeErrorPayload, SocketMessage, PresenceMember };
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
+
+/**
+ * Payload for the client-side `presence:sync` event, emitted whenever the SDK
+ * receives a fresh presence snapshot for a channel (on subscribe and on every
+ * automatic resubscribe after a reconnect). Rebuild presence state from
+ * `presence.members` — it replaces, not extends, previously known members.
+ */
+export interface PresenceSyncEvent {
+  channel: string;
+  presence: PresenceSnapshot;
+}
 
 export type EventCallback<T = unknown> = (payload: T) => void;
 
@@ -50,7 +68,9 @@ export class Realtime {
   private tokenManager: TokenManager;
   private socket: Socket | null = null;
   private connectPromise: Promise<void> | null = null;
+  private connectedAuthIdentity: string | null = null;
   private subscribedChannels: Set<string> = new Set();
+  private presenceState: Map<string, Map<string, PresenceMember>> = new Map();
   private eventListeners: Map<string, Set<EventCallback>> = new Map();
   private anonKey?: string;
 
@@ -92,10 +112,19 @@ export class Realtime {
 
     this.connectPromise = (async () => {
       try {
+        // Reuse a socket that exists but is disconnected (e.g. between
+        // reconnect attempts) — creating a second io() manager here would
+        // leak the old connection and duplicate every event.
+        if (this.socket) {
+          await this.reconnectExistingSocket();
+          return;
+        }
+
         const { io } = await import('socket.io-client');
 
         await new Promise<void>((resolve, reject) => {
           const token = this.tokenManager.getAccessToken() ?? this.anonKey;
+          this.connectedAuthIdentity = this.getAuthIdentity(token);
 
           this.socket = io(this.baseUrl, {
             transports: ['websocket'],
@@ -124,9 +153,19 @@ export class Realtime {
 
           this.socket.on('connect', () => {
             cleanup();
-            // Re-subscribe to channels on every connect (initial + reconnects)
+            // Re-subscribe to channels on every connect (initial + reconnects).
+            // Each resubscribe acks with a fresh presence snapshot, surfaced
+            // via 'presence:sync' so apps can rebuild presence state.
             for (const channel of this.subscribedChannels) {
-              this.socket!.emit('realtime:subscribe', { channel });
+              this.emitSubscribe(channel, (response) => {
+                if (!response.ok) {
+                  this.notifyListeners('error', {
+                    channel,
+                    code: response.error.code,
+                    message: response.error.message,
+                  } satisfies RealtimeErrorPayload);
+                }
+              });
             }
             this.notifyListeners('connect');
 
@@ -159,6 +198,9 @@ export class Realtime {
           // Route custom events to listeners (onAny doesn't catch socket reserved events)
           this.socket.onAny((event: string, message: SocketMessage) => {
             if (event === 'realtime:error') return; // Already handled above
+            if (event === 'presence:join' || event === 'presence:leave') {
+              this.applyPresenceDelta(event, message);
+            }
             this.notifyListeners(event, message);
           });
         });
@@ -172,6 +214,52 @@ export class Realtime {
   }
 
   /**
+   * Reconnect an existing socket whose persistent handlers are already
+   * attached. Mirrors the initial-connection semantics: resolves on connect,
+   * rejects on the first connect_error (the socket keeps retrying in the
+   * background), and tears the socket down on timeout.
+   */
+  private reconnectExistingSocket(): Promise<void> {
+    const socket = this.socket!;
+    this.connectedAuthIdentity = this.getAuthIdentity(
+      this.tokenManager.getAccessToken() ?? this.anonKey
+    );
+
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+
+      const settle = (error?: Error, dropSocket = false) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        socket.off('connect', onConnect);
+        socket.off('connect_error', onError);
+        this.connectPromise = null;
+        if (error) {
+          if (dropSocket) {
+            socket.disconnect();
+            this.socket = null;
+          }
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+
+      const timeoutId = setTimeout(() => {
+        settle(new Error(`Connection timeout after ${CONNECT_TIMEOUT}ms`), true);
+      }, CONNECT_TIMEOUT);
+
+      const onConnect = () => settle();
+      const onError = (error: Error) => settle(error);
+
+      socket.on('connect', onConnect);
+      socket.on('connect_error', onError);
+      socket.connect();
+    });
+  }
+
+  /**
    * Disconnect from the realtime server
    */
   disconnect(): void {
@@ -180,12 +268,27 @@ export class Realtime {
       this.socket = null;
     }
     this.subscribedChannels.clear();
+    this.presenceState.clear();
+  }
+
+  /**
+   * Derive the logical identity behind an auth credential so token refreshes
+   * for the same user can be told apart from actual identity changes.
+   * JWTs map to their `sub` claim, opaque anon keys to a fixed sentinel, and
+   * unrecognized credentials to their raw value (so any change reconnects).
+   */
+  private getAuthIdentity(token: string | null | undefined): string | null {
+    if (!token) return null;
+    if (token.startsWith('anon_')) return 'anonymous';
+    return getJwtSubject(token) ?? token;
   }
 
   /**
    * Handle token changes (e.g., after auth refresh)
    * Updates socket auth so reconnects use the new token
-   * If connected, triggers reconnect to apply new token immediately
+   * Reconnects only when the identity changed (sign-in, sign-out, user
+   * switch) — the server binds identity at handshake, so a refreshed token
+   * for the same user doesn't require bouncing the live connection
    */
   private onTokenChange(): void {
     const token = this.tokenManager.getAccessToken() ?? this.anonKey;
@@ -193,6 +296,30 @@ export class Realtime {
     // Always update auth so socket.io auto-reconnect uses new token
     if (this.socket) {
       this.socket.auth = token ? { token } : {};
+    }
+
+    const identity = this.getAuthIdentity(token);
+    const identityChanged = identity !== this.connectedAuthIdentity;
+    // Whatever handshake happens next (reconnect or explicit connect) will
+    // authenticate as this identity
+    this.connectedAuthIdentity = identity;
+
+    if (!identityChanged) {
+      // Same identity with a refreshed token: re-authenticate the live
+      // connection in-band so the server's view of the claims stays current.
+      // Servers without the realtime:auth handler never ack, which leaves
+      // the connection running on its handshake identity as before.
+      if (token && this.socket?.connected) {
+        this.socket.emit('realtime:auth', { token }, (response: { ok: boolean }) => {
+          // The server refused the refreshed token — fall back to a full
+          // reconnect so auth is renegotiated at the handshake
+          if (!response?.ok && this.socket && (this.socket.connected || this.connectPromise)) {
+            this.socket.disconnect();
+            this.socket.connect();
+          }
+        });
+      }
+      return;
     }
 
     // Trigger reconnect if connected OR connecting (to avoid completing with stale token)
@@ -227,19 +354,80 @@ export class Realtime {
   }
 
   /**
+   * Emit a subscribe request for a channel and track the result.
+   * On success the channel is remembered for auto-resubscribe and the fresh
+   * presence snapshot is surfaced through the 'presence:sync' event; on
+   * failure the channel is dropped from the auto-resubscribe list.
+   */
+  private emitSubscribe(channel: string, callback: (response: SubscribeResponse) => void): void {
+    this.socket!.emit('realtime:subscribe', { channel }, (response: SubscribeResponse) => {
+      if (response.ok) {
+        this.subscribedChannels.add(channel);
+        this.presenceState.set(
+          channel,
+          new Map(response.presence.members.map((member) => [member.presenceId, member]))
+        );
+        this.notifyListeners('presence:sync', {
+          channel: response.channel,
+          presence: response.presence,
+        } satisfies PresenceSyncEvent);
+      } else {
+        this.subscribedChannels.delete(channel);
+        this.presenceState.delete(channel);
+      }
+      callback(response);
+    });
+  }
+
+  /**
+   * Apply a presence:join/presence:leave delta to the local presence state.
+   * Deltas for channels without a snapshot are ignored — the snapshot from
+   * the subscribe ack always arrives before any delta for that channel.
+   */
+  private applyPresenceDelta(event: 'presence:join' | 'presence:leave', message: SocketMessage): void {
+    const { member, meta } = message as SocketMessage & { member?: PresenceMember };
+    const channel = meta?.channel;
+    if (!member || !channel) return;
+
+    const members = this.presenceState.get(channel);
+    if (!members) return;
+
+    if (event === 'presence:join') {
+      members.set(member.presenceId, member);
+    } else {
+      members.delete(member.presenceId);
+    }
+  }
+
+  /**
+   * Get the current presence members for a subscribed channel.
+   *
+   * Seeded from the subscribe snapshot and kept current by the SDK from
+   * `presence:join`/`presence:leave` deltas and reconnect resyncs — no manual
+   * merging needed. While disconnected this holds the last known state; it is
+   * replaced by a fresh snapshot when the channel resubscribes.
+   *
+   * @param channel - Channel name
+   * @returns Members of the channel, empty if the channel is not subscribed
+   */
+  getPresenceState(channel: string): PresenceMember[] {
+    return Array.from(this.presenceState.get(channel)?.values() ?? []);
+  }
+
+  /**
    * Subscribe to a channel
    *
    * Automatically connects if not already connected.
+   *
+   * Idempotent: subscribing to an already-subscribed channel re-requests the
+   * subscription and resolves the server's current presence snapshot. The
+   * server tracks members per logical identity, so this never produces
+   * duplicate presence entries or spurious join events.
    *
    * @param channel - Channel name (e.g., 'orders:123', 'broadcast')
    * @returns Promise with the subscription response
    */
   async subscribe(channel: string): Promise<SubscribeResponse> {
-    // Already subscribed, return success
-    if (this.subscribedChannels.has(channel)) {
-      return { ok: true, channel, presence: { members: [] } };
-    }
-
     // Auto-connect if not connected
     if (!this.socket?.connected) {
       try {
@@ -251,12 +439,7 @@ export class Realtime {
     }
 
     return new Promise((resolve) => {
-      this.socket!.emit('realtime:subscribe', { channel }, (response: SubscribeResponse) => {
-        if (response.ok) {
-          this.subscribedChannels.add(channel);
-        }
-        resolve(response);
-      });
+      this.emitSubscribe(channel, resolve);
     });
   }
 
@@ -267,6 +450,7 @@ export class Realtime {
    */
   unsubscribe(channel: string): void {
     this.subscribedChannels.delete(channel);
+    this.presenceState.delete(channel);
 
     if (this.socket?.connected) {
       this.socket.emit('realtime:unsubscribe', { channel });
@@ -296,6 +480,9 @@ export class Realtime {
    * - 'connect_error' - Fired when connection fails (payload: Error)
    * - 'disconnect' - Fired when disconnected (payload: reason string)
    * - 'error' - Fired when a realtime error occurs (payload: RealtimeErrorPayload)
+   * - 'presence:sync' - Fired with a fresh presence snapshot for a channel,
+   *   on every successful subscribe including automatic resubscribes after a
+   *   reconnect (payload: PresenceSyncEvent). Rebuild presence state from it.
    *
    * All other events receive a `SocketMessage` payload with metadata.
    *

@@ -27,6 +27,20 @@ export function getJwtExpiration(token: string | null | undefined): Date | null 
   }
 }
 
+export function getJwtSubject(token: string | null | undefined): string | null {
+  if (!token) return null;
+
+  const [, payload] = token.split('.');
+  if (!payload) return null;
+
+  try {
+    const parsed = JSON.parse(decodeBase64Url(payload)) as { sub?: unknown };
+    return typeof parsed.sub === 'string' && parsed.sub ? parsed.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 export function isJwtExpiredOrExpiring(
   token: string | null | undefined,
   leewaySeconds = 60,

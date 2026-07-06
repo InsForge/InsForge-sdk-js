@@ -61,6 +61,8 @@ export type {
   SocketMessage,
   ConnectionState,
   EventCallback,
+  PresenceSyncEvent,
+  PresenceMember,
 } from './modules/realtime';
 
 // Re-export utilities for advanced usage
