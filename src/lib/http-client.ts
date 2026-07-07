@@ -690,7 +690,7 @@ export class HttpClient {
   private async refreshAndSaveSession(): Promise<AuthRefreshResponse> {
     const newTokenData = await this.refreshAccessToken();
     this.setAuthToken(newTokenData.accessToken);
-    this.tokenManager.saveSession(newTokenData);
+    this.tokenManager.saveSession(newTokenData, 'tokenRefreshed');
     if (newTokenData.csrfToken) {
       setCsrfToken(newTokenData.csrfToken);
     }

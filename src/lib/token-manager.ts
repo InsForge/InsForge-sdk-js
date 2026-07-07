@@ -7,6 +7,19 @@
 import type { UserSchema } from '@insforge/shared-schemas';
 import type { AuthSession } from '../types';
 
+/**
+ * Auth lifecycle events emitted when the stored credential changes.
+ * - `signedIn` — a new session was established (login, OAuth, verify email).
+ * - `signedOut` — the session was cleared.
+ * - `tokenRefreshed` — the access token was replaced for the same session.
+ *
+ * Consumers (e.g. realtime) key off the event type instead of inspecting the
+ * token, so the auth layer stays the single source of truth for intent.
+ */
+export type AuthChangeEvent = 'signedIn' | 'signedOut' | 'tokenRefreshed';
+
+export type AuthStateChangeCallback = (event: AuthChangeEvent) => void;
+
 // CSRF token cookie name
 export const CSRF_TOKEN_COOKIE = 'insforge_csrf_token';
 
@@ -59,21 +72,46 @@ export class TokenManager {
   private accessToken: string | null = null;
   private user: UserSchema | null = null;
 
-  // Callback for token changes (used by realtime to reconnect with new token)
-  onTokenChange: (() => void) | null = null;
+  // Auth state change subscribers (e.g. realtime keys off these to decide
+  // between an in-band token refresh and a full reconnect)
+  private authStateListeners = new Set<AuthStateChangeCallback>();
 
   constructor() {}
 
   /**
-   * Save session in memory
+   * Subscribe to auth state changes. Returns an unsubscribe function.
    */
-  saveSession(session: AuthSession): void {
+  onAuthStateChange(callback: AuthStateChangeCallback): () => void {
+    this.authStateListeners.add(callback);
+    return () => {
+      this.authStateListeners.delete(callback);
+    };
+  }
+
+  private emitAuthStateChange(event: AuthChangeEvent): void {
+    for (const callback of this.authStateListeners) {
+      try {
+        callback(event);
+      } catch (err) {
+        console.error('Error in auth state change listener:', err);
+      }
+    }
+  }
+
+  /**
+   * Save session in memory
+   *
+   * @param event - The auth lifecycle event that caused the change. Defaults
+   *   to `signedIn`; pass `tokenRefreshed` when replacing the token for an
+   *   existing session so consumers don't treat it as a new identity.
+   */
+  saveSession(session: AuthSession, event: AuthChangeEvent = 'signedIn'): void {
     const tokenChanged = session.accessToken !== this.accessToken;
     this.accessToken = session.accessToken;
     this.user = session.user;
 
-    if (tokenChanged && this.onTokenChange) {
-      this.onTokenChange();
+    if (tokenChanged) {
+      this.emitAuthStateChange(event);
     }
   }
 
@@ -99,12 +137,16 @@ export class TokenManager {
 
   /**
    * Set access token
+   *
+   * @param event - The auth lifecycle event. Defaults to `tokenRefreshed`,
+   *   since bare token replacement is dominated by refresh/hydration; pass
+   *   `signedIn` when this represents a new identity.
    */
-  setAccessToken(token: string): void {
+  setAccessToken(token: string, event: AuthChangeEvent = 'tokenRefreshed'): void {
     const tokenChanged = token !== this.accessToken;
     this.accessToken = token;
-    if (tokenChanged && this.onTokenChange) {
-      this.onTokenChange();
+    if (tokenChanged) {
+      this.emitAuthStateChange(event);
     }
   }
 
@@ -130,8 +172,8 @@ export class TokenManager {
     this.accessToken = null;
     this.user = null;
 
-    if (hadToken && this.onTokenChange) {
-      this.onTokenChange();
+    if (hadToken) {
+      this.emitAuthStateChange('signedOut');
     }
   }
 }

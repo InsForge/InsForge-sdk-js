@@ -6,8 +6,7 @@ import type {
   PresenceSnapshot,
   PresenceMember,
 } from '@insforge/shared-schemas';
-import { TokenManager } from '../lib/token-manager';
-import { getJwtSubject } from '../lib/jwt';
+import { TokenManager, type AuthChangeEvent } from '../lib/token-manager';
 
 export type { SubscribeResponse, RealtimeErrorPayload, SocketMessage, PresenceMember };
 
@@ -27,12 +26,6 @@ export interface PresenceSyncEvent {
 export type EventCallback<T = unknown> = (payload: T) => void;
 
 const CONNECT_TIMEOUT = 10000;
-
-// Opaque anon keys carry this prefix (see the backend socket auth middleware).
-// If the format ever changes, unrecognized credentials fall through to the
-// raw-token identity branch, which still compares correctly — it just stops
-// short-circuiting to the shared 'anonymous' sentinel.
-const ANON_KEY_PREFIX = 'anon_';
 
 /**
  * Realtime module for subscribing to channels and handling real-time events
@@ -74,7 +67,6 @@ export class Realtime {
   private tokenManager: TokenManager;
   private socket: Socket | null = null;
   private connectPromise: Promise<void> | null = null;
-  private connectedAuthIdentity: string | null = null;
   private subscribedChannels: Set<string> = new Set();
   private pendingSubscribes: Map<string, Promise<SubscribeResponse>> = new Map();
   private presenceState: Map<string, Map<string, PresenceMember>> = new Map();
@@ -86,8 +78,8 @@ export class Realtime {
     this.tokenManager = tokenManager;
     this.anonKey = anonKey;
 
-    // Handle token changes (e.g., after refresh)
-    this.tokenManager.onTokenChange = () => this.onTokenChange();
+    // React to auth lifecycle changes (refresh vs. sign-in/out)
+    this.tokenManager.onAuthStateChange((event) => this.onAuthStateChange(event));
   }
 
   private notifyListeners(event: string, payload?: unknown): void {
@@ -133,7 +125,6 @@ export class Realtime {
 
         await new Promise<void>((resolve, reject) => {
           const token = this.tokenManager.getAccessToken() ?? this.anonKey;
-          this.connectedAuthIdentity = this.getAuthIdentity(token);
 
           this.socket = io(this.baseUrl, {
             transports: ['websocket'],
@@ -233,9 +224,6 @@ export class Realtime {
    */
   private reconnectExistingSocket(): Promise<void> {
     const socket = this.socket!;
-    this.connectedAuthIdentity = this.getAuthIdentity(
-      this.tokenManager.getAccessToken() ?? this.anonKey
-    );
 
     return new Promise<void>((resolve, reject) => {
       let settled = false;
@@ -289,65 +277,58 @@ export class Realtime {
   }
 
   /**
-   * Derive the logical identity behind an auth credential so token refreshes
-   * for the same user can be told apart from actual identity changes.
-   * JWTs map to their `sub` claim, opaque anon keys to a fixed sentinel, and
-   * unrecognized credentials to their raw value (so any change reconnects).
+   * React to an auth lifecycle change. The auth layer tells us which kind of
+   * change happened, so we never inspect the token itself:
+   * - `tokenRefreshed` (same identity) → re-authenticate the live connection
+   *   in-band via `realtime:auth`, leaving rooms, subscriptions, and presence
+   *   untouched. Servers without the handler never ack, which correctly
+   *   leaves a same-identity connection running as-is.
+   * - `signedIn` / `signedOut` (identity change) → reconnect so the server
+   *   rebuilds rooms and presence under the new identity (or the anon key).
    */
-  private getAuthIdentity(token: string | null | undefined): string | null {
-    if (!token) {
-      return null;
-    }
-    if (token.startsWith(ANON_KEY_PREFIX)) {
-      return 'anonymous';
-    }
-    return getJwtSubject(token) ?? token;
-  }
-
-  /**
-   * Handle token changes (e.g., after auth refresh)
-   * Updates socket auth so reconnects use the new token
-   * Reconnects only when the identity changed (sign-in, sign-out, user
-   * switch) — the server binds identity at handshake, so a refreshed token
-   * for the same user doesn't require bouncing the live connection
-   */
-  private onTokenChange(): void {
+  private onAuthStateChange(event: AuthChangeEvent): void {
     const token = this.tokenManager.getAccessToken() ?? this.anonKey;
 
-    // Always update auth so socket.io auto-reconnect uses new token
+    // Keep auth current so the next handshake (reconnect or first connect)
+    // uses the new credential.
     if (this.socket) {
       this.socket.auth = token ? { token } : {};
     }
 
-    const identity = this.getAuthIdentity(token);
-    const identityChanged = identity !== this.connectedAuthIdentity;
-    // Whatever handshake happens next (reconnect or explicit connect) will
-    // authenticate as this identity
-    this.connectedAuthIdentity = identity;
-
-    if (!identityChanged) {
-      // Same identity with a refreshed token: re-authenticate the live
-      // connection in-band so the server's view of the claims stays current.
-      // Servers without the realtime:auth handler never ack, which leaves
-      // the connection running on its handshake identity as before.
-      if (token && this.socket?.connected) {
-        this.socket.emit('realtime:auth', { token }, (response: { ok: boolean }) => {
-          // The server refused the refreshed token — fall back to a full
-          // reconnect so auth is renegotiated at the handshake
-          if (!response?.ok && this.socket && (this.socket.connected || this.connectPromise)) {
-            this.socket.disconnect();
-            this.socket.connect();
-          }
-        });
-      }
+    // Nothing live yet — the next connect() picks up the credential above.
+    if (!this.socket || !(this.socket.connected || this.connectPromise)) {
       return;
     }
 
-    // Trigger reconnect if connected OR connecting (to avoid completing with stale token)
+    if (event === 'tokenRefreshed') {
+      // A handshake still in flight already carries the previous token, so
+      // renegotiate rather than trying to patch it in-band.
+      if (this.socket.connected && token) {
+        this.socket.emit('realtime:auth', { token }, (response?: { ok?: boolean }) => {
+          // Server rejected the refreshed token (invalid, or an unexpected
+          // subject mismatch) — fall back to a full reconnect.
+          if (!response?.ok) {
+            this.reconnect();
+          }
+        });
+        return;
+      }
+      this.reconnect();
+      return;
+    }
+
+    // signedIn / signedOut: the session identity changed.
+    this.reconnect();
+  }
+
+  /**
+   * Bounce the socket so auth is renegotiated at a fresh handshake. The
+   * on('connect') handler re-subscribes to channels and re-emits presence:sync.
+   */
+  private reconnect(): void {
     if (this.socket && (this.socket.connected || this.connectPromise)) {
       this.socket.disconnect();
       this.socket.connect();
-      // Note: on('connect') handler automatically re-subscribes to channels
     }
   }
 

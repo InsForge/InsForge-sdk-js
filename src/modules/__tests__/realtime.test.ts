@@ -305,64 +305,14 @@ describe('Realtime', () => {
     });
   });
 
-  describe('token changes', () => {
-    it('does not bounce the socket when the same user refreshes their token', async () => {
+  describe('auth state changes', () => {
+    it('re-authenticates in-band without bouncing on tokenRefreshed', async () => {
       tokenManager.setAccessToken(userJwt('user-1', 1));
       const realtime = createRealtime('anon_key');
       const socket = await connectRealtime(realtime);
 
       const refreshed = userJwt('user-1', 2);
-      tokenManager.setAccessToken(refreshed);
-
-      expect(socket.disconnectCalls).toBe(0);
-      expect(socket.connectCalls).toBe(0);
-      // Future reconnects still pick up the fresh token
-      expect(socket.auth).toEqual({ token: refreshed });
-      expect(realtime.isConnected).toBe(true);
-    });
-
-    it('bounces the socket when the signed-in user changes', async () => {
-      tokenManager.setAccessToken(userJwt('user-1'));
-      const realtime = createRealtime('anon_key');
-      const socket = await connectRealtime(realtime);
-
-      tokenManager.setAccessToken(userJwt('user-2'));
-
-      expect(socket.disconnectCalls).toBe(1);
-      expect(socket.connectCalls).toBe(1);
-      expect(socket.auth).toEqual({ token: userJwt('user-2') });
-    });
-
-    it('bounces the socket on sign-out (user -> anon key)', async () => {
-      tokenManager.setAccessToken(userJwt('user-1'));
-      const realtime = createRealtime('anon_key');
-      const socket = await connectRealtime(realtime);
-
-      tokenManager.clearSession();
-
-      expect(socket.disconnectCalls).toBe(1);
-      expect(socket.connectCalls).toBe(1);
-      expect(socket.auth).toEqual({ token: 'anon_key' });
-    });
-
-    it('bounces the socket on sign-in (anon key -> user)', async () => {
-      const realtime = createRealtime('anon_key');
-      const socket = await connectRealtime(realtime);
-
-      tokenManager.setAccessToken(userJwt('user-1'));
-
-      expect(socket.disconnectCalls).toBe(1);
-      expect(socket.connectCalls).toBe(1);
-      expect(socket.auth).toEqual({ token: userJwt('user-1') });
-    });
-
-    it('re-authenticates the live socket in-band on same-user refresh', async () => {
-      tokenManager.setAccessToken(userJwt('user-1', 1));
-      const realtime = createRealtime('anon_key');
-      const socket = await connectRealtime(realtime);
-
-      const refreshed = userJwt('user-1', 2);
-      tokenManager.setAccessToken(refreshed);
+      tokenManager.setAccessToken(refreshed); // defaults to 'tokenRefreshed'
 
       const authEmit = socket.lastEmit('realtime:auth');
       expect(authEmit).toBeDefined();
@@ -371,6 +321,9 @@ describe('Realtime', () => {
       authEmit!.ack!({ ok: true });
       expect(socket.disconnectCalls).toBe(0);
       expect(socket.connectCalls).toBe(0);
+      // Future reconnects still pick up the fresh token
+      expect(socket.auth).toEqual({ token: refreshed });
+      expect(realtime.isConnected).toBe(true);
     });
 
     it('falls back to a reconnect when the server rejects the refreshed token', async () => {
@@ -386,6 +339,44 @@ describe('Realtime', () => {
 
       expect(socket.disconnectCalls).toBe(1);
       expect(socket.connectCalls).toBe(1);
+    });
+
+    it('does not bounce on tokenRefreshed against a server that never acks', async () => {
+      tokenManager.setAccessToken(userJwt('user-1', 1));
+      const realtime = createRealtime('anon_key');
+      const socket = await connectRealtime(realtime);
+
+      // Old backend without a realtime:auth handler: the ack never fires.
+      tokenManager.setAccessToken(userJwt('user-1', 2));
+
+      expect(socket.emitsOf('realtime:auth')).toHaveLength(1);
+      expect(socket.disconnectCalls).toBe(0);
+      expect(socket.connectCalls).toBe(0);
+    });
+
+    it('bounces the socket on signedIn without probing the server', async () => {
+      const realtime = createRealtime('anon_key');
+      const socket = await connectRealtime(realtime);
+
+      tokenManager.setAccessToken(userJwt('user-1'), 'signedIn');
+
+      expect(socket.emitsOf('realtime:auth')).toHaveLength(0);
+      expect(socket.disconnectCalls).toBe(1);
+      expect(socket.connectCalls).toBe(1);
+      expect(socket.auth).toEqual({ token: userJwt('user-1') });
+    });
+
+    it('bounces the socket on signedOut and falls back to the anon key', async () => {
+      tokenManager.setAccessToken(userJwt('user-1'), 'signedIn');
+      const realtime = createRealtime('anon_key');
+      const socket = await connectRealtime(realtime);
+
+      tokenManager.clearSession(); // emits 'signedOut'
+
+      expect(socket.emitsOf('realtime:auth')).toHaveLength(0);
+      expect(socket.disconnectCalls).toBe(1);
+      expect(socket.connectCalls).toBe(1);
+      expect(socket.auth).toEqual({ token: 'anon_key' });
     });
   });
 

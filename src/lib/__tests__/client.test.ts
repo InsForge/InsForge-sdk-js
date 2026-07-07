@@ -106,43 +106,50 @@ describe('InsForgeClient – edgeFunctionToken implies server mode', () => {
 });
 
 describe('InsForgeClient.setAccessToken', () => {
-  it('fires onTokenChange on every transition (string → string → null)', () => {
+  it('emits an auth-state change on every transition (string → string → null)', () => {
     const client = new InsForgeClient({ baseUrl: 'http://localhost:7130' });
 
-    // Replace realtime's tokenManager handler with a counting probe so we can
-    // observe that the realtime path is being notified — this is what callers
-    // had to verify by hand before this method existed.
-    let count = 0;
-    // @ts-expect-error: tokenManager is private at compile-time; reaching in for the test
-    client.tokenManager.onTokenChange = () => {
-      count++;
-    };
+    const events: string[] = [];
+    client.auth.onAuthStateChange((event) => {
+      events.push(event);
+    });
 
     client.setAccessToken('token-a');
-    expect(count).toBe(1);
-
     client.setAccessToken('token-b');
-    expect(count).toBe(2);
-
     client.setAccessToken(null);
-    expect(count).toBe(3);
+
+    // Bare token replacement is treated as a refresh; clearing is a sign-out.
+    expect(events).toEqual(['tokenRefreshed', 'tokenRefreshed', 'signedOut']);
   });
 
-  it('does not fire when token is unchanged', () => {
+  it('does not emit when token is unchanged', () => {
     const client = new InsForgeClient({ baseUrl: 'http://localhost:7130' });
-    let count = 0;
-    // @ts-expect-error: tokenManager is private at compile-time; reaching in for the test
-    client.tokenManager.onTokenChange = () => {
-      count++;
-    };
+    const events: string[] = [];
+    client.auth.onAuthStateChange((event) => {
+      events.push(event);
+    });
 
     client.setAccessToken('same');
     client.setAccessToken('same');
-    expect(count).toBe(1);
+    expect(events).toEqual(['tokenRefreshed']);
 
     // Clearing when already null is also a no-op
     client.setAccessToken(null);
     client.setAccessToken(null);
-    expect(count).toBe(2);
+    expect(events).toEqual(['tokenRefreshed', 'signedOut']);
+  });
+
+  it('stops notifying after unsubscribe', () => {
+    const client = new InsForgeClient({ baseUrl: 'http://localhost:7130' });
+    const events: string[] = [];
+    const unsubscribe = client.auth.onAuthStateChange((event) => {
+      events.push(event);
+    });
+
+    client.setAccessToken('token-a');
+    unsubscribe();
+    client.setAccessToken('token-b');
+
+    expect(events).toEqual(['tokenRefreshed']);
   });
 });

@@ -108,8 +108,8 @@ export class InsForgeClient {
   /**
    * Set the access token used by every SDK surface. Updates both the HTTP
    * client (database / storage / functions / AI / emails) and the realtime
-   * token manager (which fires `onTokenChange` to reconnect the WebSocket
-   * with the new bearer). Pass `null` to clear.
+   * token manager (which emits an auth-state change so the WebSocket
+   * re-authenticates in-band or reconnects as needed). Pass `null` to clear.
    *
    * Use this when an external auth provider (Better Auth, Clerk, Auth0,
    * WorkOS, Kinde, Stytch, …) issues the JWT and you need to keep the

@@ -4,7 +4,14 @@
  */
 
 import { HttpClient } from '../../lib/http-client';
-import { TokenManager, getCsrfToken, setCsrfToken, clearCsrfToken } from '../../lib/token-manager';
+import {
+  TokenManager,
+  getCsrfToken,
+  setCsrfToken,
+  clearCsrfToken,
+  type AuthChangeEvent,
+  type AuthStateChangeCallback,
+} from '../../lib/token-manager';
 import { AuthSession, InsForgeError } from '../../types';
 import {
   generateCodeVerifier,
@@ -76,7 +83,8 @@ export class Auth {
    */
   private saveSessionFromResponse(
     response:
-      CreateUserResponse | CreateSessionResponse | VerifyEmailResponse | RefreshSessionResponse
+      CreateUserResponse | CreateSessionResponse | VerifyEmailResponse | RefreshSessionResponse,
+    event: AuthChangeEvent = 'signedIn'
   ): boolean {
     if (!response.accessToken || !response.user) {
       return false;
@@ -93,7 +101,7 @@ export class Auth {
     }
 
     if (!this.isServerMode()) {
-      this.tokenManager.saveSession(session);
+      this.tokenManager.saveSession(session, event);
     }
     this.http.setAuthToken(response.accessToken);
     this.http.setRefreshToken(response.refreshToken ?? null);
@@ -221,6 +229,24 @@ export class Auth {
         error: new InsForgeError('Failed to sign out', 500, 'SIGNOUT_ERROR'),
       };
     }
+  }
+
+  /**
+   * Subscribe to auth state changes. The callback fires with `signedIn`,
+   * `signedOut`, or `tokenRefreshed` whenever the stored session changes.
+   *
+   * @returns An unsubscribe function.
+   *
+   * @example
+   * ```typescript
+   * const unsubscribe = insforge.auth.onAuthStateChange((event) => {
+   *   if (event === 'signedOut') redirectToLogin();
+   * });
+   * // later: unsubscribe();
+   * ```
+   */
+  onAuthStateChange(callback: AuthStateChangeCallback): () => void {
+    return this.tokenManager.onAuthStateChange(callback);
   }
 
   // ============================================================================
@@ -456,7 +482,7 @@ export class Auth {
       );
 
       if (response.accessToken) {
-        this.saveSessionFromResponse(response);
+        this.saveSessionFromResponse(response, 'tokenRefreshed');
       }
 
       return { data: response, error: null };
