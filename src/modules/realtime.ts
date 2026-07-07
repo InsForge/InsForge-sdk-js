@@ -28,6 +28,12 @@ export type EventCallback<T = unknown> = (payload: T) => void;
 
 const CONNECT_TIMEOUT = 10000;
 
+// Opaque anon keys carry this prefix (see the backend socket auth middleware).
+// If the format ever changes, unrecognized credentials fall through to the
+// raw-token identity branch, which still compares correctly — it just stops
+// short-circuiting to the shared 'anonymous' sentinel.
+const ANON_KEY_PREFIX = 'anon_';
+
 /**
  * Realtime module for subscribing to channels and handling real-time events
  *
@@ -70,6 +76,7 @@ export class Realtime {
   private connectPromise: Promise<void> | null = null;
   private connectedAuthIdentity: string | null = null;
   private subscribedChannels: Set<string> = new Set();
+  private pendingSubscribes: Map<string, Promise<SubscribeResponse>> = new Map();
   private presenceState: Map<string, Map<string, PresenceMember>> = new Map();
   private eventListeners: Map<string, Set<EventCallback>> = new Map();
   private anonKey?: string;
@@ -149,6 +156,7 @@ export class Realtime {
               this.connectPromise = null;
               this.socket?.disconnect();
               this.socket = null;
+              this.pendingSubscribes.clear();
               reject(new Error(`Connection timeout after ${CONNECT_TIMEOUT}ms`));
             }
           }, CONNECT_TIMEOUT);
@@ -159,7 +167,7 @@ export class Realtime {
             // Each resubscribe acks with a fresh presence snapshot, surfaced
             // via 'presence:sync' so apps can rebuild presence state.
             for (const channel of this.subscribedChannels) {
-              this.emitSubscribe(channel, (response) => {
+              void this.requestSubscribe(channel).then((response) => {
                 if (!response.ok) {
                   this.notifyListeners('error', {
                     channel,
@@ -245,6 +253,7 @@ export class Realtime {
           if (dropSocket) {
             socket.disconnect();
             this.socket = null;
+            this.pendingSubscribes.clear();
           }
           reject(error);
         } else {
@@ -274,6 +283,8 @@ export class Realtime {
       this.socket = null;
     }
     this.subscribedChannels.clear();
+    // A discarded socket's buffered emits never ack, so pending requests are dead
+    this.pendingSubscribes.clear();
     this.presenceState.clear();
   }
 
@@ -287,7 +298,7 @@ export class Realtime {
     if (!token) {
       return null;
     }
-    if (token.startsWith('anon_')) {
+    if (token.startsWith(ANON_KEY_PREFIX)) {
       return 'anonymous';
     }
     return getJwtSubject(token) ?? token;
@@ -372,31 +383,52 @@ export class Realtime {
    * On success the channel is remembered for auto-resubscribe and the fresh
    * presence snapshot is surfaced through the 'presence:sync' event; on
    * failure the channel is dropped from the auto-resubscribe list.
+   *
+   * In-flight requests are deduplicated per channel, so a `subscribe()` call
+   * that races the automatic resubscribe on reconnect shares one round-trip
+   * (and one 'presence:sync') instead of emitting twice.
    */
-  private emitSubscribe(channel: string, callback: (response: SubscribeResponse) => void): void {
-    this.socket!.emit('realtime:subscribe', { channel }, (response: SubscribeResponse) => {
-      if (response.ok) {
-        this.subscribedChannels.add(channel);
-        this.presenceState.set(
-          channel,
-          new Map(response.presence.members.map((member) => [member.presenceId, member]))
-        );
-        this.notifyListeners('presence:sync', {
-          channel: response.channel,
-          presence: response.presence,
-        } satisfies PresenceSyncEvent);
-      } else {
-        this.subscribedChannels.delete(channel);
-        this.presenceState.delete(channel);
-      }
-      callback(response);
+  private requestSubscribe(channel: string): Promise<SubscribeResponse> {
+    const pending = this.pendingSubscribes.get(channel);
+    if (pending) {
+      return pending;
+    }
+
+    const request = new Promise<SubscribeResponse>((resolve) => {
+      this.socket!.emit('realtime:subscribe', { channel }, (response: SubscribeResponse) => {
+        this.pendingSubscribes.delete(channel);
+        if (response.ok) {
+          this.subscribedChannels.add(channel);
+          this.presenceState.set(
+            channel,
+            new Map(response.presence.members.map((member) => [member.presenceId, member]))
+          );
+          this.notifyListeners('presence:sync', {
+            channel: response.channel,
+            presence: response.presence,
+          } satisfies PresenceSyncEvent);
+        } else {
+          this.subscribedChannels.delete(channel);
+          this.presenceState.delete(channel);
+        }
+        resolve(response);
+      });
     });
+
+    this.pendingSubscribes.set(channel, request);
+    return request;
   }
 
   /**
    * Apply a presence:join/presence:leave delta to the local presence state.
-   * Deltas for channels without a snapshot are ignored — the snapshot from
-   * the subscribe ack always arrives before any delta for that channel.
+   *
+   * Deltas for channels without a snapshot are ignored. This is safe with the
+   * current server: it takes the snapshot after adding this socket to the
+   * room and emits the ack in the same synchronous block as the snapshot, so
+   * a delta delivered before our ack was necessarily broadcast before the
+   * snapshot was taken — the snapshot already reflects it. A delta can
+   * therefore be dropped here, but never one the ack's snapshot doesn't
+   * subsume.
    */
   private applyPresenceDelta(
     event: 'presence:join' | 'presence:leave',
@@ -459,9 +491,7 @@ export class Realtime {
       }
     }
 
-    return new Promise((resolve) => {
-      this.emitSubscribe(channel, resolve);
-    });
+    return this.requestSubscribe(channel);
   }
 
   /**

@@ -233,6 +233,44 @@ describe('Realtime', () => {
       expect(realtime.getSubscribedChannels()).toEqual(['room:1']);
     });
 
+    it('shares one round-trip when subscribe() races the auto-resubscribe', async () => {
+      const realtime = createRealtime('anon_key');
+      const socket = await connectRealtime(realtime);
+
+      const first = realtime.subscribe('room:1');
+      socket.lastEmit('realtime:subscribe')!.ack!(okResponse('room:1', ['me']));
+      await first;
+
+      socket.fire('disconnect', 'transport close');
+
+      const syncEvents: PresenceSyncEvent[] = [];
+      realtime.on<PresenceSyncEvent>('presence:sync', (e) => syncEvents.push(e));
+
+      // subscribe() auto-connects; the connect handler auto-resubscribes the
+      // same channel — the two must share a single realtime:subscribe emit
+      const promise = realtime.subscribe('room:1');
+      await vi.waitFor(() => {
+        if (socket.connectCalls !== 1) {
+          throw new Error('reconnect not requested yet');
+        }
+      });
+      socket.fire('connect');
+
+      // Let subscribe() resume past connect() and reach the pending-request check
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(socket.emitsOf('realtime:subscribe')).toHaveLength(2);
+
+      socket.emitsOf('realtime:subscribe')[1].ack!(okResponse('room:1', ['me', 'other']));
+      const response = await promise;
+
+      expect(response.ok).toBe(true);
+      if (response.ok) {
+        expect(response.presence.members).toHaveLength(2);
+      }
+      expect(socket.emitsOf('realtime:subscribe')).toHaveLength(2);
+      expect(syncEvents).toHaveLength(1);
+    });
+
     it('drops the channel and emits error when the resubscribe is denied', async () => {
       const realtime = createRealtime('anon_key');
       const socket = await connectRealtime(realtime);
@@ -255,6 +293,12 @@ describe('Realtime', () => {
         error: { code: 'REALTIME_UNAUTHORIZED', message: 'denied' },
       });
 
+      // The error notification is delivered via the request promise's .then
+      await vi.waitFor(() => {
+        if (errors.length === 0) {
+          throw new Error('error event not delivered yet');
+        }
+      });
       expect(errors).toHaveLength(1);
       expect(errors[0].code).toBe('REALTIME_UNAUTHORIZED');
       expect(realtime.getSubscribedChannels()).toEqual([]);
@@ -309,6 +353,7 @@ describe('Realtime', () => {
 
       expect(socket.disconnectCalls).toBe(1);
       expect(socket.connectCalls).toBe(1);
+      expect(socket.auth).toEqual({ token: userJwt('user-1') });
     });
 
     it('re-authenticates the live socket in-band on same-user refresh', async () => {
