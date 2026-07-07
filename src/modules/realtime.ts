@@ -85,7 +85,9 @@ export class Realtime {
 
   private notifyListeners(event: string, payload?: unknown): void {
     const listeners = this.eventListeners.get(event);
-    if (!listeners) return;
+    if (!listeners) {
+      return;
+    }
     for (const cb of listeners) {
       try {
         cb(payload);
@@ -197,7 +199,9 @@ export class Realtime {
 
           // Route custom events to listeners (onAny doesn't catch socket reserved events)
           this.socket.onAny((event: string, message: SocketMessage) => {
-            if (event === 'realtime:error') return; // Already handled above
+            if (event === 'realtime:error') {
+              return; // Already handled above
+            }
             if (event === 'presence:join' || event === 'presence:leave') {
               this.applyPresenceDelta(event, message);
             }
@@ -229,7 +233,9 @@ export class Realtime {
       let settled = false;
 
       const settle = (error?: Error, dropSocket = false) => {
-        if (settled) return;
+        if (settled) {
+          return;
+        }
         settled = true;
         clearTimeout(timeoutId);
         socket.off('connect', onConnect);
@@ -278,8 +284,12 @@ export class Realtime {
    * unrecognized credentials to their raw value (so any change reconnects).
    */
   private getAuthIdentity(token: string | null | undefined): string | null {
-    if (!token) return null;
-    if (token.startsWith('anon_')) return 'anonymous';
+    if (!token) {
+      return null;
+    }
+    if (token.startsWith('anon_')) {
+      return 'anonymous';
+    }
     return getJwtSubject(token) ?? token;
   }
 
@@ -341,8 +351,12 @@ export class Realtime {
    * Get the current connection state
    */
   get connectionState(): ConnectionState {
-    if (!this.socket) return 'disconnected';
-    if (this.socket.connected) return 'connected';
+    if (!this.socket) {
+      return 'disconnected';
+    }
+    if (this.socket.connected) {
+      return 'connected';
+    }
     return 'connecting';
   }
 
@@ -384,13 +398,20 @@ export class Realtime {
    * Deltas for channels without a snapshot are ignored — the snapshot from
    * the subscribe ack always arrives before any delta for that channel.
    */
-  private applyPresenceDelta(event: 'presence:join' | 'presence:leave', message: SocketMessage): void {
+  private applyPresenceDelta(
+    event: 'presence:join' | 'presence:leave',
+    message: SocketMessage
+  ): void {
     const { member, meta } = message as SocketMessage & { member?: PresenceMember };
     const channel = meta?.channel;
-    if (!member || !channel) return;
+    if (!member || !channel) {
+      return;
+    }
 
     const members = this.presenceState.get(channel);
-    if (!members) return;
+    if (!members) {
+      return;
+    }
 
     if (event === 'presence:join') {
       members.set(member.presenceId, member);

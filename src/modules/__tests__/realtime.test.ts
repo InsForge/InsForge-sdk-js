@@ -18,7 +18,7 @@ function userJwt(sub: string, iat = 0): string {
 type EmittedEvent = {
   event: string;
   payload: unknown;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   ack?: (response: any) => void;
 };
 
@@ -69,8 +69,12 @@ class FakeSocket {
 
   // Test helpers
   fire(event: string, ...args: unknown[]): void {
-    if (event === 'connect') this.connected = true;
-    if (event === 'disconnect') this.connected = false;
+    if (event === 'connect') {
+      this.connected = true;
+    }
+    if (event === 'disconnect') {
+      this.connected = false;
+    }
     for (const cb of [...(this.handlers.get(event) ?? [])]) {
       cb(...args);
     }
@@ -117,7 +121,9 @@ function okResponse(channel: string, presenceIds: string[]): SubscribeResponse {
 async function connectRealtime(realtime: Realtime): Promise<FakeSocket> {
   const promise = realtime.connect();
   await vi.waitFor(() => {
-    if (!currentSocket) throw new Error('socket not created yet');
+    if (!currentSocket) {
+      throw new Error('socket not created yet');
+    }
   });
   const socket = currentSocket!;
   socket.fire('connect');
@@ -347,10 +353,7 @@ describe('Realtime', () => {
       socket.lastEmit('realtime:subscribe')!.ack!(okResponse('room:1', ['me', 'other']));
       await promise;
 
-      expect(realtime.getPresenceState('room:1').map((m) => m.presenceId)).toEqual([
-        'me',
-        'other',
-      ]);
+      expect(realtime.getPresenceState('room:1').map((m) => m.presenceId)).toEqual(['me', 'other']);
 
       socket.fireServerEvent('presence:join', {
         member: { type: 'user', presenceId: 'third', joinedAt: '2026-01-01T00:00:01.000Z' },
@@ -366,10 +369,7 @@ describe('Realtime', () => {
         member: { type: 'user', presenceId: 'other', joinedAt: '2026-01-01T00:00:00.000Z' },
         meta: { channel: 'room:1' },
       });
-      expect(realtime.getPresenceState('room:1').map((m) => m.presenceId)).toEqual([
-        'me',
-        'third',
-      ]);
+      expect(realtime.getPresenceState('room:1').map((m) => m.presenceId)).toEqual(['me', 'third']);
 
       realtime.unsubscribe('room:1');
       expect(realtime.getPresenceState('room:1')).toEqual([]);
@@ -408,13 +408,17 @@ describe('Realtime', () => {
 
       const promise = realtime.subscribe('room:1');
       await vi.waitFor(() => {
-        if (socket.connectCalls !== 1) throw new Error('reconnect not requested yet');
+        if (socket.connectCalls !== 1) {
+          throw new Error('reconnect not requested yet');
+        }
       });
       expect(ioMock).toHaveBeenCalledTimes(1);
 
       socket.fire('connect');
       await vi.waitFor(() => {
-        if (!socket.lastEmit('realtime:subscribe')) throw new Error('no subscribe yet');
+        if (!socket.lastEmit('realtime:subscribe')) {
+          throw new Error('no subscribe yet');
+        }
       });
       socket.lastEmit('realtime:subscribe')!.ack!(okResponse('room:1', ['me']));
 

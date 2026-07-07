@@ -10,10 +10,7 @@ import { HttpClient } from '../lib/http-client';
  * Custom fetch that maps postgrest-js URLs to InsForge database endpoints.
  */
 function createInsForgePostgrestFetch(httpClient: HttpClient): typeof fetch {
-  return async (
-    input: RequestInfo | URL,
-    init?: RequestInit,
-  ): Promise<Response> => {
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input.toString();
     const urlObj = new URL(url);
 
@@ -143,7 +140,7 @@ export class Database {
       head?: boolean;
       get?: boolean;
       count?: 'exact' | 'planned' | 'estimated';
-    },
+    }
   ) {
     return this.postgrest.rpc(fn, args, options);
   }

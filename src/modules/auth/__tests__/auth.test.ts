@@ -38,7 +38,7 @@ describe('Auth', () => {
       const fetchMock = vi.fn().mockResolvedValue(
         createJsonResponse(200, {
           authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
-        }),
+        })
       );
       const http = new HttpClient(
         {
@@ -47,42 +47,35 @@ describe('Auth', () => {
           retryCount: 0,
           timeout: 0,
         },
-        new TokenManager(),
+        new TokenManager()
       );
       const auth = new Auth(http, new TokenManager(), { isServerMode: true });
 
-      const { data, error } = await auth.signInWithOAuth(
-        'google',
-        {
-          redirectTo: 'http://localhost:3000/dashboard',
-          additionalParams: {
-            prompt: 'select_account',
-            login_hint: 'person@example.com',
-          },
-          skipBrowserRedirect: true,
+      const { data, error } = await auth.signInWithOAuth('google', {
+        redirectTo: 'http://localhost:3000/dashboard',
+        additionalParams: {
+          prompt: 'select_account',
+          login_hint: 'person@example.com',
         },
-      );
+        skipBrowserRedirect: true,
+      });
 
       expect(error).toBeNull();
       expect(data.url).toBe('https://accounts.google.com/o/oauth2/v2/auth');
 
       const requestUrl = new URL(fetchMock.mock.calls[0][0] as string);
       expect(requestUrl.pathname).toBe('/api/auth/oauth/google');
-      expect(requestUrl.searchParams.get('redirect_uri')).toBe(
-        'http://localhost:3000/dashboard',
-      );
+      expect(requestUrl.searchParams.get('redirect_uri')).toBe('http://localhost:3000/dashboard');
       expect(requestUrl.searchParams.get('code_challenge')).toHaveLength(43);
       expect(requestUrl.searchParams.get('prompt')).toBe('select_account');
-      expect(requestUrl.searchParams.get('login_hint')).toBe(
-        'person@example.com',
-      );
+      expect(requestUrl.searchParams.get('login_hint')).toBe('person@example.com');
     });
 
     it('supports the deprecated object wrapper signature', async () => {
       const fetchMock = vi.fn().mockResolvedValue(
         createJsonResponse(200, {
           authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
-        }),
+        })
       );
       const http = new HttpClient(
         {
@@ -91,7 +84,7 @@ describe('Auth', () => {
           retryCount: 0,
           timeout: 0,
         },
-        new TokenManager(),
+        new TokenManager()
       );
       const auth = new Auth(http, new TokenManager(), { isServerMode: true });
 
@@ -105,9 +98,7 @@ describe('Auth', () => {
       expect(error).toBeNull();
 
       const requestUrl = new URL(fetchMock.mock.calls[0][0] as string);
-      expect(requestUrl.searchParams.get('redirect_uri')).toBe(
-        'http://localhost:3000/dashboard',
-      );
+      expect(requestUrl.searchParams.get('redirect_uri')).toBe('http://localhost:3000/dashboard');
       expect(requestUrl.searchParams.get('prompt')).toBe('select_account');
     });
 
@@ -115,7 +106,7 @@ describe('Auth', () => {
       const fetchMock = vi.fn().mockResolvedValue(
         createJsonResponse(200, {
           authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
-        }),
+        })
       );
       const http = new HttpClient(
         {
@@ -124,38 +115,29 @@ describe('Auth', () => {
           retryCount: 0,
           timeout: 0,
         },
-        new TokenManager(),
+        new TokenManager()
       );
       const auth = new Auth(http, new TokenManager(), { isServerMode: true });
 
-      const { error } = await auth.signInWithOAuth(
-        'google',
-        {
-          redirectTo: 'http://localhost:3000/dashboard',
-          additionalParams: {
-            redirect_uri: 'https://evil.example/callback',
-            code_challenge: 'evil',
-            prompt: 'select_account',
-          },
-          skipBrowserRedirect: true,
+      const { error } = await auth.signInWithOAuth('google', {
+        redirectTo: 'http://localhost:3000/dashboard',
+        additionalParams: {
+          redirect_uri: 'https://evil.example/callback',
+          code_challenge: 'evil',
+          prompt: 'select_account',
         },
-      );
+        skipBrowserRedirect: true,
+      });
 
       expect(error).toBeNull();
 
       const requestUrl = new URL(fetchMock.mock.calls[0][0] as string);
-      expect(requestUrl.searchParams.get('redirect_uri')).toBe(
-        'http://localhost:3000/dashboard',
-      );
+      expect(requestUrl.searchParams.get('redirect_uri')).toBe('http://localhost:3000/dashboard');
       expect(requestUrl.searchParams.get('code_challenge')).toHaveLength(43);
       expect(requestUrl.searchParams.get('code_challenge')).not.toBe('evil');
       expect(requestUrl.searchParams.get('prompt')).toBe('select_account');
-      expect(requestUrl.searchParams.has('additionalParams[redirect_uri]')).toBe(
-        false,
-      );
-      expect(requestUrl.searchParams.has('additionalParams[code_challenge]')).toBe(
-        false,
-      );
+      expect(requestUrl.searchParams.has('additionalParams[redirect_uri]')).toBe(false);
+      expect(requestUrl.searchParams.has('additionalParams[code_challenge]')).toBe(false);
     });
 
     it('returns INVALID_INPUT when called without an options object', async () => {
@@ -167,7 +149,7 @@ describe('Auth', () => {
           retryCount: 0,
           timeout: 0,
         },
-        new TokenManager(),
+        new TokenManager()
       );
       const auth = new Auth(http, new TokenManager(), { isServerMode: true });
 
@@ -188,7 +170,7 @@ describe('Auth', () => {
           retryCount: 0,
           timeout: 0,
         },
-        new TokenManager(),
+        new TokenManager()
       );
       const auth = new Auth(http, new TokenManager(), { isServerMode: true });
 
@@ -216,7 +198,7 @@ describe('Auth', () => {
           retryCount: 0,
           timeout: 0,
         },
-        new TokenManager(),
+        new TokenManager()
       );
       const auth = new Auth(http, new TokenManager(), { isServerMode: false });
 
@@ -244,7 +226,7 @@ describe('Auth', () => {
           retryCount: 0,
           timeout: 0,
         },
-        new TokenManager(),
+        new TokenManager()
       );
       const auth = new Auth(http, new TokenManager(), { isServerMode: true });
 
@@ -272,7 +254,7 @@ describe('Auth', () => {
           retryCount: 0,
           timeout: 0,
         },
-        new TokenManager(),
+        new TokenManager()
       );
       const auth = new Auth(http, new TokenManager(), { isServerMode: false });
 

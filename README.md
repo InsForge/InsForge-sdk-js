@@ -33,11 +33,11 @@ yarn add @insforge/sdk
 ### Initialize the Client
 
 ```javascript
-import { createClient } from "@insforge/sdk";
+import { createClient } from '@insforge/sdk';
 
 const insforge = createClient({
-  baseUrl: "http://localhost:7130", // Your InsForge backend URL
-  anonKey: "your-anon-key", // Optional public anon key
+  baseUrl: 'http://localhost:7130', // Your InsForge backend URL
+  anonKey: 'your-anon-key', // Optional public anon key
 });
 ```
 
@@ -46,10 +46,10 @@ const insforge = createClient({
 Use `createAdminClient()` only in trusted server code that needs project-admin privileges:
 
 ```typescript
-import { createAdminClient } from "@insforge/sdk";
+import { createAdminClient } from '@insforge/sdk';
 
 const admin = createAdminClient({
-  baseUrl: "http://localhost:7130",
+  baseUrl: 'http://localhost:7130',
   apiKey: process.env.INSFORGE_API_KEY!,
 });
 ```
@@ -62,7 +62,7 @@ In edge functions or other server code that receives a user's JWT, seed the clie
 
 ```javascript
 const insforge = createClient({
-  baseUrl: "http://localhost:7130",
+  baseUrl: 'http://localhost:7130',
   accessToken: userJwt, // e.g. from the request's Authorization header
 });
 ```
@@ -74,22 +74,22 @@ All requests run as that user (RLS applies). The token is used as-is — the SDK
 ```javascript
 // Sign up a new user
 const { data, error } = await insforge.auth.signUp({
-  email: "user@example.com",
-  password: "securePassword123",
-  name: "John Doe", // optional
-  redirectTo: "http://localhost:3000/sign-in", // optional, recommended for link-based verification
+  email: 'user@example.com',
+  password: 'securePassword123',
+  name: 'John Doe', // optional
+  redirectTo: 'http://localhost:3000/sign-in', // optional, recommended for link-based verification
 });
 
 // Sign in with email/password
 const { data, error } = await insforge.auth.signInWithPassword({
-  email: "user@example.com",
-  password: "securePassword123",
+  email: 'user@example.com',
+  password: 'securePassword123',
 });
 
 // OAuth authentication (built-in or custom provider key)
-await insforge.auth.signInWithOAuth("google", {
-  redirectTo: "http://localhost:3000/dashboard",
-  additionalParams: { prompt: "select_account" },
+await insforge.auth.signInWithOAuth('google', {
+  redirectTo: 'http://localhost:3000/dashboard',
+  additionalParams: { prompt: 'select_account' },
 });
 // additionalParams is for provider-specific hints only.
 // Do not pass client_id, scope, redirect_uri, code_challenge, state, or response_type;
@@ -99,13 +99,13 @@ await insforge.auth.signInWithOAuth("google", {
 const { data: currentUser } = await insforge.auth.getCurrentUser();
 
 // Get any user's profile by ID (public endpoint)
-const { data: profile, error } = await insforge.auth.getProfile("user-id-here");
+const { data: profile, error } = await insforge.auth.getProfile('user-id-here');
 
 // Update current user's profile (requires authentication)
 const { data: updatedProfile, error } = await insforge.auth.setProfile({
-  displayName: "John Doe",
-  bio: "Software developer",
-  avatarUrl: "https://example.com/avatar.jpg",
+  displayName: 'John Doe',
+  bio: 'Software developer',
+  avatarUrl: 'https://example.com/avatar.jpg',
 });
 
 // Sign out
@@ -117,31 +117,31 @@ await insforge.auth.signOut();
 ```javascript
 // Resend a verification email
 await insforge.auth.resendVerificationEmail({
-  email: "user@example.com",
-  redirectTo: "http://localhost:3000/sign-in", // optional, recommended for link-based verification
+  email: 'user@example.com',
+  redirectTo: 'http://localhost:3000/sign-in', // optional, recommended for link-based verification
 });
 
 // Verify email with a 6-digit code
 await insforge.auth.verifyEmail({
-  email: "user@example.com",
-  otp: "123456",
+  email: 'user@example.com',
+  otp: '123456',
 });
 
 // Send password reset email
 await insforge.auth.sendResetPasswordEmail({
-  email: "user@example.com",
-  redirectTo: "http://localhost:3000/reset-password", // optional, recommended for link-based reset
+  email: 'user@example.com',
+  redirectTo: 'http://localhost:3000/reset-password', // optional, recommended for link-based reset
 });
 
 // Code-based reset flow: exchange the code, then reset the password
 const { data: resetToken } = await insforge.auth.exchangeResetPasswordToken({
-  email: "user@example.com",
-  code: "123456",
+  email: 'user@example.com',
+  code: '123456',
 });
 
 if (resetToken) {
   await insforge.auth.resetPassword({
-    newPassword: "newSecurePassword123",
+    newPassword: 'newSecurePassword123',
     otp: resetToken.token,
   });
 }
@@ -163,26 +163,20 @@ Those backend endpoints validate the token first, then redirect the browser to y
 ```javascript
 // Insert data
 const { data, error } = await insforge.database
-  .from("posts")
-  .insert([{ title: "My First Post", content: "Hello World!" }]);
+  .from('posts')
+  .insert([{ title: 'My First Post', content: 'Hello World!' }]);
 
 // Query data
-const { data, error } = await insforge.database
-  .from("posts")
-  .select("*")
-  .eq("author_id", userId);
+const { data, error } = await insforge.database.from('posts').select('*').eq('author_id', userId);
 
 // Update data
 const { data, error } = await insforge.database
-  .from("posts")
-  .update({ title: "Updated Title" })
-  .eq("id", postId);
+  .from('posts')
+  .update({ title: 'Updated Title' })
+  .eq('id', postId);
 
 // Delete data
-const { data, error } = await insforge.database
-  .from("posts")
-  .delete()
-  .eq("id", postId);
+const { data, error } = await insforge.database.from('posts').delete().eq('id', postId);
 ```
 
 #### Selecting a schema
@@ -190,21 +184,18 @@ const { data, error } = await insforge.database
 Queries hit the `public` schema by default. Target a custom schema by chaining `.schema()` — the table name stays bare (it maps to PostgREST's `Accept-Profile`/`Content-Profile` header):
 
 ```javascript
-const { data } = await insforge.database
-  .schema("analytics")
-  .from("events")
-  .select("*");
+const { data } = await insforge.database.schema('analytics').from('events').select('*');
 
-await insforge.database.schema("analytics").rpc("rollup", { day: "2026-01-01" });
+await insforge.database.schema('analytics').rpc('rollup', { day: '2026-01-01' });
 ```
 
 Or set a default schema for every query when creating the client:
 
 ```javascript
 const insforge = createClient({
-  baseUrl: "...",
-  anonKey: "...",
-  db: { schema: "analytics" },
+  baseUrl: '...',
+  anonKey: '...',
+  db: { schema: 'analytics' },
 });
 ```
 
@@ -215,28 +206,24 @@ The schema must be exposed by the backend, and access is still gated by grants +
 ```javascript
 // Upload a file
 const file = document.querySelector('input[type="file"]').files[0];
-const { data, error } = await insforge.storage.from("avatars").upload(file);
+const { data, error } = await insforge.storage.from('avatars').upload(file);
 
 // Download a file
-const { data, error } = await insforge.storage
-  .from("avatars")
-  .download("user-avatar.png");
+const { data, error } = await insforge.storage.from('avatars').download('user-avatar.png');
 
 // Delete a file
-const { data, error } = await insforge.storage
-  .from("avatars")
-  .remove(["user-avatar.png"]);
+const { data, error } = await insforge.storage.from('avatars').remove(['user-avatar.png']);
 
 // List files
-const { data, error } = await insforge.storage.from("avatars").list();
+const { data, error } = await insforge.storage.from('avatars').list();
 ```
 
 ### Edge Functions
 
 ```javascript
 // Invoke an edge function
-const { data, error } = await insforge.functions.invoke("my-function", {
-  body: { key: "value" },
+const { data, error } = await insforge.functions.invoke('my-function', {
+  body: { key: 'value' },
 });
 ```
 
@@ -244,60 +231,58 @@ const { data, error } = await insforge.functions.invoke("my-function", {
 
 ```javascript
 // Create and redirect to a Stripe Checkout Session
-const { data, error } = await insforge.payments.stripe.createCheckoutSession(
-  "test",
-  {
-    mode: "payment",
-    lineItems: [{ priceId: "price_123", quantity: 1 }],
-    successUrl: `${window.location.origin}/success`,
-    cancelUrl: `${window.location.origin}/pricing`,
-    idempotencyKey: "cart_123",
-  },
-);
+const { data, error } = await insforge.payments.stripe.createCheckoutSession('test', {
+  mode: 'payment',
+  lineItems: [{ priceId: 'price_123', quantity: 1 }],
+  successUrl: `${window.location.origin}/success`,
+  cancelUrl: `${window.location.origin}/pricing`,
+  idempotencyKey: 'cart_123',
+});
 
 if (!error && data?.checkoutSession.url) {
   window.location.assign(data.checkoutSession.url);
 }
 
 // Create a subscription checkout for an app billing subject
-const { data: subscriptionCheckout } =
-  await insforge.payments.stripe.createCheckoutSession("test", {
-    mode: "subscription",
-    subject: { type: "team", id: "team_123" },
-    lineItems: [{ priceId: "price_monthly_123", quantity: 1 }],
+const { data: subscriptionCheckout } = await insforge.payments.stripe.createCheckoutSession(
+  'test',
+  {
+    mode: 'subscription',
+    subject: { type: 'team', id: 'team_123' },
+    lineItems: [{ priceId: 'price_monthly_123', quantity: 1 }],
     successUrl: `${window.location.origin}/billing/success`,
     cancelUrl: `${window.location.origin}/billing`,
-  });
+  }
+);
 
 if (subscriptionCheckout?.checkoutSession.url) {
   window.location.assign(subscriptionCheckout.checkoutSession.url);
 }
 
 // Let an authenticated customer manage their subscription in Stripe Billing Portal
-const { data: portal } =
-  await insforge.payments.stripe.createCustomerPortalSession("test", {
-    subject: { type: "team", id: "team_123" },
-    returnUrl: `${window.location.origin}/billing`,
-  });
+const { data: portal } = await insforge.payments.stripe.createCustomerPortalSession('test', {
+  subject: { type: 'team', id: 'team_123' },
+  returnUrl: `${window.location.origin}/billing`,
+});
 
 if (portal?.customerPortalSession.url) {
   window.location.assign(portal.customerPortalSession.url);
 }
 
 // Create a Razorpay order, then pass checkoutOptions to Razorpay Checkout.js
-const { data: order } = await insforge.payments.razorpay.createOrder("test", {
+const { data: order } = await insforge.payments.razorpay.createOrder('test', {
   amount: 200000,
-  currency: "INR",
-  subject: { type: "team", id: "team_123" },
-  customerEmail: "ada@example.com",
-  notes: { order_id: "order_123" },
+  currency: 'INR',
+  subject: { type: 'team', id: 'team_123' },
+  customerEmail: 'ada@example.com',
+  notes: { order_id: 'order_123' },
 });
 
 if (order) {
   const checkout = new Razorpay({
     ...order.checkoutOptions,
     handler: async (response) => {
-      await insforge.payments.razorpay.verifyOrder("test", {
+      await insforge.payments.razorpay.verifyOrder('test', {
         orderId: response.razorpay_order_id,
         paymentId: response.razorpay_payment_id,
         signature: response.razorpay_signature,
@@ -308,13 +293,12 @@ if (order) {
 }
 
 // Create a Razorpay subscription checkout for an app billing subject
-const { data: subscription } =
-  await insforge.payments.razorpay.createSubscription("test", {
-    planId: "plan_123",
-    totalCount: 12,
-    subject: { type: "team", id: "team_123" },
-    notes: { order_id: "order_123" },
-  });
+const { data: subscription } = await insforge.payments.razorpay.createSubscription('test', {
+  planId: 'plan_123',
+  totalCount: 12,
+  subject: { type: 'team', id: 'team_123' },
+  notes: { order_id: 'order_123' },
+});
 ```
 
 ### AI Integration
@@ -324,32 +308,32 @@ AI methods return an OpenAI-like response object directly (not the `{ data, erro
 ```javascript
 // Chat completion
 const completion = await insforge.ai.chat.completions.create({
-  model: "anthropic/claude-3.5-haiku",
-  messages: [{ role: "user", content: "Write a hello world program" }],
+  model: 'anthropic/claude-3.5-haiku',
+  messages: [{ role: 'user', content: 'Write a hello world program' }],
 });
 console.log(completion.choices[0].message.content);
 
 // Streaming chat — returns an async iterable of chunks
 const stream = await insforge.ai.chat.completions.create({
-  model: "anthropic/claude-3.5-haiku",
-  messages: [{ role: "user", content: "Tell me a story" }],
+  model: 'anthropic/claude-3.5-haiku',
+  messages: [{ role: 'user', content: 'Tell me a story' }],
   stream: true,
 });
 for await (const chunk of stream) {
-  process.stdout.write(chunk.choices[0]?.delta?.content ?? "");
+  process.stdout.write(chunk.choices[0]?.delta?.content ?? '');
 }
 
 // Generate an image — returns base64-encoded image data
 const image = await insforge.ai.images.generate({
-  model: "google/gemini-3-pro-image-preview",
-  prompt: "A sunset over mountains",
+  model: 'google/gemini-3-pro-image-preview',
+  prompt: 'A sunset over mountains',
 });
 const base64Png = image.data[0].b64_json;
 
 // Create embeddings
 const embeddings = await insforge.ai.embeddings.create({
-  model: "openai/text-embedding-3-small",
-  input: "Hello world",
+  model: 'openai/text-embedding-3-small',
+  input: 'Hello world',
 });
 console.log(embeddings.data[0].embedding); // number[]
 ```
@@ -367,8 +351,8 @@ The SDK supports the following configuration options:
 
 ```javascript
 const insforge = createClient({
-  baseUrl: "http://localhost:7130", // Your InsForge backend URL
-  anonKey: "your-anon-key", // Optional
+  baseUrl: 'http://localhost:7130', // Your InsForge backend URL
+  anonKey: 'your-anon-key', // Optional
 });
 ```
 
@@ -386,7 +370,7 @@ By default, the SSR helpers use:
 
 ```typescript
 // app/lib/insforge/client.ts
-import { createBrowserClient } from "@insforge/sdk/ssr";
+import { createBrowserClient } from '@insforge/sdk/ssr';
 
 export const insforge = createBrowserClient();
 ```
@@ -398,8 +382,8 @@ server so the app can write server-owned auth cookies.
 
 ```typescript
 // app/lib/insforge/server.ts
-import { cookies } from "next/headers";
-import { createServerClient } from "@insforge/sdk/ssr";
+import { cookies } from 'next/headers';
+import { createServerClient } from '@insforge/sdk/ssr';
 
 export async function createInsForgeServerClient() {
   return createServerClient({ cookies: await cookies() });
@@ -408,7 +392,7 @@ export async function createInsForgeServerClient() {
 
 ```typescript
 // app/api/auth/refresh/route.ts
-import { createRefreshAuthRouter } from "@insforge/sdk/ssr";
+import { createRefreshAuthRouter } from '@insforge/sdk/ssr';
 
 export const { POST } = createRefreshAuthRouter();
 ```
@@ -420,17 +404,17 @@ so access and refresh tokens stay server-owned.
 
 ```typescript
 // app/actions.ts
-"use server";
+'use server';
 
-import { cookies } from "next/headers";
-import { createAuthActions } from "@insforge/sdk/ssr";
+import { cookies } from 'next/headers';
+import { createAuthActions } from '@insforge/sdk/ssr';
 
 export async function signIn(formData: FormData) {
   const auth = createAuthActions({ cookies: await cookies() });
 
   const { data, error } = await auth.signInWithPassword({
-    email: String(formData.get("email")),
-    password: String(formData.get("password")),
+    email: String(formData.get('email')),
+    password: String(formData.get('password')),
   });
 
   return { user: data?.user ?? null, error };
@@ -443,32 +427,29 @@ verifier in an httpOnly app cookie and exchange the callback code with
 
 ```typescript
 // app/actions.ts
-"use server";
+'use server';
 
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { createAuthActions } from "@insforge/sdk/ssr";
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { createAuthActions } from '@insforge/sdk/ssr';
 
 export async function signInWithGoogle() {
   const cookieStore = await cookies();
   const auth = createAuthActions({ cookies: cookieStore });
-  const { data, error } = await auth.signInWithOAuth("google", {
-    redirectTo: new URL(
-      "/api/auth/callback",
-      process.env.NEXT_PUBLIC_APP_URL
-    ).toString(),
+  const { data, error } = await auth.signInWithOAuth('google', {
+    redirectTo: new URL('/api/auth/callback', process.env.NEXT_PUBLIC_APP_URL).toString(),
     skipBrowserRedirect: true,
   });
 
   if (error || !data.url || !data.codeVerifier) {
-    throw new Error(error?.message ?? "OAuth init failed");
+    throw new Error(error?.message ?? 'OAuth init failed');
   }
 
-  cookieStore.set("insforge_code_verifier", data.codeVerifier, {
+  cookieStore.set('insforge_code_verifier', data.codeVerifier, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
     maxAge: 600,
   });
 
@@ -478,28 +459,28 @@ export async function signInWithGoogle() {
 
 ```typescript
 // app/api/auth/callback/route.ts
-import { cookies } from "next/headers";
-import { NextResponse, type NextRequest } from "next/server";
-import { createAuthActions } from "@insforge/sdk/ssr";
+import { cookies } from 'next/headers';
+import { NextResponse, type NextRequest } from 'next/server';
+import { createAuthActions } from '@insforge/sdk/ssr';
 
 export async function GET(request: NextRequest) {
-  const code = request.nextUrl.searchParams.get("insforge_code");
-  const verifier = (await cookies()).get("insforge_code_verifier")?.value;
+  const code = request.nextUrl.searchParams.get('insforge_code');
+  const verifier = (await cookies()).get('insforge_code_verifier')?.value;
   if (!code || !verifier) {
-    return NextResponse.redirect(new URL("/login?error=oauth", request.url));
+    return NextResponse.redirect(new URL('/login?error=oauth', request.url));
   }
 
-  const response = NextResponse.redirect(new URL("/dashboard", request.url));
+  const response = NextResponse.redirect(new URL('/dashboard', request.url));
   const auth = createAuthActions({
     requestCookies: request.cookies,
     responseCookies: response.cookies,
   });
   const { error } = await auth.exchangeOAuthCode(code, verifier);
   if (error) {
-    return NextResponse.redirect(new URL("/login?error=oauth", request.url));
+    return NextResponse.redirect(new URL('/login?error=oauth', request.url));
   }
 
-  response.cookies.delete("insforge_code_verifier");
+  response.cookies.delete('insforge_code_verifier');
   return response;
 }
 ```
@@ -513,8 +494,8 @@ response cookies for writing the next session:
 
 ```typescript
 // app/api/auth/sign-out/route.ts
-import { NextResponse, type NextRequest } from "next/server";
-import { createAuthActions } from "@insforge/sdk/ssr";
+import { NextResponse, type NextRequest } from 'next/server';
+import { createAuthActions } from '@insforge/sdk/ssr';
 
 export async function POST(request: NextRequest) {
   const response = NextResponse.json({ ok: true });
@@ -538,7 +519,7 @@ export async function POST(request: NextRequest) {
 If your refresh route needs custom side effects:
 
 ```typescript
-import { refreshAuth } from "@insforge/sdk/ssr";
+import { refreshAuth } from '@insforge/sdk/ssr';
 
 export async function POST(request: Request) {
   const result = await refreshAuth({ request });
@@ -551,8 +532,8 @@ For Next.js Proxy/Middleware, refresh before Server Components render:
 
 ```typescript
 // proxy.ts on Next.js 16+, middleware.ts on Next.js 15 and earlier
-import { NextResponse, type NextRequest } from "next/server";
-import { updateSession } from "@insforge/sdk/ssr/middleware";
+import { NextResponse, type NextRequest } from 'next/server';
+import { updateSession } from '@insforge/sdk/ssr/middleware';
 
 export async function proxy(request: NextRequest) {
   const response = NextResponse.next({ request });
@@ -574,10 +555,10 @@ the session refresh helpers and avoids bundling the full SDK client.
 The SDK is written in TypeScript and provides full type definitions:
 
 ```typescript
-import { createClient, InsForgeClient } from "@insforge/sdk";
+import { createClient, InsForgeClient } from '@insforge/sdk';
 
 const insforge: InsForgeClient = createClient({
-  baseUrl: "http://localhost:7130",
+  baseUrl: 'http://localhost:7130',
 });
 
 // Type-safe API calls

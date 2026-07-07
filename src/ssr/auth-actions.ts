@@ -10,10 +10,8 @@ import {
 } from './cookies';
 
 export interface CreateAuthActionsOptions
-  extends Omit<
-      InsForgeConfig,
-      'accessToken' | 'edgeFunctionToken' | 'isServerMode' | 'auth'
-    >,
+  extends
+    Omit<InsForgeConfig, 'accessToken' | 'edgeFunctionToken' | 'isServerMode' | 'auth'>,
     AuthCookieSettings {
   /**
    * Read/write cookie store. Use this in Next.js Server Actions:
@@ -46,9 +44,7 @@ type SafeAuthAction<TMethod extends (...args: any[]) => Promise<any>> = (
 
 export interface AuthActions {
   signUp: SafeAuthAction<InsForgeClient['auth']['signUp']>;
-  signInWithPassword: SafeAuthAction<
-    InsForgeClient['auth']['signInWithPassword']
-  >;
+  signInWithPassword: SafeAuthAction<InsForgeClient['auth']['signInWithPassword']>;
   signInWithOAuth: InsForgeClient['auth']['signInWithOAuth'];
   signInWithIdToken: SafeAuthAction<InsForgeClient['auth']['signInWithIdToken']>;
   exchangeOAuthCode: SafeAuthAction<InsForgeClient['auth']['exchangeOAuthCode']>;
@@ -59,9 +55,11 @@ export interface AuthActions {
 function persistSessionCookies(
   cookies: CookieWriter | undefined,
   data: { accessToken?: string | null; refreshToken?: string | null } | null,
-  settings: AuthCookieSettings,
+  settings: AuthCookieSettings
 ): void {
-  if (!data?.accessToken) return;
+  if (!data?.accessToken) {
+    return;
+  }
 
   setAuthCookies(
     cookies,
@@ -69,14 +67,14 @@ function persistSessionCookies(
       accessToken: data.accessToken,
       refreshToken: data.refreshToken,
     },
-    settings,
+    settings
   );
 }
 
-function sanitizeAuthData<T>(
-  data: T | null,
-): SafeAuthData<T> | null {
-  if (!data) return null;
+function sanitizeAuthData<T>(data: T | null): SafeAuthData<T> | null {
+  if (!data) {
+    return null;
+  }
 
   const {
     accessToken: _accessToken,
@@ -89,7 +87,7 @@ function sanitizeAuthData<T>(
 }
 
 function toSafeAuthResult<TMethod extends (...args: any[]) => Promise<any>>(
-  result: Awaited<ReturnType<TMethod>>,
+  result: Awaited<ReturnType<TMethod>>
 ): Awaited<ReturnType<SafeAuthAction<TMethod>>> {
   return {
     data: sanitizeAuthData(result.data),
@@ -97,9 +95,7 @@ function toSafeAuthResult<TMethod extends (...args: any[]) => Promise<any>>(
   };
 }
 
-export function createAuthActions(
-  options: CreateAuthActionsOptions = {},
-): AuthActions {
+export function createAuthActions(options: CreateAuthActionsOptions = {}): AuthActions {
   const {
     cookies,
     requestCookies,
@@ -112,7 +108,7 @@ export function createAuthActions(
   const writeCookies = responseCookies ?? cookies;
   if (!writeCookies?.set) {
     throw new Error(
-      'createAuthActions() requires a writable cookie store. Pass cookies in Server Actions or responseCookies in Route Handlers.',
+      'createAuthActions() requires a writable cookie store. Pass cookies in Server Actions or responseCookies in Route Handlers.'
     );
   }
 
@@ -139,35 +135,23 @@ export function createAuthActions(
     signInWithPassword: async (request) => {
       const result = await createClient().auth.signInWithPassword(request);
       persistSessionCookies(writeCookies, result.data, cookieSettings);
-      return toSafeAuthResult<InsForgeClient['auth']['signInWithPassword']>(
-        result,
-      );
+      return toSafeAuthResult<InsForgeClient['auth']['signInWithPassword']>(result);
     },
 
     signInWithOAuth: async (providerOrOptions: any, signInOptions?: any) => {
-      return createClient().auth.signInWithOAuth(
-        providerOrOptions,
-        signInOptions,
-      );
+      return createClient().auth.signInWithOAuth(providerOrOptions, signInOptions);
     },
 
     signInWithIdToken: async (credentials) => {
       const result = await createClient().auth.signInWithIdToken(credentials);
       persistSessionCookies(writeCookies, result.data, cookieSettings);
-      return toSafeAuthResult<InsForgeClient['auth']['signInWithIdToken']>(
-        result,
-      );
+      return toSafeAuthResult<InsForgeClient['auth']['signInWithIdToken']>(result);
     },
 
     exchangeOAuthCode: async (code, codeVerifier) => {
-      const result = await createClient().auth.exchangeOAuthCode(
-        code,
-        codeVerifier,
-      );
+      const result = await createClient().auth.exchangeOAuthCode(code, codeVerifier);
       persistSessionCookies(writeCookies, result.data, cookieSettings);
-      return toSafeAuthResult<InsForgeClient['auth']['exchangeOAuthCode']>(
-        result,
-      );
+      return toSafeAuthResult<InsForgeClient['auth']['exchangeOAuthCode']>(result);
     },
 
     verifyEmail: async (request) => {

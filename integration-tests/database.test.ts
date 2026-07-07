@@ -41,9 +41,16 @@ describe('Database Module', () => {
       // Only downgrade for table-not-found errors; fail fast on auth/network/other issues
       const msg = (error.message || '').toLowerCase();
       const code = (error as any).code || '';
-      if (code === '42P01' || msg.includes('relation') || msg.includes('not found') || msg.includes('does not exist')) {
+      if (
+        code === '42P01' ||
+        msg.includes('relation') ||
+        msg.includes('not found') ||
+        msg.includes('does not exist')
+      ) {
         tableAvailable = false;
-        console.warn(`⚠ Table "${TABLE}" not found – database tests will verify error handling only.`);
+        console.warn(
+          `⚠ Table "${TABLE}" not found – database tests will verify error handling only.`
+        );
       } else {
         throw new Error(`Unexpected database error during probe: ${error.message} (code: ${code})`);
       }
@@ -62,10 +69,7 @@ describe('Database Module', () => {
 
   describe('from().select()', () => {
     it('should return an array of rows', async () => {
-      const { data, error } = await client.database
-        .from(TABLE)
-        .select('*')
-        .limit(5);
+      const { data, error } = await client.database.from(TABLE).select('*').limit(5);
 
       if (tableAvailable) {
         expect(error).toBeNull();
@@ -76,10 +80,7 @@ describe('Database Module', () => {
     });
 
     it('should select specific columns', async () => {
-      const { data, error } = await client.database
-        .from(TABLE)
-        .select('id, name')
-        .limit(3);
+      const { data, error } = await client.database.from(TABLE).select('id, name').limit(3);
 
       if (tableAvailable && !error) {
         expect(Array.isArray(data)).toBe(true);
@@ -121,7 +122,9 @@ describe('Database Module', () => {
 
   describe('from().insert()', () => {
     it('should insert a single row and return it', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
 
       const name = `insert-single-${Date.now()}`;
       const { data, error } = await client.database
@@ -140,17 +143,16 @@ describe('Database Module', () => {
     });
 
     it('should insert multiple rows', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
 
       const rows = [
         { name: `batch-a-${Date.now()}`, value: 'batch', score: 20 },
         { name: `batch-b-${Date.now()}`, value: 'batch', score: 30 },
       ];
 
-      const { data, error } = await client.database
-        .from(TABLE)
-        .insert(rows)
-        .select();
+      const { data, error } = await client.database.from(TABLE).insert(rows).select();
 
       expect(error).toBeNull();
       expect(Array.isArray(data)).toBe(true);
@@ -165,7 +167,9 @@ describe('Database Module', () => {
 
   describe('from().update()', () => {
     it('should update a row and return the result', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
 
       // Insert first
       const tag = `update-${Date.now()}`;
@@ -174,7 +178,9 @@ describe('Database Module', () => {
         .insert({ name: tag, value: 'before', score: 0 })
         .select()
         .single();
-      if (!inserted) return;
+      if (!inserted) {
+        return;
+      }
       insertedIds.push(inserted.id);
 
       // Update
@@ -197,7 +203,9 @@ describe('Database Module', () => {
 
   describe('from().upsert()', () => {
     it('should insert when row does not exist', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
 
       const tag = `upsert-${Date.now()}`;
       const { data, error } = await client.database
@@ -219,7 +227,9 @@ describe('Database Module', () => {
 
   describe('from().delete()', () => {
     it('should delete matching rows', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
 
       const tag = `delete-${Date.now()}`;
       const { data: inserted } = await client.database
@@ -227,20 +237,16 @@ describe('Database Module', () => {
         .insert({ name: tag, value: 'to-delete' })
         .select()
         .single();
-      if (!inserted) return;
+      if (!inserted) {
+        return;
+      }
 
-      const { error } = await client.database
-        .from(TABLE)
-        .delete()
-        .eq('id', inserted.id);
+      const { error } = await client.database.from(TABLE).delete().eq('id', inserted.id);
 
       expect(error).toBeNull();
 
       // Verify it's gone
-      const { data: check } = await client.database
-        .from(TABLE)
-        .select('id')
-        .eq('id', inserted.id);
+      const { data: check } = await client.database.from(TABLE).select('id').eq('id', inserted.id);
 
       expect(check).toEqual([]);
     });
@@ -254,7 +260,9 @@ describe('Database Module', () => {
     let seedId: number;
 
     beforeAll(async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
 
       const rows = [
         { name: 'filter-alpha', value: 'hello world', score: 10 },
@@ -262,10 +270,7 @@ describe('Database Module', () => {
         { name: 'filter-gamma', value: 'goodbye world', score: 30 },
       ];
 
-      const { data } = await client.database
-        .from(TABLE)
-        .insert(rows)
-        .select();
+      const { data } = await client.database.from(TABLE).insert(rows).select();
 
       if (data) {
         data.forEach((r: any) => insertedIds.push(r.id));
@@ -274,93 +279,150 @@ describe('Database Module', () => {
     });
 
     it('eq() should match exact value', async () => {
-      if (!tableAvailable) return;
-      const { data } = await client.database
-        .from(TABLE).select('*').eq('name', 'filter-alpha');
+      if (!tableAvailable) {
+        return;
+      }
+      const { data } = await client.database.from(TABLE).select('*').eq('name', 'filter-alpha');
       expect(data!.length).toBeGreaterThanOrEqual(1);
       expect(data![0].name).toBe('filter-alpha');
     });
 
     it('neq() should exclude exact value', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
       const { data } = await client.database
-        .from(TABLE).select('name').neq('name', 'filter-alpha').like('name', 'filter-%');
+        .from(TABLE)
+        .select('name')
+        .neq('name', 'filter-alpha')
+        .like('name', 'filter-%');
       expect(data!.every((r: any) => r.name !== 'filter-alpha')).toBe(true);
     });
 
     it('gt() / lt() should compare numerically', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
       const { data } = await client.database
-        .from(TABLE).select('name, score').gt('score', 15).lt('score', 25).like('name', 'filter-%');
+        .from(TABLE)
+        .select('name, score')
+        .gt('score', 15)
+        .lt('score', 25)
+        .like('name', 'filter-%');
       expect(data!.length).toBeGreaterThanOrEqual(1);
       expect(data![0].score).toBe(20);
     });
 
     it('gte() / lte() should compare inclusive', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
       const { data } = await client.database
-        .from(TABLE).select('name, score').gte('score', 20).lte('score', 30).like('name', 'filter-%');
+        .from(TABLE)
+        .select('name, score')
+        .gte('score', 20)
+        .lte('score', 30)
+        .like('name', 'filter-%');
       expect(data!.length).toBeGreaterThanOrEqual(2);
     });
 
     it('like() should match pattern', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
       const { data } = await client.database
-        .from(TABLE).select('value').like('value', '%world%').like('name', 'filter-%');
+        .from(TABLE)
+        .select('value')
+        .like('value', '%world%')
+        .like('name', 'filter-%');
       expect(data!.length).toBeGreaterThanOrEqual(1);
       data!.forEach((r: any) => expect(r.value).toContain('world'));
     });
 
     it('ilike() should match case-insensitively', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
       const { data } = await client.database
-        .from(TABLE).select('value').ilike('value', '%HELLO%').like('name', 'filter-%');
+        .from(TABLE)
+        .select('value')
+        .ilike('value', '%HELLO%')
+        .like('name', 'filter-%');
       expect(data!.length).toBeGreaterThanOrEqual(1);
     });
 
     it('in() should match multiple values', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
       const { data } = await client.database
-        .from(TABLE).select('name').in('name', ['filter-alpha', 'filter-gamma']);
+        .from(TABLE)
+        .select('name')
+        .in('name', ['filter-alpha', 'filter-gamma']);
       expect(data!.length).toBeGreaterThanOrEqual(2);
     });
 
     it('order() should sort results', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
       const { data } = await client.database
-        .from(TABLE).select('score').like('name', 'filter-%').order('score', { ascending: true });
+        .from(TABLE)
+        .select('score')
+        .like('name', 'filter-%')
+        .order('score', { ascending: true });
       if (data!.length >= 2) {
         expect(data![0].score).toBeLessThanOrEqual(data![1].score);
       }
     });
 
     it('limit() should cap result count', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
       const { data } = await client.database
-        .from(TABLE).select('*').like('name', 'filter-%').limit(1);
+        .from(TABLE)
+        .select('*')
+        .like('name', 'filter-%')
+        .limit(1);
       expect(data!.length).toBeLessThanOrEqual(1);
     });
 
     it('range() should paginate results', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
       const { data } = await client.database
-        .from(TABLE).select('*').like('name', 'filter-%').range(0, 1);
+        .from(TABLE)
+        .select('*')
+        .like('name', 'filter-%')
+        .range(0, 1);
       expect(data!.length).toBeLessThanOrEqual(2);
     });
 
     it('single() should return one row', async () => {
-      if (!tableAvailable || !seedId) return;
+      if (!tableAvailable || !seedId) {
+        return;
+      }
       const { data, error } = await client.database
-        .from(TABLE).select('*').eq('id', seedId).single();
+        .from(TABLE)
+        .select('*')
+        .eq('id', seedId)
+        .single();
       expect(error).toBeNull();
       expect(data).toBeDefined();
       expect(data.id).toBe(seedId);
     });
 
     it('maybeSingle() should return null for no match', async () => {
-      if (!tableAvailable) return;
+      if (!tableAvailable) {
+        return;
+      }
       const { data, error } = await client.database
-        .from(TABLE).select('*').eq('name', `no-match-${Date.now()}`).maybeSingle();
+        .from(TABLE)
+        .select('*')
+        .eq('name', `no-match-${Date.now()}`)
+        .maybeSingle();
       expect(error).toBeNull();
       expect(data).toBeNull();
     });

@@ -1,6 +1,6 @@
-import { HttpClient } from "../lib/http-client";
-import { wrapError } from "./auth/helpers";
-import type { InsForgeError } from "../types";
+import { HttpClient } from '../lib/http-client';
+import { wrapError } from './auth/helpers';
+import type { InsForgeError } from '../types';
 import type {
   CancelRazorpaySubscriptionBodyInput,
   CancelRazorpaySubscriptionResponse,
@@ -20,17 +20,14 @@ import type {
   VerifyRazorpayOrderResponse,
   VerifyRazorpaySubscriptionBody,
   VerifyRazorpaySubscriptionResponse,
-} from "@insforge/shared-schemas";
+} from '@insforge/shared-schemas';
 
 export interface PaymentsResponse<T> {
   data: T | null;
   error: InsForgeError | null;
 }
 
-function providerEnvironmentPath(
-  provider: "stripe" | "razorpay",
-  environment: string,
-): string {
+function providerEnvironmentPath(provider: 'stripe' | 'razorpay', environment: string): string {
   return `/api/payments/${provider}/${encodeURIComponent(environment)}`;
 }
 
@@ -63,20 +60,20 @@ export class StripePayments {
    */
   async createCheckoutSession(
     environment: StripeEnvironment,
-    request: CreateCheckoutSessionBody,
+    request: CreateCheckoutSessionBody
   ): Promise<PaymentsResponse<CreateCheckoutSessionResponse>> {
     try {
       const data = await this.http.post<CreateCheckoutSessionResponse>(
-        `${providerEnvironmentPath("stripe", environment)}/checkout-sessions`,
+        `${providerEnvironmentPath('stripe', environment)}/checkout-sessions`,
         request,
-        { idempotent: !!request.idempotencyKey },
+        { idempotent: !!request.idempotencyKey }
       );
 
       return { data, error: null };
     } catch (error) {
       return wrapError<CreateCheckoutSessionResponse>(
         error,
-        "Stripe checkout session creation failed",
+        'Stripe checkout session creation failed'
       );
     }
   }
@@ -86,19 +83,19 @@ export class StripePayments {
    */
   async createCustomerPortalSession(
     environment: StripeEnvironment,
-    request: CreateCustomerPortalSessionBody,
+    request: CreateCustomerPortalSessionBody
   ): Promise<PaymentsResponse<CreateCustomerPortalSessionResponse>> {
     try {
       const data = await this.http.post<CreateCustomerPortalSessionResponse>(
-        `${providerEnvironmentPath("stripe", environment)}/customer-portal-sessions`,
-        request,
+        `${providerEnvironmentPath('stripe', environment)}/customer-portal-sessions`,
+        request
       );
 
       return { data, error: null };
     } catch (error) {
       return wrapError<CreateCustomerPortalSessionResponse>(
         error,
-        "Stripe customer portal session creation failed",
+        'Stripe customer portal session creation failed'
       );
     }
   }
@@ -116,76 +113,70 @@ export class RazorpayPayments {
 
   async createOrder(
     environment: RazorpayEnvironment,
-    request: CreateRazorpayOrderBody,
+    request: CreateRazorpayOrderBody
   ): Promise<PaymentsResponse<CreateRazorpayOrderResponse>> {
     try {
       const data = await this.http.post<CreateRazorpayOrderResponse>(
-        `${providerEnvironmentPath("razorpay", environment)}/orders`,
-        request,
+        `${providerEnvironmentPath('razorpay', environment)}/orders`,
+        request
       );
 
       return { data, error: null };
     } catch (error) {
-      return wrapError<CreateRazorpayOrderResponse>(
-        error,
-        "Razorpay order creation failed",
-      );
+      return wrapError<CreateRazorpayOrderResponse>(error, 'Razorpay order creation failed');
     }
   }
 
   async verifyOrder(
     environment: RazorpayEnvironment,
-    request: VerifyRazorpayOrderBody,
+    request: VerifyRazorpayOrderBody
   ): Promise<PaymentsResponse<VerifyRazorpayOrderResponse>> {
     try {
       const data = await this.http.post<VerifyRazorpayOrderResponse>(
-        `${providerEnvironmentPath("razorpay", environment)}/orders/verify`,
-        request,
+        `${providerEnvironmentPath('razorpay', environment)}/orders/verify`,
+        request
       );
 
       return { data, error: null };
     } catch (error) {
-      return wrapError<VerifyRazorpayOrderResponse>(
-        error,
-        "Razorpay order verification failed",
-      );
+      return wrapError<VerifyRazorpayOrderResponse>(error, 'Razorpay order verification failed');
     }
   }
 
   async createSubscription(
     environment: RazorpayEnvironment,
-    request: CreateRazorpaySubscriptionBody,
+    request: CreateRazorpaySubscriptionBody
   ): Promise<PaymentsResponse<CreateRazorpaySubscriptionResponse>> {
     try {
       const data = await this.http.post<CreateRazorpaySubscriptionResponse>(
-        `${providerEnvironmentPath("razorpay", environment)}/subscriptions`,
-        request,
+        `${providerEnvironmentPath('razorpay', environment)}/subscriptions`,
+        request
       );
 
       return { data, error: null };
     } catch (error) {
       return wrapError<CreateRazorpaySubscriptionResponse>(
         error,
-        "Razorpay subscription creation failed",
+        'Razorpay subscription creation failed'
       );
     }
   }
 
   async verifySubscription(
     environment: RazorpayEnvironment,
-    request: VerifyRazorpaySubscriptionBody,
+    request: VerifyRazorpaySubscriptionBody
   ): Promise<PaymentsResponse<VerifyRazorpaySubscriptionResponse>> {
     try {
       const data = await this.http.post<VerifyRazorpaySubscriptionResponse>(
-        `${providerEnvironmentPath("razorpay", environment)}/subscriptions/verify`,
-        request,
+        `${providerEnvironmentPath('razorpay', environment)}/subscriptions/verify`,
+        request
       );
 
       return { data, error: null };
     } catch (error) {
       return wrapError<VerifyRazorpaySubscriptionResponse>(
         error,
-        "Razorpay subscription verification failed",
+        'Razorpay subscription verification failed'
       );
     }
   }
@@ -193,63 +184,63 @@ export class RazorpayPayments {
   async cancelSubscription(
     environment: RazorpayEnvironment,
     subscriptionId: string,
-    request: CancelRazorpaySubscriptionBodyInput = {},
+    request: CancelRazorpaySubscriptionBodyInput = {}
   ): Promise<PaymentsResponse<CancelRazorpaySubscriptionResponse>> {
     try {
       const data = await this.http.post<CancelRazorpaySubscriptionResponse>(
-        `${providerEnvironmentPath("razorpay", environment)}/subscriptions/${encodeURIComponent(
-          subscriptionId,
+        `${providerEnvironmentPath('razorpay', environment)}/subscriptions/${encodeURIComponent(
+          subscriptionId
         )}/cancel`,
-        request,
+        request
       );
 
       return { data, error: null };
     } catch (error) {
       return wrapError<CancelRazorpaySubscriptionResponse>(
         error,
-        "Razorpay subscription cancellation failed",
+        'Razorpay subscription cancellation failed'
       );
     }
   }
 
   async pauseSubscription(
     environment: RazorpayEnvironment,
-    subscriptionId: string,
+    subscriptionId: string
   ): Promise<PaymentsResponse<PauseRazorpaySubscriptionResponse>> {
     try {
       const data = await this.http.post<PauseRazorpaySubscriptionResponse>(
-        `${providerEnvironmentPath("razorpay", environment)}/subscriptions/${encodeURIComponent(
-          subscriptionId,
+        `${providerEnvironmentPath('razorpay', environment)}/subscriptions/${encodeURIComponent(
+          subscriptionId
         )}/pause`,
-        {},
+        {}
       );
 
       return { data, error: null };
     } catch (error) {
       return wrapError<PauseRazorpaySubscriptionResponse>(
         error,
-        "Razorpay subscription pause failed",
+        'Razorpay subscription pause failed'
       );
     }
   }
 
   async resumeSubscription(
     environment: RazorpayEnvironment,
-    subscriptionId: string,
+    subscriptionId: string
   ): Promise<PaymentsResponse<ResumeRazorpaySubscriptionResponse>> {
     try {
       const data = await this.http.post<ResumeRazorpaySubscriptionResponse>(
-        `${providerEnvironmentPath("razorpay", environment)}/subscriptions/${encodeURIComponent(
-          subscriptionId,
+        `${providerEnvironmentPath('razorpay', environment)}/subscriptions/${encodeURIComponent(
+          subscriptionId
         )}/resume`,
-        {},
+        {}
       );
 
       return { data, error: null };
     } catch (error) {
       return wrapError<ResumeRazorpaySubscriptionResponse>(
         error,
-        "Razorpay subscription resume failed",
+        'Razorpay subscription resume failed'
       );
     }
   }

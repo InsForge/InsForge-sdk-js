@@ -158,12 +158,7 @@ export class InsForgeError extends Error {
   public error: InsForgeErrorCode;
   public nextActions?: string;
 
-  constructor(
-    message: string,
-    statusCode: number,
-    error: InsForgeErrorCode,
-    nextActions?: string,
-  ) {
+  constructor(message: string, statusCode: number, error: InsForgeErrorCode, nextActions?: string) {
     super(message);
     this.name = 'InsForgeError';
     this.statusCode = statusCode;
@@ -176,7 +171,7 @@ export class InsForgeError extends Error {
       apiError.message,
       apiError.statusCode,
       apiError.error,
-      apiError.nextActions,
+      apiError.nextActions
     );
   }
 }

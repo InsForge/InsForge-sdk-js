@@ -46,7 +46,9 @@ export class Functions {
   private static deriveSubhostingUrl(baseUrl: string): string | undefined {
     try {
       const { hostname } = new URL(baseUrl);
-      if (!hostname.endsWith('.insforge.app')) return undefined;
+      if (!hostname.endsWith('.insforge.app')) {
+        return undefined;
+      }
       const appKey = hostname.split('.')[0];
       return `https://${appKey}.functions.insforge.app`;
     } catch {
@@ -62,7 +64,7 @@ export class Functions {
     slug: string,
     method: string,
     body: unknown,
-    callerHeaders: Record<string, string>,
+    callerHeaders: Record<string, string>
   ): Request {
     const url = new URL('/' + slug, 'http://insforge.local').toString();
     // Start from HttpClient defaults (Authorization, anon key, etc.) so
@@ -92,7 +94,7 @@ export class Functions {
    */
   async invoke<T = any>(
     slug: string,
-    options: FunctionInvokeOptions = {},
+    options: FunctionInvokeOptions = {}
   ): Promise<{ data: T | null; error: InsForgeError | null }> {
     const { method = 'POST', body, headers = {} } = options;
 
@@ -112,7 +114,9 @@ export class Functions {
         const data = await parseResponse<T>(res);
         return { data, error: null };
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') throw error;
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw error;
+        }
         return {
           data: null,
           error:
@@ -121,7 +125,7 @@ export class Functions {
               : new InsForgeError(
                   error instanceof Error ? error.message : 'Function invocation failed',
                   500,
-                  'FUNCTION_ERROR',
+                  'FUNCTION_ERROR'
                 ),
         };
       }
@@ -136,7 +140,9 @@ export class Functions {
         });
         return { data, error: null };
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') throw error;
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw error;
+        }
         if (error instanceof InsForgeError && error.statusCode === 404) {
           // fall through to proxy
         } else {
@@ -148,7 +154,7 @@ export class Functions {
                 : new InsForgeError(
                     error instanceof Error ? error.message : 'Function invocation failed',
                     500,
-                    'FUNCTION_ERROR',
+                    'FUNCTION_ERROR'
                   ),
           };
         }
@@ -161,7 +167,9 @@ export class Functions {
       const data = await this.http.request<T>(method, path, { body, headers });
       return { data, error: null };
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') throw error;
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw error;
+      }
       return {
         data: null,
         error:
@@ -170,7 +178,7 @@ export class Functions {
             : new InsForgeError(
                 error instanceof Error ? error.message : 'Function invocation failed',
                 500,
-                'FUNCTION_ERROR',
+                'FUNCTION_ERROR'
               ),
       };
     }

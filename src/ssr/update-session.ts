@@ -12,10 +12,8 @@ import {
 import { refreshAuth } from './refresh';
 
 export interface UpdateSessionOptions
-  extends Omit<
-      InsForgeConfig,
-      'accessToken' | 'edgeFunctionToken' | 'isServerMode' | 'auth'
-    >,
+  extends
+    Omit<InsForgeConfig, 'accessToken' | 'edgeFunctionToken' | 'isServerMode' | 'auth'>,
     AuthCookieSettings {
   requestCookies: CookieStore;
   responseCookies: CookieStore;
@@ -28,20 +26,12 @@ export interface UpdateSessionResult {
   error: InsForgeError | null;
 }
 
-export async function updateSession(
-  options: UpdateSessionOptions,
-): Promise<UpdateSessionResult> {
+export async function updateSession(options: UpdateSessionOptions): Promise<UpdateSessionResult> {
   const accessCookieName = getAccessTokenCookieName(options.names);
   const refreshCookieName = getRefreshTokenCookieName(options.names);
-  const accessToken = getCookieValue(
-    options.requestCookies,
-    accessCookieName,
-  );
+  const accessToken = getCookieValue(options.requestCookies, accessCookieName);
 
-  if (
-    accessToken &&
-    !isJwtExpiredOrExpiring(accessToken, options.refreshLeewaySeconds)
-  ) {
+  if (accessToken && !isJwtExpiredOrExpiring(accessToken, options.refreshLeewaySeconds)) {
     return {
       refreshed: false,
       accessToken,
@@ -49,10 +39,7 @@ export async function updateSession(
     };
   }
 
-  const refreshToken = getCookieValue(
-    options.requestCookies,
-    refreshCookieName,
-  );
+  const refreshToken = getCookieValue(options.requestCookies, refreshCookieName);
   if (!refreshToken) {
     if (accessToken) {
       clearAuthCookies(options.requestCookies, options);

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import {
   createClient,
-  getTestEnv,
   uniqueEmail,
   signUpFreshUser,
   signUpAndSignIn,
@@ -421,13 +420,10 @@ describe('Auth Module', () => {
   describe('signInWithOAuth()', () => {
     it('should return an OAuth URL for a built-in provider', async () => {
       const c = createClient();
-      const { data, error } = await c.auth.signInWithOAuth(
-        'google',
-        {
-          redirectTo: 'http://localhost:3000/dashboard',
-          skipBrowserRedirect: true,
-        },
-      );
+      const { data, error } = await c.auth.signInWithOAuth('google', {
+        redirectTo: 'http://localhost:3000/dashboard',
+        skipBrowserRedirect: true,
+      });
 
       // Provider may not be configured – both outcomes are valid
       if (error) {
@@ -440,13 +436,10 @@ describe('Auth Module', () => {
 
     it('should return an OAuth URL for a custom provider', async () => {
       const c = createClient();
-      const { data, error } = await c.auth.signInWithOAuth(
-        'custom-test-provider',
-        {
-          redirectTo: 'http://localhost:3000/dashboard',
-          skipBrowserRedirect: true,
-        },
-      );
+      const { data, error } = await c.auth.signInWithOAuth('custom-test-provider', {
+        redirectTo: 'http://localhost:3000/dashboard',
+        skipBrowserRedirect: true,
+      });
 
       // Custom provider likely not configured – verify structured error
       if (error) {

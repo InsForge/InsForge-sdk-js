@@ -15,7 +15,7 @@ function makeDatabase(
   fetchFn: ReturnType<typeof vi.fn>,
   overrides: Record<string, unknown> = {},
   accessToken: string | null = 'old-token',
-  defaultSchema?: string,
+  defaultSchema?: string
 ) {
   const tokenManager = new TokenManager();
   if (accessToken) {
@@ -30,7 +30,7 @@ function makeDatabase(
       timeout: 0,
       ...overrides,
     },
-    tokenManager,
+    tokenManager
   );
   http.setAuthToken(accessToken);
 
@@ -62,12 +62,10 @@ describe('Database PostgREST auth refresh', () => {
             message: 'Invalid token',
             statusCode: 401,
           },
-          'Unauthorized',
-        ),
+          'Unauthorized'
+        )
       )
-      .mockResolvedValueOnce(
-        jsonResponse(200, { accessToken: 'new-token', user: refreshedUser }),
-      )
+      .mockResolvedValueOnce(jsonResponse(200, { accessToken: 'new-token', user: refreshedUser }))
       .mockResolvedValueOnce(jsonResponse(200, [{ id: 1 }]));
 
     const { database, tokenManager } = makeDatabase(fetchFn);
@@ -77,13 +75,11 @@ describe('Database PostgREST auth refresh', () => {
     expect(error).toBeNull();
     expect(data).toEqual([{ id: 1 }]);
     expect(fetchFn).toHaveBeenCalledTimes(3);
-    expect(fetchFn.mock.calls[1][0]).toBe(
-      'http://localhost:7130/api/auth/refresh',
-    );
+    expect(fetchFn.mock.calls[1][0]).toBe('http://localhost:7130/api/auth/refresh');
     expect(fetchFn.mock.calls[1][1].credentials).toBe('include');
-    expect(
-      new Headers(fetchFn.mock.calls[2][1].headers).get('Authorization'),
-    ).toBe('Bearer new-token');
+    expect(new Headers(fetchFn.mock.calls[2][1].headers).get('Authorization')).toBe(
+      'Bearer new-token'
+    );
     expect(tokenManager.getAccessToken()).toBe('new-token');
   });
 
@@ -99,12 +95,10 @@ describe('Database PostgREST auth refresh', () => {
             details: 'Unauthorized',
             hint: null,
           },
-          'Unauthorized',
-        ),
+          'Unauthorized'
+        )
       )
-      .mockResolvedValueOnce(
-        jsonResponse(200, { accessToken: 'new-token', user: refreshedUser }),
-      )
+      .mockResolvedValueOnce(jsonResponse(200, { accessToken: 'new-token', user: refreshedUser }))
       .mockResolvedValueOnce(jsonResponse(200, [{ id: 1 }]));
 
     const { database, tokenManager } = makeDatabase(fetchFn);
@@ -114,12 +108,10 @@ describe('Database PostgREST auth refresh', () => {
     expect(error).toBeNull();
     expect(data).toEqual([{ id: 1 }]);
     expect(fetchFn).toHaveBeenCalledTimes(3);
-    expect(fetchFn.mock.calls[1][0]).toBe(
-      'http://localhost:7130/api/auth/refresh',
+    expect(fetchFn.mock.calls[1][0]).toBe('http://localhost:7130/api/auth/refresh');
+    expect(new Headers(fetchFn.mock.calls[2][1].headers).get('Authorization')).toBe(
+      'Bearer new-token'
     );
-    expect(
-      new Headers(fetchFn.mock.calls[2][1].headers).get('Authorization'),
-    ).toBe('Bearer new-token');
     expect(tokenManager.getAccessToken()).toBe('new-token');
   });
 
@@ -132,8 +124,8 @@ describe('Database PostgREST auth refresh', () => {
           message: 'No token provided',
           statusCode: 401,
         },
-        'Unauthorized',
-      ),
+        'Unauthorized'
+      )
     );
 
     const { database } = makeDatabase(fetchFn, {}, null);
@@ -199,8 +191,8 @@ describe('Database PostgREST auth refresh', () => {
           message: 'Invalid token',
           statusCode: 401,
         },
-        'Unauthorized',
-      ),
+        'Unauthorized'
+      )
     );
 
     const { database } = makeDatabase(fetchFn, { isServerMode: true });
@@ -213,8 +205,8 @@ describe('Database PostgREST auth refresh', () => {
       error: 'AUTH_UNAUTHORIZED',
     });
     expect(fetchFn).toHaveBeenCalledOnce();
-    expect(
-      new Headers(fetchFn.mock.calls[0][1].headers).get('Authorization'),
-    ).toBe('Bearer old-token');
+    expect(new Headers(fetchFn.mock.calls[0][1].headers).get('Authorization')).toBe(
+      'Bearer old-token'
+    );
   });
 });
