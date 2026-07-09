@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { InsForgeClient } from '../../client';
 import { createAdminClient } from '../../index';
 
@@ -106,43 +106,30 @@ describe('InsForgeClient – edgeFunctionToken implies server mode', () => {
 });
 
 describe('InsForgeClient.setAccessToken', () => {
-  it('fires onTokenChange on every transition (string → string → null)', () => {
+  it('notifies auth listeners on every authentication-boundary transition', () => {
     const client = new InsForgeClient({ baseUrl: 'http://localhost:7130' });
-
-    // Replace realtime's tokenManager handler with a counting probe so we can
-    // observe that the realtime path is being notified — this is what callers
-    // had to verify by hand before this method existed.
-    let count = 0;
-    // @ts-expect-error: tokenManager is private at compile-time; reaching in for the test
-    client.tokenManager.onTokenChange = () => {
-      count++;
-    };
+    const events: string[] = [];
+    client.auth.onAuthStateChange((event) => events.push(event));
 
     client.setAccessToken('token-a');
-    expect(count).toBe(1);
-
     client.setAccessToken('token-b');
-    expect(count).toBe(2);
-
     client.setAccessToken(null);
-    expect(count).toBe(3);
+    expect(events).toEqual(['signedIn', 'signedIn', 'signedOut']);
   });
 
-  it('does not fire when token is unchanged', () => {
+  it('allows each auth-state listener to unsubscribe independently', () => {
     const client = new InsForgeClient({ baseUrl: 'http://localhost:7130' });
-    let count = 0;
-    // @ts-expect-error: tokenManager is private at compile-time; reaching in for the test
-    client.tokenManager.onTokenChange = () => {
-      count++;
-    };
+    const first = vi.fn();
+    const second = vi.fn();
+    const unsubscribeFirst = client.auth.onAuthStateChange(first);
+    client.auth.onAuthStateChange(second);
 
     client.setAccessToken('same');
+    unsubscribeFirst();
     client.setAccessToken('same');
-    expect(count).toBe(1);
+    client.setAccessToken(null);
 
-    // Clearing when already null is also a no-op
-    client.setAccessToken(null);
-    client.setAccessToken(null);
-    expect(count).toBe(2);
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(2);
   });
 });

@@ -87,7 +87,9 @@ export class InsForgeClient {
     this.storage = new Storage(this.http);
     this.ai = new AI(this.http);
     this.functions = new Functions(this.http, config.functionsUrl);
-    this.realtime = new Realtime(this.http.baseUrl, this.tokenManager, config.anonKey);
+    this.realtime = new Realtime(this.http.baseUrl, this.tokenManager, config.anonKey, () =>
+      this.http.getValidAccessToken()
+    );
     this.emails = new Emails(this.http);
     this.payments = new Payments(this.http);
   }
@@ -108,15 +110,14 @@ export class InsForgeClient {
   /**
    * Set the access token used by every SDK surface. Updates both the HTTP
    * client (database / storage / functions / AI / emails) and the realtime
-   * token manager (which fires `onTokenChange` to reconnect the WebSocket
-   * with the new bearer). Pass `null` to clear.
+   * token manager. Pass `null` to clear. A live realtime connection remains
+   * authenticated for its lifetime; the new token is used at the next handshake.
    *
    * Use this when an external auth provider (Better Auth, Clerk, Auth0,
    * WorkOS, Kinde, Stytch, …) issues the JWT and you need to keep the
    * long-lived InsForge client in sync. Without this, you'd have to call
    * `client.getHttpClient().setAuthToken(token)` AND reach into the private
-   * `client.realtime.tokenManager.setAccessToken(token)` separately —
-   * forgetting the second one silently breaks realtime auth.
+   * realtime token manager separately.
    *
    * @example
    * ```typescript

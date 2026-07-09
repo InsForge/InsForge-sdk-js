@@ -66,6 +66,7 @@ export type {
 // Re-export utilities for advanced usage
 export { HttpClient } from './lib/http-client';
 export { TokenManager } from './lib/token-manager';
+export type { AuthChangeEvent, AuthStateChangeCallback } from './lib/token-manager';
 export { Logger } from './lib/logger';
 
 // Factory function for creating clients (Supabase-style)

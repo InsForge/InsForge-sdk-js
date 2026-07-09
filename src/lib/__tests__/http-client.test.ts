@@ -20,6 +20,13 @@ function createJsonResponse(status: number, body: any, statusText = 'OK'): Respo
   } as Response;
 }
 
+function jwt(expirationOffsetSeconds: number): string {
+  const payload = Buffer.from(
+    JSON.stringify({ exp: Math.floor(Date.now() / 1000) + expirationOffsetSeconds })
+  ).toString('base64url');
+  return `header.${payload}.signature`;
+}
+
 function createMockTokenManager(): TokenManager {
   return {
     saveSession: vi.fn(),
@@ -66,6 +73,28 @@ describe('HttpClient', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  describe('getValidAccessToken', () => {
+    it('refreshes an expiring browser token before a new handshake can use it', async () => {
+      const tokenManager = createMockTokenManager();
+      const expiringToken = jwt(30);
+      const refreshedToken = jwt(600);
+      (tokenManager.getAccessToken as ReturnType<typeof vi.fn>).mockReturnValue(expiringToken);
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValue(
+          createJsonResponse(200, { accessToken: refreshedToken, user: { id: 'user-1' } })
+        );
+      const client = createClient(fetchFn, {}, tokenManager);
+      client.setAuthToken(expiringToken);
+
+      await expect(client.getValidAccessToken()).resolves.toBe(refreshedToken);
+      expect(tokenManager.saveSession).toHaveBeenCalledWith(
+        { accessToken: refreshedToken, user: { id: 'user-1' } },
+        'tokenRefreshed'
+      );
+    });
   });
 
   describe('basic requests', () => {
