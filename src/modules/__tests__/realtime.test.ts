@@ -235,6 +235,10 @@ describe('Realtime', () => {
       presenceId: 'user-1',
       joinedAt: '2026-01-01T00:00:00.000Z',
     };
+
+    expect(() => socket.triggerAny('presence:join', { member })).not.toThrow();
+    expect(realtime.getPresenceState('room')).toEqual([]);
+
     const message = {
       member,
       meta: {

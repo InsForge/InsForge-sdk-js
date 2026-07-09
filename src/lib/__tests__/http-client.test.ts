@@ -114,6 +114,36 @@ describe('HttpClient', () => {
       expect(tokenManager.clearSession).toHaveBeenCalledOnce();
       expect(client.getHeaders().Authorization).toBeUndefined();
     });
+
+    it('keeps a newer session when an earlier handshake refresh is rejected', async () => {
+      const tokenManager = createMockTokenManager();
+      const expiringToken = jwt(30);
+      (tokenManager.getAccessToken as ReturnType<typeof vi.fn>).mockReturnValue(expiringToken);
+      let resolveRefresh!: (response: Response) => void;
+      const fetchFn = vi.fn().mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveRefresh = resolve;
+          })
+      );
+      const client = createClient(fetchFn, {}, tokenManager);
+      client.setAuthToken(expiringToken);
+
+      const token = client.getValidAccessToken();
+      await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledOnce());
+      client.setAuthToken('new-token');
+      resolveRefresh(
+        createJsonResponse(401, {
+          error: 'AUTH_UNAUTHORIZED',
+          message: 'Refresh token is invalid',
+          statusCode: 401,
+        })
+      );
+
+      await expect(token).rejects.toMatchObject({ statusCode: 401 });
+      expect(tokenManager.clearSession).not.toHaveBeenCalled();
+      expect(client.getHeaders().Authorization).toBe('Bearer new-token');
+    });
   });
 
   describe('basic requests', () => {

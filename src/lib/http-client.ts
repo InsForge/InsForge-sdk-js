@@ -710,7 +710,8 @@ export class HttpClient {
     } catch (error) {
       if (
         error instanceof InsForgeError &&
-        (error.statusCode === 401 || error.statusCode === 403)
+        (error.statusCode === 401 || error.statusCode === 403) &&
+        this.userToken === accessToken
       ) {
         this.clearAuthSession();
       }

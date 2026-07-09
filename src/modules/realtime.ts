@@ -326,7 +326,7 @@ export class Realtime {
       return;
     }
     const presenceEvent = message as PresenceJoinMessage | PresenceLeaveMessage;
-    const channel = presenceEvent.meta.channel;
+    const channel = presenceEvent.meta?.channel;
     const member = presenceEvent.member;
     if (!channel || !member) {
       return;
