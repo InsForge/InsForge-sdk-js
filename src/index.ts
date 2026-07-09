@@ -6,6 +6,7 @@
 
 // Main client
 export { InsForgeClient } from './client';
+export type { AccessTokenChangeEvent } from './client';
 
 // Types
 export type {

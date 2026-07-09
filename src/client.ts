@@ -11,6 +11,8 @@ import { Realtime } from './modules/realtime';
 import { Emails } from './modules/email';
 import { Payments } from './modules/payments';
 
+export type AccessTokenChangeEvent = 'signedIn' | 'tokenRefreshed';
+
 /**
  * Main InsForge SDK Client
  *
@@ -110,8 +112,10 @@ export class InsForgeClient {
   /**
    * Set the access token used by every SDK surface. Updates both the HTTP
    * client (database / storage / functions / AI / emails) and the realtime
-   * token manager. Pass `null` to clear. A live realtime connection remains
-   * authenticated for its lifetime; the new token is used at the next handshake.
+   * token manager. Pass `null` to sign out. By default a token replacement is
+   * treated as a sign-in boundary and reconnects realtime. Pass
+   * `tokenRefreshed` for a same-identity refresh to preserve a live socket; the
+   * refreshed token is then used at the next handshake.
    *
    * Use this when an external auth provider (Better Auth, Clerk, Auth0,
    * WorkOS, Kinde, Stytch, …) issues the JWT and you need to keep the
@@ -123,18 +127,18 @@ export class InsForgeClient {
    * ```typescript
    * // Refresh a third-party-issued JWT periodically
    * const { token } = await fetch('/api/insforge-token').then((r) => r.json());
-   * client.setAccessToken(token);
+   * client.setAccessToken(token, 'tokenRefreshed');
    *
    * // Sign-out
    * client.setAccessToken(null);
    * ```
    */
-  setAccessToken(token: string | null): void {
+  setAccessToken(token: string | null, event: AccessTokenChangeEvent = 'signedIn'): void {
     this.http.setAuthToken(token);
     if (token === null) {
       this.tokenManager.clearSession();
     } else {
-      this.tokenManager.setAccessToken(token);
+      this.tokenManager.setAccessToken(token, event);
     }
   }
 

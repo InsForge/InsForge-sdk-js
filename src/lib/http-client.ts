@@ -704,8 +704,18 @@ export class HttpClient {
       return accessToken;
     }
 
-    const refreshed = await this.refreshAndSaveSession();
-    return refreshed.accessToken;
+    try {
+      const refreshed = await this.refreshAndSaveSession();
+      return refreshed.accessToken;
+    } catch (error) {
+      if (
+        error instanceof InsForgeError &&
+        (error.statusCode === 401 || error.statusCode === 403)
+      ) {
+        this.clearAuthSession();
+      }
+      throw error;
+    }
   }
 
   private async refreshAndSaveSession(): Promise<AuthRefreshResponse> {

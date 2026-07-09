@@ -106,15 +106,15 @@ describe('InsForgeClient – edgeFunctionToken implies server mode', () => {
 });
 
 describe('InsForgeClient.setAccessToken', () => {
-  it('notifies auth listeners on every authentication-boundary transition', () => {
+  it('allows callers to mark an external token replacement as a refresh', () => {
     const client = new InsForgeClient({ baseUrl: 'http://localhost:7130' });
     const events: string[] = [];
     client.auth.onAuthStateChange((event) => events.push(event));
 
     client.setAccessToken('token-a');
-    client.setAccessToken('token-b');
+    client.setAccessToken('token-b', 'tokenRefreshed');
     client.setAccessToken(null);
-    expect(events).toEqual(['signedIn', 'signedIn', 'signedOut']);
+    expect(events).toEqual(['signedIn', 'tokenRefreshed', 'signedOut']);
   });
 
   it('allows each auth-state listener to unsubscribe independently', () => {

@@ -162,7 +162,7 @@ export function createBrowserClient(
       }
 
       accessToken = refreshBody.accessToken;
-      client?.setAccessToken(refreshBody.accessToken);
+      client?.setAccessToken(refreshBody.accessToken, 'tokenRefreshed');
       return refreshBody as AuthRefreshResponse;
     })().finally(() => {
       sessionChecked = true;
@@ -224,9 +224,9 @@ export function createBrowserClient(
     },
   });
   const setAccessToken = client.setAccessToken.bind(client);
-  client.setAccessToken = (token: string | null) => {
+  client.setAccessToken = (token: string | null, event) => {
     accessToken = token;
-    setAccessToken(token);
+    setAccessToken(token, event);
   };
 
   if (accessToken) {

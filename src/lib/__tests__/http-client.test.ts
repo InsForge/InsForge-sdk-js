@@ -95,6 +95,25 @@ describe('HttpClient', () => {
         'tokenRefreshed'
       );
     });
+
+    it('clears an invalid browser session when the handshake refresh is rejected', async () => {
+      const tokenManager = createMockTokenManager();
+      const expiringToken = jwt(30);
+      (tokenManager.getAccessToken as ReturnType<typeof vi.fn>).mockReturnValue(expiringToken);
+      const fetchFn = vi.fn().mockResolvedValue(
+        createJsonResponse(401, {
+          error: 'AUTH_UNAUTHORIZED',
+          message: 'Refresh token is invalid',
+          statusCode: 401,
+        })
+      );
+      const client = createClient(fetchFn, {}, tokenManager);
+      client.setAuthToken(expiringToken);
+
+      await expect(client.getValidAccessToken()).rejects.toMatchObject({ statusCode: 401 });
+      expect(tokenManager.clearSession).toHaveBeenCalledOnce();
+      expect(client.getHeaders().Authorization).toBeUndefined();
+    });
   });
 
   describe('basic requests', () => {

@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SubscribeResponse } from '@insforge/shared-schemas';
+import type {
+  PresenceJoinMessage,
+  PresenceLeaveMessage,
+  SubscribeResponse,
+} from '@insforge/shared-schemas';
 import { Realtime } from '../realtime';
 import { TokenManager } from '../../lib/token-manager';
 
@@ -26,6 +30,25 @@ class FakeSocket {
     return this;
   }
 
+  off(event: string, listener?: Listener): this {
+    if (listener) {
+      this.listeners.set(
+        event,
+        (this.listeners.get(event) ?? []).filter((candidate) => candidate !== listener)
+      );
+    } else {
+      this.listeners.delete(event);
+    }
+    return this;
+  }
+
+  offAny(listener?: Listener): this {
+    this.anyListeners = listener
+      ? this.anyListeners.filter((candidate) => candidate !== listener)
+      : [];
+    return this;
+  }
+
   trigger(event: string, ...args: unknown[]): void {
     if (event === 'connect') {
       this.connected = true;
@@ -37,16 +60,17 @@ class FakeSocket {
       listener(...args);
     }
   }
+
+  triggerAny(event: string, message: unknown): void {
+    for (const listener of this.anyListeners) {
+      listener(event, message);
+    }
+  }
 }
 
 let socket: FakeSocket;
 let socketOptions: { auth?: unknown } | undefined;
-
-const io = vi.fn((_url: string, options: { auth?: unknown }) => {
-  socketOptions = options;
-  socket = new FakeSocket();
-  return socket;
-});
+const { io } = vi.hoisted(() => ({ io: vi.fn() }));
 
 vi.mock('socket.io-client', () => ({ io }));
 
@@ -73,8 +97,14 @@ function latestSubscribeAck(): (response: SubscribeResponse) => void {
 describe('Realtime', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
     socket = undefined as never;
     socketOptions = undefined;
+    io.mockImplementation((_url: string, options: { auth?: unknown }) => {
+      socketOptions = options;
+      socket = new FakeSocket();
+      return socket;
+    });
   });
 
   it('keeps an established socket connected when an access token is refreshed', async () => {
@@ -87,6 +117,18 @@ describe('Realtime', () => {
 
     expect(socket.disconnect).not.toHaveBeenCalled();
     expect(socket.connect).not.toHaveBeenCalled();
+  });
+
+  it('reconnects an established socket when the authentication identity changes', async () => {
+    const tokens = new TokenManager();
+    tokens.setAccessToken(jwt(300));
+    const realtime = new Realtime('http://example.test', tokens);
+    await connect(realtime);
+
+    tokens.setAccessToken(jwt(600), 'signedIn');
+
+    expect(socket.disconnect).toHaveBeenCalledOnce();
+    expect(socket.connect).toHaveBeenCalledOnce();
   });
 
   it('reads the latest token each time Socket.IO performs a handshake', async () => {
@@ -143,6 +185,71 @@ describe('Realtime', () => {
     acknowledge({ ok: true, channel: 'room', presence: { members: [] } });
 
     await expect(realtime.subscribe('room')).resolves.toMatchObject({ ok: true, channel: 'room' });
+  });
+
+  it('ignores an acknowledgement that arrives after a subscription timeout', async () => {
+    const realtime = new Realtime('http://example.test', new TokenManager());
+    await connect(realtime);
+    vi.useFakeTimers();
+    const subscription = realtime.subscribe('room');
+    const acknowledge = latestSubscribeAck();
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(subscription).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'SUBSCRIBE_TIMEOUT' },
+    });
+
+    acknowledge({ ok: true, channel: 'room', presence: { members: [] } });
+    expect((realtime as any).subscriptions.get('room')?.state).toBe('joining');
+  });
+
+  it('disposes a failed connection attempt before a later attempt starts', async () => {
+    const realtime = new Realtime('http://example.test', new TokenManager());
+    const firstConnection = realtime.connect();
+    await vi.waitFor(() => expect(socket).toBeDefined());
+    const failedSocket = socket;
+
+    failedSocket.trigger('connect_error', new Error('refused'));
+    await expect(firstConnection).rejects.toThrow('refused');
+    expect(failedSocket.disconnect).toHaveBeenCalledOnce();
+
+    const secondConnection = realtime.connect();
+    await vi.waitFor(() => expect(socket).not.toBe(failedSocket));
+    const activeSocket = socket;
+    failedSocket.trigger('connect');
+    expect(realtime.isConnected).toBe(false);
+    activeSocket.trigger('connect');
+    await expect(secondConnection).resolves.toBeUndefined();
+  });
+
+  it('updates presence state from join and leave events', async () => {
+    const realtime = new Realtime('http://example.test', new TokenManager());
+    await connect(realtime);
+    const subscription = realtime.subscribe('room');
+    await vi.waitFor(() => expect(latestSubscribeAck()).toBeTypeOf('function'));
+    latestSubscribeAck()({ ok: true, channel: 'room', presence: { members: [] } });
+    await subscription;
+    const member = {
+      type: 'user' as const,
+      presenceId: 'user-1',
+      joinedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const message = {
+      member,
+      meta: {
+        channel: 'room',
+        messageId: '00000000-0000-0000-0000-000000000001',
+        senderType: 'system' as const,
+        timestamp: '2026-01-01T00:00:00.000Z',
+      },
+    };
+
+    socket.triggerAny('presence:join', message as PresenceJoinMessage);
+    expect(realtime.getPresenceState('room')).toEqual([member]);
+
+    socket.triggerAny('presence:leave', message as PresenceLeaveMessage);
+    expect(realtime.getPresenceState('room')).toEqual([]);
   });
 
   it('re-subscribes with an acknowledgement after reconnect and replaces the presence snapshot', async () => {

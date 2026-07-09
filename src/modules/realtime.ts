@@ -1,6 +1,8 @@
 import type { Socket } from 'socket.io-client';
 import type {
   PresenceMember,
+  PresenceJoinMessage,
+  PresenceLeaveMessage,
   RealtimeErrorPayload,
   SocketMessage,
   SubscribeResponse,
@@ -15,11 +17,18 @@ export type EventCallback<T = unknown> = (payload: T) => void;
 type SubscriptionState = 'joining' | 'joined';
 
 interface ChannelSubscription {
+  channel: string;
   epoch: number;
   state: SubscriptionState;
   members: Map<string, PresenceMember>;
   pending?: Promise<SubscribeResponse>;
   settlePending?: (response: SubscribeResponse) => void;
+}
+
+interface ConnectionAttempt {
+  id: number;
+  socket: Socket;
+  cancel: (error: Error) => void;
 }
 
 const CONNECT_TIMEOUT = 10_000;
@@ -32,6 +41,8 @@ const SUBSCRIBE_TIMEOUT = 10_000;
 export class Realtime {
   private socket: Socket | null = null;
   private connectPromise: Promise<void> | null = null;
+  private connectionAttempt: ConnectionAttempt | null = null;
+  private nextConnectionAttemptId = 0;
   private subscriptions = new Map<string, ChannelSubscription>();
   private eventListeners = new Map<string, Set<EventCallback>>();
 
@@ -71,11 +82,15 @@ export class Realtime {
       return this.connectPromise;
     }
 
-    this.connectPromise = (async () => {
+    const attemptId = ++this.nextConnectionAttemptId;
+    const connection = (async () => {
       const { io } = await import('socket.io-client');
+      if (attemptId !== this.nextConnectionAttemptId) {
+        throw new Error('Connection cancelled');
+      }
 
       await new Promise<void>((resolve, reject) => {
-        this.socket = io(this.baseUrl, {
+        const socket = io(this.baseUrl, {
           transports: ['websocket'],
           auth: (callback) => {
             void this.getHandshakeToken().then(
@@ -84,18 +99,10 @@ export class Realtime {
             );
           },
         });
+        this.socket = socket;
 
         let initialConnection = true;
-        let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
-          if (!initialConnection) {
-            return;
-          }
-          initialConnection = false;
-          this.connectPromise = null;
-          this.socket?.disconnect();
-          this.socket = null;
-          reject(new Error(`Connection timeout after ${CONNECT_TIMEOUT}ms`));
-        }, CONNECT_TIMEOUT);
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
         const clearConnectTimeout = () => {
           if (timeoutId) {
@@ -104,52 +111,96 @@ export class Realtime {
           }
         };
 
-        this.socket.on('connect', () => {
+        const dispose = () => {
+          clearConnectTimeout();
+          socket.off('connect', onConnect);
+          socket.off('connect_error', onConnectError);
+          socket.off('disconnect', onDisconnect);
+          socket.off('realtime:error', onRealtimeError);
+          socket.offAny(onAny);
+          socket.disconnect();
+          if (this.socket === socket) {
+            this.socket = null;
+          }
+          if (this.connectionAttempt?.id === attemptId) {
+            this.connectionAttempt = null;
+          }
+        };
+
+        const fail = (error: Error) => {
+          if (!initialConnection) {
+            return;
+          }
+          initialConnection = false;
+          dispose();
+          reject(error);
+        };
+
+        const onConnect = () => {
+          if (this.socket !== socket) {
+            return;
+          }
           clearConnectTimeout();
           this.resubscribeChannels();
           this.notifyListeners('connect');
           if (initialConnection) {
             initialConnection = false;
-            this.connectPromise = null;
+            if (this.connectionAttempt?.id === attemptId) {
+              this.connectionAttempt = null;
+            }
             resolve();
           }
-        });
+        };
 
-        this.socket.on('connect_error', (error: Error) => {
+        const onConnectError = (error: Error) => {
           clearConnectTimeout();
           this.notifyListeners('connect_error', error);
           if (initialConnection) {
-            initialConnection = false;
-            this.connectPromise = null;
-            reject(error);
+            fail(error);
           }
-        });
+        };
 
-        this.socket.on('disconnect', (reason: string) => {
+        const onDisconnect = (reason: string) => {
           this.handleDisconnect(reason);
-        });
+        };
 
-        this.socket.on('realtime:error', (error: RealtimeErrorPayload) => {
+        const onRealtimeError = (error: RealtimeErrorPayload) => {
           this.notifyListeners('error', error);
-        });
+        };
 
-        this.socket.onAny((event: string, message: SocketMessage) => {
+        const onAny = (event: string, message: SocketMessage) => {
           if (event === 'realtime:error') {
             return;
           }
           this.applyPresenceEvent(event, message);
           this.notifyListeners(event, message);
-        });
-      });
-    })().catch((error) => {
-      this.connectPromise = null;
-      throw error;
-    });
+        };
 
-    return this.connectPromise;
+        this.connectionAttempt = { id: attemptId, socket, cancel: fail };
+        socket.on('connect', onConnect);
+        socket.on('connect_error', onConnectError);
+        socket.on('disconnect', onDisconnect);
+        socket.on('realtime:error', onRealtimeError);
+        socket.onAny(onAny);
+        timeoutId = setTimeout(
+          () => fail(new Error(`Connection timeout after ${CONNECT_TIMEOUT}ms`)),
+          CONNECT_TIMEOUT
+        );
+      });
+    })();
+
+    const trackedConnection = connection.finally(() => {
+      if (this.connectPromise === trackedConnection) {
+        this.connectPromise = null;
+      }
+    });
+    this.connectPromise = trackedConnection;
+    return trackedConnection;
   }
 
   disconnect(): void {
+    this.nextConnectionAttemptId++;
+    this.connectionAttempt?.cancel(new Error('Disconnected'));
     this.socket?.disconnect();
     this.socket = null;
     this.connectPromise = null;
@@ -158,7 +209,7 @@ export class Realtime {
         subscription,
         {
           ok: false,
-          channel: this.getChannel(subscription),
+          channel: subscription.channel,
           error: { code: 'DISCONNECTED', message: 'Disconnected' },
         },
         false
@@ -182,22 +233,13 @@ export class Realtime {
         subscription,
         {
           ok: false,
-          channel: this.getChannel(subscription),
+          channel: subscription.channel,
           error: { code: 'DISCONNECTED', message: 'Connection lost before subscription completed' },
         },
         false
       );
     }
     this.notifyListeners('disconnect', reason);
-  }
-
-  private getChannel(subscription: ChannelSubscription): string {
-    for (const [channel, candidate] of this.subscriptions) {
-      if (candidate === subscription) {
-        return channel;
-      }
-    }
-    return '';
   }
 
   private resubscribeChannels(): void {
@@ -247,7 +289,7 @@ export class Realtime {
                 message: 'Subscription acknowledgement timed out',
               },
             },
-            false
+            true
           );
         }
       }, SUBSCRIBE_TIMEOUT);
@@ -283,8 +325,9 @@ export class Realtime {
     if (event !== 'presence:join' && event !== 'presence:leave') {
       return;
     }
-    const channel = message.meta?.channel;
-    const member = (message as SocketMessage & { member?: PresenceMember }).member;
+    const presenceEvent = message as PresenceJoinMessage | PresenceLeaveMessage;
+    const channel = presenceEvent.meta.channel;
+    const member = presenceEvent.member;
     if (!channel || !member) {
       return;
     }
@@ -324,7 +367,7 @@ export class Realtime {
         return { ok: true, channel, presence: { members: [...subscription.members.values()] } };
       }
     } else {
-      subscription = { epoch: 0, state: 'joining', members: new Map() };
+      subscription = { channel, epoch: 0, state: 'joining', members: new Map() };
       this.subscriptions.set(channel, subscription);
     }
 

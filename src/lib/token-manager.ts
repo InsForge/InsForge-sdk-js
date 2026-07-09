@@ -145,7 +145,11 @@ export class TokenManager {
 
   private notifyAuthStateChange(event: AuthChangeEvent): void {
     for (const callback of this.authStateChangeCallbacks.values()) {
-      callback(event);
+      try {
+        callback(event);
+      } catch (error) {
+        console.error('Error in auth state change callback:', error);
+      }
     }
   }
 }
