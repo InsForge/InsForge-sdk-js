@@ -29,6 +29,35 @@ interface DownloadStrategy {
 }
 
 /**
+ * Max object keys accepted per batch-delete request. Requests with more keys are
+ * split into multiple requests client-side. Mirrors the server-side limit.
+ */
+const DELETE_OBJECTS_MAX_KEYS = 1000;
+
+/** Result for a single key in the raw batch-delete HTTP response. */
+export interface RemoveManyResult {
+  key: string;
+  status: 'deleted' | 'notFound' | 'failed';
+  /** Present only when `status` is `'failed'`. */
+  message?: string;
+}
+
+/** Raw batch-delete HTTP response body: one entry per requested (deduped) key. */
+export interface RemoveManyResponse {
+  results: RemoveManyResult[];
+}
+
+/**
+ * Aggregated outcome of {@link StorageBucket.removeMany} across all batches.
+ * `success` holds the keys that were deleted; `failures` pairs each remaining
+ * key with the reason it wasn't (not found, delete failed, or a request error).
+ */
+export interface RemoveManyOutcome {
+  success: string[];
+  failures: { key: string; error: Error }[];
+}
+
+/**
  * Storage bucket operations
  */
 export class StorageBucket {
@@ -473,6 +502,85 @@ export class StorageBucket {
       );
 
       return { data: response, error: null };
+    } catch (error) {
+      return {
+        data: null,
+        error:
+          error instanceof InsForgeError
+            ? error
+            : new InsForgeError('Delete failed', 500, 'STORAGE_ERROR'),
+      };
+    }
+  }
+
+  /**
+   * Delete multiple files.
+   *
+   * Keys are split into batches of at most {@link DELETE_OBJECTS_MAX_KEYS} and
+   * sent concurrently, so there is no client-side cap on how many keys you pass.
+   * Each key resolves independently: a missing key or a failed request does not
+   * prevent the others from being deleted. The result aggregates every batch into
+   * `success` (deleted keys) and `failures` (each remaining key with its reason).
+   *
+   * @param paths - The object keys/paths (any length; deduped server-side per batch)
+   * @returns `{ data: { success, failures }, error }`. `error` is non-null only
+   *   for an unexpected top-level failure; per-key problems surface in `failures`.
+   */
+  async removeMany(paths: string[]): Promise<StorageResponse<RemoveManyOutcome>> {
+    try {
+      if (paths.length === 0) {
+        return { data: { success: [], failures: [] }, error: null };
+      }
+
+      const batches: string[][] = [];
+      for (let index = 0; index < paths.length; index += DELETE_OBJECTS_MAX_KEYS) {
+        batches.push(paths.slice(index, index + DELETE_OBJECTS_MAX_KEYS));
+      }
+
+      const settled = await Promise.allSettled(
+        batches.map((keys) =>
+          this.http.delete<RemoveManyResponse>(
+            `/api/storage/buckets/${encodeURIComponent(this.bucketName)}/objects`,
+            { body: { keys } }
+          )
+        )
+      );
+
+      const success: string[] = [];
+      const failures: { key: string; error: Error }[] = [];
+
+      settled.forEach((result, index) => {
+        const keys = batches[index];
+
+        // A rejected batch fails the whole slice of keys with the same reason.
+        if (result.status === 'rejected') {
+          const error =
+            result.reason instanceof Error
+              ? result.reason
+              : new InsForgeError(String(result.reason), 500, 'STORAGE_ERROR');
+          keys.forEach((key) => failures.push({ key, error }));
+          return;
+        }
+
+        result.value.results.forEach((deleteResult) => {
+          if (deleteResult.status === 'deleted') {
+            success.push(deleteResult.key);
+            return;
+          }
+          failures.push({
+            key: deleteResult.key,
+            error: new InsForgeError(
+              deleteResult.status === 'notFound'
+                ? 'Object not found'
+                : (deleteResult.message ?? 'Failed to delete object'),
+              deleteResult.status === 'notFound' ? 404 : 500,
+              'STORAGE_ERROR'
+            ),
+          });
+        });
+      });
+
+      return { data: { success, failures }, error: null };
     } catch (error) {
       return {
         data: null,
