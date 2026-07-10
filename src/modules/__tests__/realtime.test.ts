@@ -178,11 +178,80 @@ describe('Realtime', () => {
       channel: 'room',
       error: { code: 'DISCONNECTED' },
     });
-    expect(realtime.getSubscribedChannels()).toEqual(['room']);
+    expect(realtime.getSubscribedChannels()).toEqual([]);
 
     socket.trigger('connect');
     const acknowledge = latestSubscribeAck();
     acknowledge({ ok: true, channel: 'room', presence: { members: [] } });
+
+    await expect(realtime.subscribe('room')).resolves.toMatchObject({ ok: true, channel: 'room' });
+  });
+
+  it('pauses a server-rejected subscription until the caller explicitly retries it', async () => {
+    const realtime = new Realtime('http://example.test', new TokenManager());
+    await connect(realtime);
+
+    const rejected = realtime.subscribe('room');
+    await vi.waitFor(() => expect(latestSubscribeAck()).toBeTypeOf('function'));
+    latestSubscribeAck()({
+      ok: false,
+      channel: 'room',
+      error: {
+        code: 'REALTIME_UNAUTHORIZED',
+        message: 'Not authorized to subscribe to this channel',
+      },
+    });
+
+    await expect(rejected).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'REALTIME_UNAUTHORIZED' },
+    });
+    expect(realtime.getSubscribedChannels()).toEqual([]);
+
+    socket.trigger('disconnect', 'transport close');
+    socket.trigger('connect');
+    expect(socket.emit.mock.calls.filter(([event]) => event === 'realtime:subscribe')).toHaveLength(
+      1
+    );
+
+    const retried = realtime.subscribe('room');
+    await vi.waitFor(() =>
+      expect(
+        socket.emit.mock.calls.filter(([event]) => event === 'realtime:subscribe')
+      ).toHaveLength(2)
+    );
+    latestSubscribeAck()({ ok: true, channel: 'room', presence: { members: [] } });
+
+    await expect(retried).resolves.toMatchObject({ ok: true, channel: 'room' });
+    expect(realtime.getSubscribedChannels()).toEqual(['room']);
+  });
+
+  it('retries a rejected subscription after an authentication-boundary reconnect', async () => {
+    const tokens = new TokenManager();
+    tokens.setAccessToken(jwt(300));
+    const realtime = new Realtime('http://example.test', tokens);
+    await connect(realtime);
+
+    const rejected = realtime.subscribe('room');
+    await vi.waitFor(() => expect(latestSubscribeAck()).toBeTypeOf('function'));
+    latestSubscribeAck()({
+      ok: false,
+      channel: 'room',
+      error: {
+        code: 'REALTIME_UNAUTHORIZED',
+        message: 'Not authorized to subscribe to this channel',
+      },
+    });
+    await expect(rejected).resolves.toMatchObject({ ok: false });
+
+    tokens.setAccessToken(jwt(600), 'signedIn');
+    socket.trigger('connect');
+    await vi.waitFor(() =>
+      expect(
+        socket.emit.mock.calls.filter(([event]) => event === 'realtime:subscribe')
+      ).toHaveLength(2)
+    );
+    latestSubscribeAck()({ ok: true, channel: 'room', presence: { members: [] } });
 
     await expect(realtime.subscribe('room')).resolves.toMatchObject({ ok: true, channel: 'room' });
   });
@@ -201,7 +270,7 @@ describe('Realtime', () => {
     });
 
     acknowledge({ ok: true, channel: 'room', presence: { members: [] } });
-    expect((realtime as any).subscriptions.get('room')?.state).toBe('joining');
+    expect((realtime as any).subscriptions.get('room')?.status).toBe('pending');
   });
 
   it('disposes a failed connection attempt before a later attempt starts', async () => {

@@ -14,12 +14,12 @@ export type { PresenceMember, RealtimeErrorPayload, SocketMessage, SubscribeResp
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
 export type EventCallback<T = unknown> = (payload: T) => void;
 
-type SubscriptionState = 'joining' | 'joined';
+type SubscriptionStatus = 'pending' | 'subscribed' | 'rejected';
 
 interface ChannelSubscription {
   channel: string;
   epoch: number;
-  state: SubscriptionState;
+  status: SubscriptionStatus;
   members: Map<string, PresenceMember>;
   pending?: Promise<SubscribeResponse>;
   settlePending?: (response: SubscribeResponse) => void;
@@ -219,6 +219,11 @@ export class Realtime {
   }
 
   private reconnectForAuthChange(): void {
+    for (const subscription of this.subscriptions.values()) {
+      if (subscription.status === 'rejected') {
+        subscription.status = 'pending';
+      }
+    }
     if (!this.socket) {
       return;
     }
@@ -228,7 +233,10 @@ export class Realtime {
 
   private handleDisconnect(reason: string): void {
     for (const subscription of this.subscriptions.values()) {
-      subscription.state = 'joining';
+      if (subscription.status === 'rejected') {
+        continue;
+      }
+      subscription.status = 'pending';
       this.settleSubscription(
         subscription,
         {
@@ -244,7 +252,9 @@ export class Realtime {
 
   private resubscribeChannels(): void {
     for (const [channel, subscription] of this.subscriptions) {
-      this.requestSubscription(channel, subscription);
+      if (subscription.status === 'pending') {
+        this.requestSubscription(channel, subscription);
+      }
     }
   }
 
@@ -264,7 +274,7 @@ export class Realtime {
       });
     }
 
-    subscription.state = 'joining';
+    subscription.status = 'pending';
     const epoch = ++subscription.epoch;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     subscription.pending = new Promise<SubscribeResponse>((resolve) => {
@@ -299,10 +309,13 @@ export class Realtime {
           return;
         }
         if (response.ok) {
-          subscription.state = 'joined';
+          subscription.status = 'subscribed';
           subscription.members = new Map(
             response.presence.members.map((member) => [member.presenceId, member])
           );
+        } else {
+          subscription.status = 'rejected';
+          subscription.members.clear();
         }
         this.settleSubscription(subscription, response, false);
       });
@@ -363,11 +376,11 @@ export class Realtime {
       if (subscription.pending) {
         return subscription.pending;
       }
-      if (subscription.state === 'joined') {
+      if (subscription.status === 'subscribed') {
         return { ok: true, channel, presence: { members: [...subscription.members.values()] } };
       }
     } else {
-      subscription = { channel, epoch: 0, state: 'joining', members: new Map() };
+      subscription = { channel, epoch: 0, status: 'pending', members: new Map() };
       this.subscriptions.set(channel, subscription);
     }
 
@@ -436,7 +449,11 @@ export class Realtime {
   }
 
   getSubscribedChannels(): string[] {
-    return [...this.subscriptions.keys()];
+    // Only server-confirmed subscriptions are active. Pending retries and
+    // server-rejected intents remain internal until they are explicitly retried.
+    return [...this.subscriptions.values()]
+      .filter((subscription) => subscription.status === 'subscribed')
+      .map((subscription) => subscription.channel);
   }
 
   getPresenceState(channel: string): PresenceMember[] {
