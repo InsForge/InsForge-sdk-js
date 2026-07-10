@@ -212,7 +212,13 @@ const { data, error } = await insforge.storage.from('avatars').upload(file);
 const { data, error } = await insforge.storage.from('avatars').download('user-avatar.png');
 
 // Delete a file
-const { data, error } = await insforge.storage.from('avatars').remove(['user-avatar.png']);
+const { data, error } = await insforge.storage.from('avatars').remove('user-avatar.png');
+
+// Delete multiple files (auto-batched, any number of keys)
+const { data, error } = await insforge.storage
+  .from('avatars')
+  .removeMany(['user-avatar.png', 'old-avatar.png']);
+// data: { success: string[], failures: { key, error }[] }
 
 // List files
 const { data, error } = await insforge.storage.from('avatars').list();
