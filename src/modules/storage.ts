@@ -539,10 +539,9 @@ export class StorageBucket {
 
       const settled = await Promise.allSettled(
         batches.map((keys) =>
-          this.http.delete<RemoveManyResponse>(
-            `/api/storage/buckets/${encodeURIComponent(this.bucketName)}/objects`,
-            { body: { keys } }
-          )
+          this.http.delete<RemoveManyResponse>(`/api/storage/buckets/${this.bucketName}/objects`, {
+            body: { keys },
+          })
         )
       );
 
