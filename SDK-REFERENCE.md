@@ -746,6 +746,16 @@ await bucket.remove('path/file.jpg');
 // Response: { data: { message }, error }
 ```
 
+### `bucket.removeMany()`
+
+```javascript
+await bucket.removeMany(['path/a.jpg', 'path/b.txt']); // any number of keys
+// Response: { data: { success, failures }, error }
+// success:  string[] — keys that were deleted
+// failures: { key, error }[] — each remaining key with the reason it wasn't deleted
+// Keys are auto-batched (max 1000 per request); each key resolves independently.
+```
+
 ### `bucket.getPublicUrl()`
 
 ```javascript
