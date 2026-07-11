@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { InsForgeClient } from '../../client';
+import * as SDK from '../../index';
 import { AuthChangeEvent, createAdminClient } from '../../index';
 
 describe('client factories', () => {
@@ -112,6 +113,10 @@ describe('InsForgeClient.setAccessToken', () => {
       SIGNED_OUT: 'signedOut',
       TOKEN_REFRESHED: 'tokenRefreshed',
     });
+  });
+
+  it('keeps TokenManager internal to the SDK package entrypoint', () => {
+    expect('TokenManager' in SDK).toBe(false);
   });
 
   it('allows callers to mark an external token replacement as a refresh', () => {
