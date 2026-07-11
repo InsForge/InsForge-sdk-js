@@ -1,7 +1,7 @@
 import type { InsForgeConfig } from './types';
 import { HttpClient } from './lib/http-client';
 import { Logger } from './lib/logger';
-import { TokenManager } from './lib/token-manager';
+import { AuthChangeEvent, TokenManager } from './lib/token-manager';
 import { Auth } from './modules/auth/auth';
 import { Database } from './modules/database-postgrest';
 import { Storage } from './modules/storage';
@@ -10,6 +10,9 @@ import { Functions } from './modules/functions';
 import { Realtime } from './modules/realtime';
 import { Emails } from './modules/email';
 import { Payments } from './modules/payments';
+
+export type AccessTokenChangeEvent =
+  typeof AuthChangeEvent.SIGNED_IN | typeof AuthChangeEvent.TOKEN_REFRESHED;
 
 /**
  * Main InsForge SDK Client
@@ -87,7 +90,9 @@ export class InsForgeClient {
     this.storage = new Storage(this.http);
     this.ai = new AI(this.http);
     this.functions = new Functions(this.http, config.functionsUrl);
-    this.realtime = new Realtime(this.http.baseUrl, this.tokenManager, config.anonKey);
+    this.realtime = new Realtime(this.http.baseUrl, this.tokenManager, config.anonKey, () =>
+      this.http.getValidAccessToken()
+    );
     this.emails = new Emails(this.http);
     this.payments = new Payments(this.http);
   }
@@ -108,32 +113,38 @@ export class InsForgeClient {
   /**
    * Set the access token used by every SDK surface. Updates both the HTTP
    * client (database / storage / functions / AI / emails) and the realtime
-   * token manager (which fires `onTokenChange` to reconnect the WebSocket
-   * with the new bearer). Pass `null` to clear.
+   * token manager. Pass `null` to sign out. By default a token replacement is
+   * treated as a sign-in boundary and reconnects realtime. Pass
+   * `AuthChangeEvent.TOKEN_REFRESHED` for a same-identity refresh to preserve a live socket; the
+   * refreshed token is then used at the next handshake.
    *
    * Use this when an external auth provider (Better Auth, Clerk, Auth0,
    * WorkOS, Kinde, Stytch, …) issues the JWT and you need to keep the
    * long-lived InsForge client in sync. Without this, you'd have to call
    * `client.getHttpClient().setAuthToken(token)` AND reach into the private
-   * `client.realtime.tokenManager.setAccessToken(token)` separately —
-   * forgetting the second one silently breaks realtime auth.
+   * realtime token manager separately.
    *
    * @example
    * ```typescript
+   * import { AuthChangeEvent } from '@insforge/sdk';
+   *
    * // Refresh a third-party-issued JWT periodically
    * const { token } = await fetch('/api/insforge-token').then((r) => r.json());
-   * client.setAccessToken(token);
+   * client.setAccessToken(token, AuthChangeEvent.TOKEN_REFRESHED);
    *
    * // Sign-out
    * client.setAccessToken(null);
    * ```
    */
-  setAccessToken(token: string | null): void {
+  setAccessToken(
+    token: string | null,
+    event: AccessTokenChangeEvent = AuthChangeEvent.SIGNED_IN
+  ): void {
     this.http.setAuthToken(token);
     if (token === null) {
       this.tokenManager.clearSession();
     } else {
-      this.tokenManager.setAccessToken(token);
+      this.tokenManager.setAccessToken(token, event);
     }
   }
 

@@ -4,7 +4,14 @@
  */
 
 import { HttpClient } from '../../lib/http-client';
-import { TokenManager, getCsrfToken, setCsrfToken, clearCsrfToken } from '../../lib/token-manager';
+import {
+  TokenManager,
+  AuthChangeEvent,
+  getCsrfToken,
+  setCsrfToken,
+  clearCsrfToken,
+  type AuthStateChangeCallback,
+} from '../../lib/token-manager';
 import { AuthSession, InsForgeError } from '../../types';
 import {
   generateCodeVerifier,
@@ -70,13 +77,19 @@ export class Auth {
     return !!this.options.isServerMode;
   }
 
+  /** Subscribe to SDK authentication state changes. */
+  onAuthStateChange(callback: AuthStateChangeCallback): () => void {
+    return this.tokenManager.onAuthStateChange(callback);
+  }
+
   /**
    * Save session from API response
    * Handles token storage, CSRF token, and HTTP auth header
    */
   private saveSessionFromResponse(
     response:
-      CreateUserResponse | CreateSessionResponse | VerifyEmailResponse | RefreshSessionResponse
+      CreateUserResponse | CreateSessionResponse | VerifyEmailResponse | RefreshSessionResponse,
+    event: AuthChangeEvent = AuthChangeEvent.SIGNED_IN
   ): boolean {
     if (!response.accessToken || !response.user) {
       return false;
@@ -93,7 +106,7 @@ export class Auth {
     }
 
     if (!this.isServerMode()) {
-      this.tokenManager.saveSession(session);
+      this.tokenManager.saveSession(session, event);
     }
     this.http.setAuthToken(response.accessToken);
     this.http.setRefreshToken(response.refreshToken ?? null);
@@ -456,7 +469,7 @@ export class Auth {
       );
 
       if (response.accessToken) {
-        this.saveSessionFromResponse(response);
+        this.saveSessionFromResponse(response, AuthChangeEvent.TOKEN_REFRESHED);
       }
 
       return { data: response, error: null };

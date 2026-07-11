@@ -7,6 +7,15 @@
 import type { UserSchema } from '@insforge/shared-schemas';
 import type { AuthSession } from '../types';
 
+export const AuthChangeEvent = {
+  SIGNED_IN: 'signedIn',
+  SIGNED_OUT: 'signedOut',
+  TOKEN_REFRESHED: 'tokenRefreshed',
+} as const;
+
+export type AuthChangeEvent = (typeof AuthChangeEvent)[keyof typeof AuthChangeEvent];
+export type AuthStateChangeCallback = (event: AuthChangeEvent) => void;
+
 // CSRF token cookie name
 export const CSRF_TOKEN_COOKIE = 'insforge_csrf_token';
 
@@ -59,21 +68,20 @@ export class TokenManager {
   private accessToken: string | null = null;
   private user: UserSchema | null = null;
 
-  // Callback for token changes (used by realtime to reconnect with new token)
-  onTokenChange: (() => void) | null = null;
+  private authStateChangeCallbacks = new Map<symbol, AuthStateChangeCallback>();
 
   constructor() {}
 
   /**
    * Save session in memory
    */
-  saveSession(session: AuthSession): void {
+  saveSession(session: AuthSession, event: AuthChangeEvent = AuthChangeEvent.SIGNED_IN): void {
     const tokenChanged = session.accessToken !== this.accessToken;
     this.accessToken = session.accessToken;
     this.user = session.user;
 
-    if (tokenChanged && this.onTokenChange) {
-      this.onTokenChange();
+    if (tokenChanged) {
+      this.notifyAuthStateChange(event);
     }
   }
 
@@ -100,11 +108,11 @@ export class TokenManager {
   /**
    * Set access token
    */
-  setAccessToken(token: string): void {
+  setAccessToken(token: string, event: AuthChangeEvent = AuthChangeEvent.SIGNED_IN): void {
     const tokenChanged = token !== this.accessToken;
     this.accessToken = token;
-    if (tokenChanged && this.onTokenChange) {
-      this.onTokenChange();
+    if (tokenChanged) {
+      this.notifyAuthStateChange(event);
     }
   }
 
@@ -130,8 +138,24 @@ export class TokenManager {
     this.accessToken = null;
     this.user = null;
 
-    if (hadToken && this.onTokenChange) {
-      this.onTokenChange();
+    if (hadToken) {
+      this.notifyAuthStateChange(AuthChangeEvent.SIGNED_OUT);
+    }
+  }
+
+  onAuthStateChange(callback: AuthStateChangeCallback): () => void {
+    const id = Symbol('auth-state-change');
+    this.authStateChangeCallbacks.set(id, callback);
+    return () => this.authStateChangeCallbacks.delete(id);
+  }
+
+  private notifyAuthStateChange(event: AuthChangeEvent): void {
+    for (const callback of this.authStateChangeCallbacks.values()) {
+      try {
+        callback(event);
+      } catch (error) {
+        console.error('Error in auth state change callback:', error);
+      }
     }
   }
 }

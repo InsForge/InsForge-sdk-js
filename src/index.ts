@@ -6,6 +6,7 @@
 
 // Main client
 export { InsForgeClient } from './client';
+export type { AccessTokenChangeEvent } from './client';
 
 // Types
 export type {
@@ -65,7 +66,8 @@ export type {
 
 // Re-export utilities for advanced usage
 export { HttpClient } from './lib/http-client';
-export { TokenManager } from './lib/token-manager';
+export { AuthChangeEvent } from './lib/token-manager';
+export type { AuthStateChangeCallback } from './lib/token-manager';
 export { Logger } from './lib/logger';
 
 // Factory function for creating clients (Supabase-style)

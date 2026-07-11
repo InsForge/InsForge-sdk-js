@@ -1,6 +1,13 @@
 import { InsForgeConfig, ApiError, InsForgeError, AuthRefreshResponse } from '../types';
 import { Logger } from './logger';
-import { clearCsrfToken, getCsrfToken, setCsrfToken, TokenManager } from './token-manager';
+import {
+  AuthChangeEvent,
+  clearCsrfToken,
+  getCsrfToken,
+  setCsrfToken,
+  TokenManager,
+} from './token-manager';
+import { isJwtExpiredOrExpiring } from './jwt';
 
 type JsonRequestBody = Record<string, unknown> | unknown[] | null;
 export interface RequestOptions extends Omit<RequestInit, 'body'> {
@@ -687,10 +694,41 @@ export class HttpClient {
     return this.refreshPromise;
   }
 
+  /** Returns a token safe to use for a new connection handshake. */
+  async getValidAccessToken(leewaySeconds = 60): Promise<string | null> {
+    const accessToken = this.tokenManager.getAccessToken() ?? this.userToken;
+    if (!accessToken || !isJwtExpiredOrExpiring(accessToken, leewaySeconds)) {
+      return accessToken;
+    }
+
+    const canRefresh =
+      !this.config.isServerMode &&
+      !this.config.accessToken &&
+      !this.config.edgeFunctionToken &&
+      this.userToken !== null;
+    if (!canRefresh) {
+      return accessToken;
+    }
+
+    try {
+      const refreshed = await this.refreshAndSaveSession();
+      return refreshed.accessToken;
+    } catch (error) {
+      if (
+        error instanceof InsForgeError &&
+        (error.statusCode === 401 || error.statusCode === 403) &&
+        this.userToken === accessToken
+      ) {
+        this.clearAuthSession();
+      }
+      throw error;
+    }
+  }
+
   private async refreshAndSaveSession(): Promise<AuthRefreshResponse> {
     const newTokenData = await this.refreshAccessToken();
     this.setAuthToken(newTokenData.accessToken);
-    this.tokenManager.saveSession(newTokenData);
+    this.tokenManager.saveSession(newTokenData, AuthChangeEvent.TOKEN_REFRESHED);
     if (newTokenData.csrfToken) {
       setCsrfToken(newTokenData.csrfToken);
     }
