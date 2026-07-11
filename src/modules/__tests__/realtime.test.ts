@@ -187,6 +187,32 @@ describe('Realtime', () => {
     await expect(realtime.subscribe('room')).resolves.toMatchObject({ ok: true, channel: 'room' });
   });
 
+  it('ignores a disconnected socket acknowledgement before resubscribing', async () => {
+    const realtime = new Realtime('http://example.test', new TokenManager());
+    await connect(realtime);
+    const subscription = realtime.subscribe('room');
+    await vi.waitFor(() => expect(latestSubscribeAck()).toBeTypeOf('function'));
+    const staleAcknowledge = latestSubscribeAck();
+
+    socket.trigger('disconnect', 'transport close');
+    await expect(subscription).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'DISCONNECTED' },
+    });
+
+    staleAcknowledge({ ok: true, channel: 'room', presence: { members: [] } });
+    socket.trigger('connect');
+
+    expect(socket.emit.mock.calls.filter(([event]) => event === 'realtime:subscribe')).toHaveLength(
+      2
+    );
+
+    const resubscription = realtime.subscribe('room');
+    latestSubscribeAck()({ ok: true, channel: 'room', presence: { members: [] } });
+    await expect(resubscription).resolves.toMatchObject({ ok: true, channel: 'room' });
+    expect(realtime.getSubscribedChannels()).toEqual(['room']);
+  });
+
   it('pauses a server-rejected subscription until the caller explicitly retries it', async () => {
     const realtime = new Realtime('http://example.test', new TokenManager());
     await connect(realtime);

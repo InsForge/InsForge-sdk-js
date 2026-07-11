@@ -6,11 +6,11 @@
 import { HttpClient } from '../../lib/http-client';
 import {
   TokenManager,
+  AuthChangeEvent,
   getCsrfToken,
   setCsrfToken,
   clearCsrfToken,
   type AuthStateChangeCallback,
-  type AuthChangeEvent,
 } from '../../lib/token-manager';
 import { AuthSession, InsForgeError } from '../../types';
 import {
@@ -89,7 +89,7 @@ export class Auth {
   private saveSessionFromResponse(
     response:
       CreateUserResponse | CreateSessionResponse | VerifyEmailResponse | RefreshSessionResponse,
-    event: AuthChangeEvent = 'signedIn'
+    event: AuthChangeEvent = AuthChangeEvent.SIGNED_IN
   ): boolean {
     if (!response.accessToken || !response.user) {
       return false;
@@ -469,7 +469,7 @@ export class Auth {
       );
 
       if (response.accessToken) {
-        this.saveSessionFromResponse(response, 'tokenRefreshed');
+        this.saveSessionFromResponse(response, AuthChangeEvent.TOKEN_REFRESHED);
       }
 
       return { data: response, error: null };

@@ -7,7 +7,7 @@ import type {
   SocketMessage,
   SubscribeResponse,
 } from '@insforge/shared-schemas';
-import { TokenManager } from '../lib/token-manager';
+import { AuthChangeEvent, TokenManager } from '../lib/token-manager';
 
 export type { PresenceMember, RealtimeErrorPayload, SocketMessage, SubscribeResponse };
 
@@ -54,7 +54,7 @@ export class Realtime {
       tokenManager.getAccessToken()
   ) {
     this.tokenManager.onAuthStateChange((event) => {
-      if (event !== 'tokenRefreshed') {
+      if (event !== AuthChangeEvent.TOKEN_REFRESHED) {
         this.reconnectForAuthChange();
       }
     });
@@ -244,7 +244,7 @@ export class Realtime {
           channel: subscription.channel,
           error: { code: 'DISCONNECTED', message: 'Connection lost before subscription completed' },
         },
-        false
+        true
       );
     }
     this.notifyListeners('disconnect', reason);

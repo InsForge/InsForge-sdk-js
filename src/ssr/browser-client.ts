@@ -1,4 +1,5 @@
 import { InsForgeClient } from '../client';
+import { AuthChangeEvent } from '../lib/token-manager';
 import { InsForgeError, type AuthRefreshResponse, type InsForgeConfig } from '../types';
 import { isJwtExpiredOrExpiring } from '../lib/jwt';
 import { ERROR_CODES } from '@insforge/shared-schemas';
@@ -162,7 +163,7 @@ export function createBrowserClient(
       }
 
       accessToken = refreshBody.accessToken;
-      client?.setAccessToken(refreshBody.accessToken, 'tokenRefreshed');
+      client?.setAccessToken(refreshBody.accessToken, AuthChangeEvent.TOKEN_REFRESHED);
       return refreshBody as AuthRefreshResponse;
     })().finally(() => {
       sessionChecked = true;

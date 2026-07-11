@@ -1,6 +1,12 @@
 import { InsForgeConfig, ApiError, InsForgeError, AuthRefreshResponse } from '../types';
 import { Logger } from './logger';
-import { clearCsrfToken, getCsrfToken, setCsrfToken, TokenManager } from './token-manager';
+import {
+  AuthChangeEvent,
+  clearCsrfToken,
+  getCsrfToken,
+  setCsrfToken,
+  TokenManager,
+} from './token-manager';
 import { isJwtExpiredOrExpiring } from './jwt';
 
 type JsonRequestBody = Record<string, unknown> | unknown[] | null;
@@ -722,7 +728,7 @@ export class HttpClient {
   private async refreshAndSaveSession(): Promise<AuthRefreshResponse> {
     const newTokenData = await this.refreshAccessToken();
     this.setAuthToken(newTokenData.accessToken);
-    this.tokenManager.saveSession(newTokenData, 'tokenRefreshed');
+    this.tokenManager.saveSession(newTokenData, AuthChangeEvent.TOKEN_REFRESHED);
     if (newTokenData.csrfToken) {
       setCsrfToken(newTokenData.csrfToken);
     }

@@ -7,7 +7,13 @@
 import type { UserSchema } from '@insforge/shared-schemas';
 import type { AuthSession } from '../types';
 
-export type AuthChangeEvent = 'signedIn' | 'signedOut' | 'tokenRefreshed';
+export const AuthChangeEvent = {
+  SIGNED_IN: 'signedIn',
+  SIGNED_OUT: 'signedOut',
+  TOKEN_REFRESHED: 'tokenRefreshed',
+} as const;
+
+export type AuthChangeEvent = (typeof AuthChangeEvent)[keyof typeof AuthChangeEvent];
 export type AuthStateChangeCallback = (event: AuthChangeEvent) => void;
 
 // CSRF token cookie name
@@ -69,7 +75,7 @@ export class TokenManager {
   /**
    * Save session in memory
    */
-  saveSession(session: AuthSession, event: AuthChangeEvent = 'signedIn'): void {
+  saveSession(session: AuthSession, event: AuthChangeEvent = AuthChangeEvent.SIGNED_IN): void {
     const tokenChanged = session.accessToken !== this.accessToken;
     this.accessToken = session.accessToken;
     this.user = session.user;
@@ -102,7 +108,7 @@ export class TokenManager {
   /**
    * Set access token
    */
-  setAccessToken(token: string, event: AuthChangeEvent = 'signedIn'): void {
+  setAccessToken(token: string, event: AuthChangeEvent = AuthChangeEvent.SIGNED_IN): void {
     const tokenChanged = token !== this.accessToken;
     this.accessToken = token;
     if (tokenChanged) {
@@ -133,7 +139,7 @@ export class TokenManager {
     this.user = null;
 
     if (hadToken) {
-      this.notifyAuthStateChange('signedOut');
+      this.notifyAuthStateChange(AuthChangeEvent.SIGNED_OUT);
     }
   }
 

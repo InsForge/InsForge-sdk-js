@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { InsForgeClient } from '../../client';
-import { createAdminClient } from '../../index';
+import { AuthChangeEvent, createAdminClient } from '../../index';
 
 describe('client factories', () => {
   it('creates an admin client with the API key as bearer auth', () => {
@@ -106,15 +106,27 @@ describe('InsForgeClient – edgeFunctionToken implies server mode', () => {
 });
 
 describe('InsForgeClient.setAccessToken', () => {
+  it('exports auth change events as runtime constants', () => {
+    expect(AuthChangeEvent).toEqual({
+      SIGNED_IN: 'signedIn',
+      SIGNED_OUT: 'signedOut',
+      TOKEN_REFRESHED: 'tokenRefreshed',
+    });
+  });
+
   it('allows callers to mark an external token replacement as a refresh', () => {
     const client = new InsForgeClient({ baseUrl: 'http://localhost:7130' });
     const events: string[] = [];
     client.auth.onAuthStateChange((event) => events.push(event));
 
     client.setAccessToken('token-a');
-    client.setAccessToken('token-b', 'tokenRefreshed');
+    client.setAccessToken('token-b', AuthChangeEvent.TOKEN_REFRESHED);
     client.setAccessToken(null);
-    expect(events).toEqual(['signedIn', 'tokenRefreshed', 'signedOut']);
+    expect(events).toEqual([
+      AuthChangeEvent.SIGNED_IN,
+      AuthChangeEvent.TOKEN_REFRESHED,
+      AuthChangeEvent.SIGNED_OUT,
+    ]);
   });
 
   it('allows each auth-state listener to unsubscribe independently', () => {

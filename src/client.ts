@@ -1,7 +1,7 @@
 import type { InsForgeConfig } from './types';
 import { HttpClient } from './lib/http-client';
 import { Logger } from './lib/logger';
-import { TokenManager } from './lib/token-manager';
+import { AuthChangeEvent, TokenManager } from './lib/token-manager';
 import { Auth } from './modules/auth/auth';
 import { Database } from './modules/database-postgrest';
 import { Storage } from './modules/storage';
@@ -11,7 +11,8 @@ import { Realtime } from './modules/realtime';
 import { Emails } from './modules/email';
 import { Payments } from './modules/payments';
 
-export type AccessTokenChangeEvent = 'signedIn' | 'tokenRefreshed';
+export type AccessTokenChangeEvent =
+  typeof AuthChangeEvent.SIGNED_IN | typeof AuthChangeEvent.TOKEN_REFRESHED;
 
 /**
  * Main InsForge SDK Client
@@ -114,7 +115,7 @@ export class InsForgeClient {
    * client (database / storage / functions / AI / emails) and the realtime
    * token manager. Pass `null` to sign out. By default a token replacement is
    * treated as a sign-in boundary and reconnects realtime. Pass
-   * `tokenRefreshed` for a same-identity refresh to preserve a live socket; the
+   * `AuthChangeEvent.TOKEN_REFRESHED` for a same-identity refresh to preserve a live socket; the
    * refreshed token is then used at the next handshake.
    *
    * Use this when an external auth provider (Better Auth, Clerk, Auth0,
@@ -125,15 +126,20 @@ export class InsForgeClient {
    *
    * @example
    * ```typescript
+   * import { AuthChangeEvent } from '@insforge/sdk';
+   *
    * // Refresh a third-party-issued JWT periodically
    * const { token } = await fetch('/api/insforge-token').then((r) => r.json());
-   * client.setAccessToken(token, 'tokenRefreshed');
+   * client.setAccessToken(token, AuthChangeEvent.TOKEN_REFRESHED);
    *
    * // Sign-out
    * client.setAccessToken(null);
    * ```
    */
-  setAccessToken(token: string | null, event: AccessTokenChangeEvent = 'signedIn'): void {
+  setAccessToken(
+    token: string | null,
+    event: AccessTokenChangeEvent = AuthChangeEvent.SIGNED_IN
+  ): void {
     this.http.setAuthToken(token);
     if (token === null) {
       this.tokenManager.clearSession();
