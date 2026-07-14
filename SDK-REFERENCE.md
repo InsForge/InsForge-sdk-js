@@ -742,18 +742,14 @@ await bucket.list({ prefix: 'users/', limit: 10 });
 ### `bucket.remove()`
 
 ```javascript
+// Delete one object
 await bucket.remove('path/file.jpg');
 // Response: { data: { message }, error }
-```
 
-### `bucket.removeMany()`
-
-```javascript
-await bucket.removeMany(['path/a.jpg', 'path/b.txt']); // any number of keys
-// Response: { data: { success, failures }, error }
-// success:  string[] — keys that were deleted
-// failures: { key, error }[] — each remaining key with the reason it wasn't deleted
-// Keys are auto-batched (max 1000 per request); each key resolves independently.
+// Delete multiple objects in one request (maximum 1000 keys)
+await bucket.remove(['path/a.jpg', 'path/b.txt']);
+// Response: { data: { results }, error }
+// results: { key, status: 'deleted' | 'notFound' | 'failed', message? }[]
 ```
 
 ### `bucket.getPublicUrl()`
