@@ -25,6 +25,7 @@ export type {
   CreateUserRequest,
   CreateSessionRequest,
   AuthErrorResponse,
+  DeleteObjectsResponse,
 } from '@insforge/shared-schemas';
 
 // Re-export auth module for advanced usage
@@ -36,12 +37,7 @@ export { Database } from './modules/database-postgrest';
 
 // Re-export storage module and types
 export { Storage, StorageBucket } from './modules/storage';
-export type {
-  StorageResponse,
-  RemoveManyResult,
-  RemoveManyResponse,
-  RemoveManyOutcome,
-} from './modules/storage';
+export type { StorageResponse } from './modules/storage';
 
 // Re-export AI module
 export { AI } from './modules/ai';
