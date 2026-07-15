@@ -15,7 +15,6 @@ jobs:
   publish:
     if: github.event_name == 'release' || contains(github.ref_name, '-')
     runs-on: ubuntu-latest
-    environment: npm
     permissions:
       contents: read
       id-token: write
