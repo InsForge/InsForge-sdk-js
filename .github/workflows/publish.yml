@@ -1,0 +1,86 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: npm-publish-${{ github.event.release.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name == 'release' || contains(github.ref_name, '-')
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate release channel and version
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+          RELEASE_IS_PRERELEASE: ${{ github.event.release.prerelease || false }}
+        run: |
+          node <<'NODE'
+          const { appendFileSync, readFileSync } = require('node:fs');
+
+          const packageVersion = JSON.parse(readFileSync('package.json', 'utf8')).version;
+          const tag = process.env.RELEASE_TAG;
+          const eventName = process.env.EVENT_NAME;
+          let distTag;
+
+          if (eventName === 'release') {
+            if (process.env.RELEASE_IS_PRERELEASE === 'true') {
+              throw new Error('GitHub Releases may only publish stable versions');
+            }
+            if (!/^v\d+\.\d+\.\d+$/.test(tag)) {
+              throw new Error(`Stable release tag must match vX.Y.Z; received ${tag}`);
+            }
+            distTag = 'latest';
+          } else if (eventName === 'push') {
+            const match = tag.match(/^v\d+\.\d+\.\d+-(alpha|beta|rc)\.\d+$/);
+            if (!match) {
+              throw new Error(
+                `Prerelease tag must match vX.Y.Z-(alpha|beta|rc).N; received ${tag}`,
+              );
+            }
+            distTag = match[1];
+          } else {
+            throw new Error(`Unsupported publish event: ${eventName}`);
+          }
+
+          const tagVersion = tag.slice(1);
+          if (tagVersion !== packageVersion) {
+            throw new Error(
+              `Tag version ${tagVersion} does not match package.json version ${packageVersion}`,
+            );
+          }
+
+          appendFileSync(process.env.GITHUB_OUTPUT, `dist_tag=${distTag}\n`);
+          console.log(`Validated @insforge/sdk@${packageVersion} for npm tag ${distTag}`);
+          NODE
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:run
+      - run: npm run build
+      - run: npm pack --dry-run
+
+      - name: Publish package
+        run: npm publish --access public --tag "${{ steps.release.outputs.dist_tag }}"
