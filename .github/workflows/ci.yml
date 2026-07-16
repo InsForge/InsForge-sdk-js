@@ -91,7 +91,7 @@ jobs:
           fi
       - name: Email coverage report to maintainer
         if: matrix.node-version == 20 && github.event_name == 'push' && github.ref == 'refs/heads/main' && env.MAIL_SMTP_HOST != ''
-        uses: dawidd6/action-send-mail@v3
+        uses: dawidd6/action-send-mail@v18
         env:
           MAIL_SMTP_HOST: ${{ secrets.MAIL_SMTP_HOST }}
         with:
