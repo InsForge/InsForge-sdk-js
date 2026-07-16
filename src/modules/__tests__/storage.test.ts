@@ -3,6 +3,7 @@ import { StorageBucket } from '../storage';
 import { HttpClient } from '../../lib/http-client';
 import { InsForgeError } from '../../types';
 import { TokenManager } from '../../lib/token-manager';
+import type { DeleteObjectsResponse } from '@insforge/shared-schemas';
 
 function makeTokenManager(): TokenManager {
   return {
@@ -201,7 +202,7 @@ describe('StorageBucket.remove', () => {
         { key: 'missing.pdf', status: 'notFound' },
         { key: 'locked.pdf', status: 'failed', message: 'Delete denied' },
       ],
-    } as const;
+    } satisfies DeleteObjectsResponse;
     const fetchFn = vi.fn().mockResolvedValue(jsonRes(200, response));
     const bucket = new StorageBucket('docs', makeHttp(fetchFn));
 
