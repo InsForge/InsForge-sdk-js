@@ -150,6 +150,29 @@ describe('Realtime', () => {
     await vi.waitFor(() => expect(callback).toHaveBeenCalledWith({ token: refreshedToken }));
   });
 
+  it('prefers the resolved user access token over the anonymous key for a handshake', async () => {
+    const userToken = jwt(300);
+    const getValidAccessToken = vi.fn().mockResolvedValue(userToken);
+    const realtime = new Realtime(
+      'http://example.test',
+      new TokenManager(),
+      'anon-project-key',
+      getValidAccessToken
+    );
+    await connect(realtime);
+
+    if (typeof socketOptions?.auth !== 'function') {
+      expect(socketOptions?.auth).toBeTypeOf('function');
+      return;
+    }
+    const auth = socketOptions.auth as (callback: (payload: { token?: string }) => void) => void;
+    const callback = vi.fn();
+    auth(callback);
+
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledWith({ token: userToken }));
+    expect(getValidAccessToken).toHaveBeenCalledOnce();
+  });
+
   it('does not restore a subscription when an acknowledgement arrives after unsubscribe', async () => {
     const realtime = new Realtime('http://example.test', new TokenManager());
     await connect(realtime);

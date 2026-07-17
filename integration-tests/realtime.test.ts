@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { signUpAndSignIn, createClient } from './setup';
+import type { SubscribeResponse } from '@insforge/shared-schemas';
+import { createClient } from './setup';
 import type { InsForgeClient } from '../src/client';
 
 /**
@@ -20,18 +21,27 @@ import type { InsForgeClient } from '../src/client';
  *   realtime.socketId             (getter)
  *
  * NOTE: Realtime requires a socket.io server on the test project.
+ * These API-level tests intentionally use the project's anonymous access
+ * policy. Authenticated handshake token selection is covered by unit tests,
+ * so these tests do not depend on the fixed test user's channel RLS policy.
  * If the server is unreachable the tests verify that errors are
  * properly surfaced rather than crashing.
  */
+
+function expectSuccessfulSubscription(response: SubscribeResponse, channel: string): void {
+  const failure = response.ok
+    ? undefined
+    : `${response.error?.code ?? 'UNKNOWN'}: ${response.error?.message ?? 'No error message'}`;
+
+  expect(response, failure).toMatchObject({ ok: true, channel });
+}
 
 describe('Realtime Module', () => {
   let client: InsForgeClient;
   let realtimeAvailable = true;
 
-  beforeAll(async () => {
-    const result = await signUpAndSignIn();
-    expect(result.error).toBeNull();
-    client = result.client;
+  beforeAll(() => {
+    client = createClient();
   });
 
   afterAll(() => {
@@ -153,8 +163,7 @@ describe('Realtime Module', () => {
       const response = await client.realtime.subscribe(channel);
 
       expect(response).toBeDefined();
-      expect(response.ok).toBe(true);
-      expect(response.channel).toBe(channel);
+      expectSuccessfulSubscription(response, channel);
       expect(client.realtime.getSubscribedChannels()).toContain(channel);
     });
 
@@ -164,11 +173,12 @@ describe('Realtime Module', () => {
       }
 
       const channel = `dup-${Date.now()}`;
-      await client.realtime.subscribe(channel);
+      const first = await client.realtime.subscribe(channel);
+      expectSuccessfulSubscription(first, channel);
       const second = await client.realtime.subscribe(channel);
 
       // Second call returns cached success
-      expect(second.ok).toBe(true);
+      expectSuccessfulSubscription(second, channel);
     });
 
     it('unsubscribe() should remove the channel', async () => {
@@ -177,7 +187,8 @@ describe('Realtime Module', () => {
       }
 
       const channel = `unsub-${Date.now()}`;
-      await client.realtime.subscribe(channel);
+      const response = await client.realtime.subscribe(channel);
+      expectSuccessfulSubscription(response, channel);
       expect(client.realtime.getSubscribedChannels()).toContain(channel);
 
       client.realtime.unsubscribe(channel);
@@ -239,7 +250,8 @@ describe('Realtime Module', () => {
       }
 
       const channel = `pub-${Date.now()}`;
-      await client.realtime.subscribe(channel);
+      const response = await client.realtime.subscribe(channel);
+      expectSuccessfulSubscription(response, channel);
 
       // Should not throw
       await client.realtime.publish(channel, 'test-event', { ts: Date.now() });
@@ -266,8 +278,10 @@ describe('Realtime Module', () => {
 
       const ch1 = `ch1-${Date.now()}`;
       const ch2 = `ch2-${Date.now()}`;
-      await client.realtime.subscribe(ch1);
-      await client.realtime.subscribe(ch2);
+      const response1 = await client.realtime.subscribe(ch1);
+      const response2 = await client.realtime.subscribe(ch2);
+      expectSuccessfulSubscription(response1, ch1);
+      expectSuccessfulSubscription(response2, ch2);
 
       const channels = client.realtime.getSubscribedChannels();
       expect(Array.isArray(channels)).toBe(true);
