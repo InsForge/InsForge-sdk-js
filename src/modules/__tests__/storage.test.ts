@@ -146,7 +146,7 @@ describe('StorageBucket.createSignedUrl', () => {
   });
 });
 
-describe('StorageBucket.upload upsert semantics', () => {
+describe('StorageBucket.upload / uploadAuto (standard PUT semantics)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
@@ -160,7 +160,7 @@ describe('StorageBucket.upload upsert semantics', () => {
     url: 'http://localhost:7130/api/storage/buckets/docs/objects/report.pdf',
   };
 
-  it('sends upsert to upload-strategy and the direct PUT URL', async () => {
+  it('uploads to the exact key via the direct PUT route, no upsert flag', async () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(
@@ -174,47 +174,26 @@ describe('StorageBucket.upload upsert semantics', () => {
       .mockResolvedValueOnce(jsonRes(200, storedFile));
     const bucket = new StorageBucket('docs', makeHttp(fetchFn));
 
-    const result = await bucket.upload('report.pdf', new Blob(['abc']), { upsert: true });
-
-    expect(result.error).toBeNull();
-    const strategyBody = JSON.parse(String(fetchFn.mock.calls[0][1]?.body));
-    expect(strategyBody.upsert).toBe(true);
-    const putUrl = new URL(String(fetchFn.mock.calls[1][0]));
-    expect(putUrl.pathname).toBe('/api/storage/buckets/docs/objects/report.pdf');
-    expect(putUrl.searchParams.get('upsert')).toBe('true');
-  });
-
-  it('omits the upsert query param by default', async () => {
-    const fetchFn = vi
-      .fn()
-      .mockResolvedValueOnce(
-        jsonRes(200, {
-          method: 'direct',
-          uploadUrl: '/api/storage/buckets/docs/objects/report.pdf',
-          key: 'report.pdf',
-          confirmRequired: false,
-        })
-      )
-      .mockResolvedValueOnce(jsonRes(201, storedFile));
-    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
-
     const result = await bucket.upload('report.pdf', new Blob(['abc']));
 
     expect(result.error).toBeNull();
     const strategyBody = JSON.parse(String(fetchFn.mock.calls[0][1]?.body));
-    expect(strategyBody.upsert).toBe(false);
-    const putUrl = new URL(String(fetchFn.mock.calls[1][0]));
-    expect(putUrl.searchParams.get('upsert')).toBeNull();
+    expect(strategyBody.filename).toBe('report.pdf');
+    expect(strategyBody).not.toHaveProperty('upsert');
+    const putUrl = new URL(String(fetchFn.mock.calls[1][0]), 'http://localhost');
+    expect(putUrl.pathname).toBe('/api/storage/buckets/docs/objects/report.pdf');
+    expect(putUrl.search).toBe('');
+    expect(String(fetchFn.mock.calls[1][1]?.method)).toBe('PUT');
   });
 
-  it('surfaces the 409 conflict from upload-strategy as an InsForgeError', async () => {
+  it('surfaces a backend error as an InsForgeError', async () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValue(
         jsonRes(
-          409,
-          { error: 'STORAGE_ALREADY_EXISTS', message: 'Object "report.pdf" already exists' },
-          'Conflict'
+          403,
+          { error: 'STORAGE_PERMISSION_DENIED', message: 'You do not have permission' },
+          'Forbidden'
         )
       );
     const bucket = new StorageBucket('docs', makeHttp(fetchFn));
@@ -223,10 +202,10 @@ describe('StorageBucket.upload upsert semantics', () => {
 
     expect(result.data).toBeNull();
     expect(result.error).toBeInstanceOf(InsForgeError);
-    expect(result.error?.statusCode).toBe(409);
+    expect(result.error?.statusCode).toBe(403);
   });
 
-  it('passes upsert through to the presigned confirm step', async () => {
+  it('confirms a presigned upload without an upsert flag', async () => {
     // The presigned upload itself goes through the global fetch, not the
     // injected HTTP client — stub it separately.
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
@@ -244,33 +223,43 @@ describe('StorageBucket.upload upsert semantics', () => {
       .mockResolvedValueOnce(jsonRes(200, storedFile)); // confirm
     const bucket = new StorageBucket('docs', makeHttp(fetchFn));
 
-    const result = await bucket.upload('report.pdf', new Blob(['abc']), { upsert: true });
+    const result = await bucket.upload('report.pdf', new Blob(['abc']));
     vi.unstubAllGlobals();
 
     expect(result.error).toBeNull();
     const confirmBody = JSON.parse(String(fetchFn.mock.calls[1][1]?.body));
-    expect(confirmBody.upsert).toBe(true);
+    expect(confirmBody).not.toHaveProperty('upsert');
+    expect(confirmBody.size).toBe(3);
   });
 
-  it('uploadAuto requests a server-minted key via autoKey', async () => {
+  it('uploadAuto mints a unique key client-side and uploads via the standard path', async () => {
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(
-        jsonRes(200, {
-          method: 'direct',
-          uploadUrl: '/api/storage/buckets/docs/objects',
-          key: 'report-123-abc.pdf',
-          confirmRequired: false,
-        })
-      )
-      .mockResolvedValueOnce(jsonRes(201, { ...storedFile, key: 'report-123-abc.pdf' }));
+      .mockImplementationOnce((_url, init) => {
+        // Strategy call — echo a direct URL for whatever key was requested.
+        const body = JSON.parse(String(init?.body));
+        return Promise.resolve(
+          jsonRes(200, {
+            method: 'direct',
+            uploadUrl: `/api/storage/buckets/docs/objects/${encodeURIComponent(body.filename)}`,
+            key: body.filename,
+            confirmRequired: false,
+          })
+        );
+      })
+      .mockResolvedValueOnce(jsonRes(200, storedFile));
     const bucket = new StorageBucket('docs', makeHttp(fetchFn));
 
-    const result = await bucket.uploadAuto(new Blob(['abc']));
+    const result = await bucket.uploadAuto(
+      new File(['abc'], 'report.pdf', { type: 'application/pdf' })
+    );
 
     expect(result.error).toBeNull();
     const strategyBody = JSON.parse(String(fetchFn.mock.calls[0][1]?.body));
-    expect(strategyBody.autoKey).toBe(true);
+    // Client-generated key: sanitized base + timestamp + random, preserving ext.
+    expect(strategyBody.filename).toMatch(/^report-\d+-[a-z0-9]+\.pdf$/);
+    expect(strategyBody).not.toHaveProperty('autoKey');
+    expect(String(fetchFn.mock.calls[1][1]?.method)).toBe('PUT');
   });
 });
 
