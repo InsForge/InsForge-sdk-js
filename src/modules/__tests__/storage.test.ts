@@ -146,6 +146,134 @@ describe('StorageBucket.createSignedUrl', () => {
   });
 });
 
+describe('StorageBucket.upload upsert semantics', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const storedFile = {
+    bucket: 'docs',
+    key: 'report.pdf',
+    size: 3,
+    mimeType: 'application/pdf',
+    uploadedAt: '2026-01-01T00:00:00.000Z',
+    url: 'http://localhost:7130/api/storage/buckets/docs/objects/report.pdf',
+  };
+
+  it('sends upsert to upload-strategy and the direct PUT URL', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonRes(200, {
+          method: 'direct',
+          uploadUrl: '/api/storage/buckets/docs/objects/report.pdf',
+          key: 'report.pdf',
+          confirmRequired: false,
+        })
+      )
+      .mockResolvedValueOnce(jsonRes(200, storedFile));
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = await bucket.upload('report.pdf', new Blob(['abc']), { upsert: true });
+
+    expect(result.error).toBeNull();
+    const strategyBody = JSON.parse(String(fetchFn.mock.calls[0][1]?.body));
+    expect(strategyBody.upsert).toBe(true);
+    const putUrl = new URL(String(fetchFn.mock.calls[1][0]));
+    expect(putUrl.pathname).toBe('/api/storage/buckets/docs/objects/report.pdf');
+    expect(putUrl.searchParams.get('upsert')).toBe('true');
+  });
+
+  it('omits the upsert query param by default', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonRes(200, {
+          method: 'direct',
+          uploadUrl: '/api/storage/buckets/docs/objects/report.pdf',
+          key: 'report.pdf',
+          confirmRequired: false,
+        })
+      )
+      .mockResolvedValueOnce(jsonRes(201, storedFile));
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = await bucket.upload('report.pdf', new Blob(['abc']));
+
+    expect(result.error).toBeNull();
+    const strategyBody = JSON.parse(String(fetchFn.mock.calls[0][1]?.body));
+    expect(strategyBody.upsert).toBe(false);
+    const putUrl = new URL(String(fetchFn.mock.calls[1][0]));
+    expect(putUrl.searchParams.get('upsert')).toBeNull();
+  });
+
+  it('surfaces the 409 conflict from upload-strategy as an InsForgeError', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValue(
+        jsonRes(
+          409,
+          { error: 'STORAGE_ALREADY_EXISTS', message: 'Object "report.pdf" already exists' },
+          'Conflict'
+        )
+      );
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = await bucket.upload('report.pdf', new Blob(['abc']));
+
+    expect(result.data).toBeNull();
+    expect(result.error).toBeInstanceOf(InsForgeError);
+    expect(result.error?.statusCode).toBe(409);
+  });
+
+  it('passes upsert through to the presigned confirm step', async () => {
+    // The presigned upload itself goes through the global fetch, not the
+    // injected HTTP client — stub it separately.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonRes(200, {
+          method: 'presigned',
+          uploadUrl: 'https://s3.example.com/upload',
+          key: 'report.pdf',
+          confirmRequired: true,
+          confirmUrl: '/api/storage/buckets/docs/objects/report.pdf/confirm-upload',
+        })
+      )
+      .mockResolvedValueOnce(jsonRes(200, storedFile)); // confirm
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = await bucket.upload('report.pdf', new Blob(['abc']), { upsert: true });
+    vi.unstubAllGlobals();
+
+    expect(result.error).toBeNull();
+    const confirmBody = JSON.parse(String(fetchFn.mock.calls[1][1]?.body));
+    expect(confirmBody.upsert).toBe(true);
+  });
+
+  it('uploadAuto requests a server-minted key via autoKey', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonRes(200, {
+          method: 'direct',
+          uploadUrl: '/api/storage/buckets/docs/objects',
+          key: 'report-123-abc.pdf',
+          confirmRequired: false,
+        })
+      )
+      .mockResolvedValueOnce(jsonRes(201, { ...storedFile, key: 'report-123-abc.pdf' }));
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = await bucket.uploadAuto(new Blob(['abc']));
+
+    expect(result.error).toBeNull();
+    const strategyBody = JSON.parse(String(fetchFn.mock.calls[0][1]?.body));
+    expect(strategyBody.autoKey).toBe(true);
+  });
+});
+
 describe('StorageBucket.createSignedUrls', () => {
   beforeEach(() => {
     vi.restoreAllMocks();

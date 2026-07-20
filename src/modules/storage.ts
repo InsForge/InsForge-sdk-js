@@ -42,8 +42,16 @@ export class StorageBucket {
    * Uses the upload strategy from backend (direct or presigned)
    * @param path - The object key/path
    * @param file - File or Blob to upload
+   * @param options - Set `upsert: true` to replace an existing object at
+   *   this key. Without it, uploading to an existing key fails with 409
+   *   (STORAGE_ALREADY_EXISTS).
    */
-  async upload(path: string, file: File | Blob): Promise<StorageResponse<StorageFileSchema>> {
+  async upload(
+    path: string,
+    file: File | Blob,
+    options?: { upsert?: boolean }
+  ): Promise<StorageResponse<StorageFileSchema>> {
+    const upsert = options?.upsert === true;
     try {
       // Get upload strategy from backend - this is required
       const strategyResponse = await this.http.post<UploadStrategy>(
@@ -52,12 +60,13 @@ export class StorageBucket {
           filename: path,
           contentType: file.type || 'application/octet-stream',
           size: file.size,
+          upsert,
         }
       );
 
       // Use presigned URL if available
       if (strategyResponse.method === 'presigned') {
-        return await this.uploadWithPresignedUrl(strategyResponse, file);
+        return await this.uploadWithPresignedUrl(strategyResponse, file, { upsert });
       }
 
       // Use direct upload if strategy says so
@@ -67,7 +76,7 @@ export class StorageBucket {
 
         const response = await this.http.request<StorageFileSchema>(
           'PUT',
-          `/api/storage/buckets/${this.bucketName}/objects/${encodeURIComponent(path)}`,
+          `/api/storage/buckets/${this.bucketName}/objects/${encodeURIComponent(path)}${upsert ? '?upsert=true' : ''}`,
           {
             body: formData as any,
             headers: {
@@ -104,13 +113,16 @@ export class StorageBucket {
     try {
       const filename = file instanceof File ? file.name : 'file';
 
-      // Get upload strategy from backend - this is required
+      // Get upload strategy from backend - this is required.
+      // autoKey asks the server to mint a unique key from the filename, so
+      // repeated uploads of the same file never collide.
       const strategyResponse = await this.http.post<UploadStrategy>(
         `/api/storage/buckets/${this.bucketName}/upload-strategy`,
         {
           filename,
           contentType: file.type || 'application/octet-stream',
           size: file.size,
+          autoKey: true,
         }
       );
 
@@ -159,7 +171,8 @@ export class StorageBucket {
    */
   private async uploadWithPresignedUrl(
     strategy: UploadStrategy,
-    file: File | Blob
+    file: File | Blob,
+    options?: { upsert?: boolean }
   ): Promise<StorageResponse<StorageFileSchema>> {
     try {
       // Upload to presigned URL (e.g., S3)
@@ -188,11 +201,14 @@ export class StorageBucket {
         );
       }
 
-      // Confirm upload with backend if required
+      // Confirm upload with backend if required. The upsert flag must match
+      // the strategy request so confirming a replacement updates the
+      // existing metadata row instead of failing as "already confirmed".
       if (strategy.confirmRequired && strategy.confirmUrl) {
         const confirmResponse = await this.http.post<StorageFileSchema>(strategy.confirmUrl, {
           size: file.size,
           contentType: file.type || 'application/octet-stream',
+          upsert: options?.upsert === true,
         });
 
         return { data: confirmResponse, error: null };
