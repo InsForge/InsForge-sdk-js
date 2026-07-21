@@ -714,6 +714,7 @@ const bucket = insforge.storage.from('avatars');
 await bucket.upload('path/file.jpg', file);
 // Response: { data: StorageFileSchema, error }
 // data: { bucket, key, size, mimeType, uploadedAt, url }
+// Replaces the existing object when the path is already in use
 ```
 
 ### `bucket.uploadAuto()`

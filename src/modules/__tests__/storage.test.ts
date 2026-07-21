@@ -179,6 +179,7 @@ describe('StorageBucket.upload / uploadAuto (standard PUT semantics)', () => {
     expect(result.error).toBeNull();
     const strategyBody = JSON.parse(String(fetchFn.mock.calls[0][1]?.body));
     expect(strategyBody.filename).toBe('report.pdf');
+    expect(strategyBody).not.toHaveProperty('autoKey');
     expect(strategyBody).not.toHaveProperty('upsert');
     const putUrl = new URL(String(fetchFn.mock.calls[1][0]), 'http://localhost');
     expect(putUrl.pathname).toBe('/api/storage/buckets/docs/objects/report.pdf');
@@ -232,33 +233,42 @@ describe('StorageBucket.upload / uploadAuto (standard PUT semantics)', () => {
     expect(confirmBody.size).toBe(3);
   });
 
-  it('uploadAuto mints a unique key client-side and uploads via the standard path', async () => {
+  it('uploadAuto requests a server-generated key and uploads to that exact key', async () => {
+    const generatedFile = {
+      ...storedFile,
+      key: 'report-123-abc.pdf',
+      url: 'http://localhost:7130/api/storage/buckets/docs/objects/report-123-abc.pdf',
+    };
     const fetchFn = vi
       .fn()
-      .mockImplementationOnce((_url, init) => {
-        // Strategy call — echo a direct URL for whatever key was requested.
-        const body = JSON.parse(String(init?.body));
-        return Promise.resolve(
-          jsonRes(200, {
-            method: 'direct',
-            uploadUrl: `/api/storage/buckets/docs/objects/${encodeURIComponent(body.filename)}`,
-            key: body.filename,
-            confirmRequired: false,
-          })
-        );
-      })
-      .mockResolvedValueOnce(jsonRes(200, storedFile));
+      .mockResolvedValueOnce(
+        jsonRes(200, {
+          method: 'direct',
+          uploadUrl: '/api/storage/buckets/docs/objects/report-123-abc.pdf',
+          key: 'report-123-abc.pdf',
+          confirmRequired: false,
+        })
+      )
+      .mockResolvedValueOnce(jsonRes(200, generatedFile));
     const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+    const file = Object.assign(new Blob(['abc'], { type: 'application/pdf' }), {
+      name: 'report.pdf',
+    });
 
-    const result = await bucket.uploadAuto(
-      new File(['abc'], 'report.pdf', { type: 'application/pdf' })
-    );
+    const result = await bucket.uploadAuto(file);
 
     expect(result.error).toBeNull();
+    expect(result.data?.key).toBe('report-123-abc.pdf');
     const strategyBody = JSON.parse(String(fetchFn.mock.calls[0][1]?.body));
-    // Client-generated key: sanitized base + timestamp + random, preserving ext.
-    expect(strategyBody.filename).toMatch(/^report-\d+-[a-z0-9]+\.pdf$/);
-    expect(strategyBody).not.toHaveProperty('autoKey');
+    expect(strategyBody).toMatchObject({
+      filename: 'report.pdf',
+      contentType: 'application/pdf',
+      size: 3,
+      autoKey: true,
+    });
+    const putUrl = new URL(String(fetchFn.mock.calls[1][0]), 'http://localhost');
+    expect(putUrl.pathname).toBe('/api/storage/buckets/docs/objects/report-123-abc.pdf');
+    expect(putUrl.search).toBe('');
     expect(String(fetchFn.mock.calls[1][1]?.method)).toBe('PUT');
   });
 });
