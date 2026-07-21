@@ -29,6 +29,23 @@ interface DownloadStrategy {
 }
 
 /**
+ * Generate a unique object key from a filename: `<sanitized-base>-<timestamp>-<random><ext>`.
+ * Auto-key generation is a client-side convenience — the storage API has no
+ * server-side key minting — so `uploadAuto` produces the key here and then
+ * uploads through the standard `upload()` path. Browser-safe (no node `path`).
+ */
+function generateObjectKey(filename: string): string {
+  const dotIndex = filename.lastIndexOf('.');
+  const hasExt = dotIndex > 0;
+  const ext = hasExt ? filename.slice(dotIndex) : '';
+  const base = hasExt ? filename.slice(0, dotIndex) : filename;
+  const sanitizedBase = base.replace(/[^a-zA-Z0-9-_]/g, '-').slice(0, 32) || 'file';
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).slice(2, 8);
+  return `${sanitizedBase}-${timestamp}-${random}${ext}`;
+}
+
+/**
  * Storage bucket operations
  */
 export class StorageBucket {
@@ -38,8 +55,10 @@ export class StorageBucket {
   ) {}
 
   /**
-   * Upload a file with a specific key
-   * Uses the upload strategy from backend (direct or presigned)
+   * Upload a file to a specific key.
+   * Uses the upload strategy from the backend (direct or presigned).
+   * Standard PUT semantics: uploading to an existing key replaces the
+   * current object in place.
    * @param path - The object key/path
    * @param file - File or Blob to upload
    */
@@ -96,62 +115,17 @@ export class StorageBucket {
   }
 
   /**
-   * Upload a file with auto-generated key
-   * Uses the upload strategy from backend (direct or presigned)
+   * Upload a file under an automatically generated, collision-free key.
+   * The key is derived client-side from the filename (sanitized base +
+   * timestamp + random suffix) and uploaded through the standard
+   * {@link upload} path, so repeated uploads of the same file never
+   * overwrite each other. Reads the filename structurally to avoid assuming
+   * a global `File` (which Node 18 does not expose).
    * @param file - File or Blob to upload
    */
   async uploadAuto(file: File | Blob): Promise<StorageResponse<StorageFileSchema>> {
-    try {
-      const filename = file instanceof File ? file.name : 'file';
-
-      // Get upload strategy from backend - this is required
-      const strategyResponse = await this.http.post<UploadStrategy>(
-        `/api/storage/buckets/${this.bucketName}/upload-strategy`,
-        {
-          filename,
-          contentType: file.type || 'application/octet-stream',
-          size: file.size,
-        }
-      );
-
-      // Use presigned URL if available
-      if (strategyResponse.method === 'presigned') {
-        return await this.uploadWithPresignedUrl(strategyResponse, file);
-      }
-
-      // Use direct upload if strategy says so
-      if (strategyResponse.method === 'direct') {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await this.http.request<StorageFileSchema>(
-          'POST',
-          `/api/storage/buckets/${this.bucketName}/objects`,
-          {
-            body: formData as any,
-            headers: {
-              // Don't set Content-Type, let browser set multipart boundary
-            },
-          }
-        );
-
-        return { data: response, error: null };
-      }
-
-      throw new InsForgeError(
-        `Unsupported upload method: ${strategyResponse.method}`,
-        500,
-        'STORAGE_ERROR'
-      );
-    } catch (error) {
-      return {
-        data: null,
-        error:
-          error instanceof InsForgeError
-            ? error
-            : new InsForgeError('Upload failed', 500, 'STORAGE_ERROR'),
-      };
-    }
+    const filename = 'name' in file && typeof file.name === 'string' ? file.name : 'file';
+    return this.upload(generateObjectKey(filename), file);
   }
 
   /**
@@ -188,7 +162,8 @@ export class StorageBucket {
         );
       }
 
-      // Confirm upload with backend if required
+      // Confirm upload with backend if required. Confirm create-or-replaces
+      // the metadata row, matching the standard PUT semantics.
       if (strategy.confirmRequired && strategy.confirmUrl) {
         const confirmResponse = await this.http.post<StorageFileSchema>(strategy.confirmUrl, {
           size: file.size,
