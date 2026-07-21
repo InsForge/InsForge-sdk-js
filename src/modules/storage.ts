@@ -29,6 +29,23 @@ interface DownloadStrategy {
 }
 
 /**
+ * Generate a unique object key from a filename: `<sanitized-base>-<timestamp>-<random><ext>`.
+ * Auto-key generation is a client-side convenience — the storage API has no
+ * server-side key minting — so `uploadAuto` produces the key here and then
+ * uploads through the standard `upload()` path. Browser-safe (no node `path`).
+ */
+function generateObjectKey(filename: string): string {
+  const dotIndex = filename.lastIndexOf('.');
+  const hasExt = dotIndex > 0;
+  const ext = hasExt ? filename.slice(dotIndex) : '';
+  const base = hasExt ? filename.slice(0, dotIndex) : filename;
+  const sanitizedBase = base.replace(/[^a-zA-Z0-9-_]/g, '-').slice(0, 32) || 'file';
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).slice(2, 8);
+  return `${sanitizedBase}-${timestamp}-${random}${ext}`;
+}
+
+/**
  * Storage bucket operations
  */
 export class StorageBucket {
@@ -98,54 +115,17 @@ export class StorageBucket {
   }
 
   /**
-   * Upload a file under a server-generated key.
-   * Uses the upload strategy from the backend (direct or presigned).
+   * Upload a file under an automatically generated, collision-free key.
+   * The key is derived client-side from the filename (sanitized base +
+   * timestamp + random suffix) and uploaded through the standard
+   * {@link upload} path, so repeated uploads of the same file never
+   * overwrite each other. Reads the filename structurally to avoid assuming
+   * a global `File` (which Node 18 does not expose).
    * @param file - File or Blob to upload
    */
   async uploadAuto(file: File | Blob): Promise<StorageResponse<StorageFileSchema>> {
-    try {
-      const filename = 'name' in file && typeof file.name === 'string' ? file.name : 'file';
-      const strategyResponse = await this.http.post<UploadStrategy>(
-        `/api/storage/buckets/${this.bucketName}/upload-strategy`,
-        {
-          filename,
-          contentType: file.type || 'application/octet-stream',
-          size: file.size,
-          autoKey: true,
-        }
-      );
-
-      if (strategyResponse.method === 'presigned') {
-        return await this.uploadWithPresignedUrl(strategyResponse, file);
-      }
-
-      if (strategyResponse.method === 'direct') {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await this.http.request<StorageFileSchema>(
-          'PUT',
-          `/api/storage/buckets/${this.bucketName}/objects/${encodeURIComponent(strategyResponse.key)}`,
-          { body: formData as any }
-        );
-
-        return { data: response, error: null };
-      }
-
-      throw new InsForgeError(
-        `Unsupported upload method: ${strategyResponse.method}`,
-        500,
-        'STORAGE_ERROR'
-      );
-    } catch (error) {
-      return {
-        data: null,
-        error:
-          error instanceof InsForgeError
-            ? error
-            : new InsForgeError('Upload failed', 500, 'STORAGE_ERROR'),
-      };
-    }
+    const filename = 'name' in file && typeof file.name === 'string' ? file.name : 'file';
+    return this.upload(generateObjectKey(filename), file);
   }
 
   /**
