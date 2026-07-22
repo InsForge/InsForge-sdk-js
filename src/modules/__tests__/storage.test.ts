@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { StorageBucket } from '../storage';
+import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vitest';
+import { StorageBucket, type StorageResponse } from '../storage';
 import { HttpClient } from '../../lib/http-client';
 import { InsForgeError } from '../../types';
 import { TokenManager } from '../../lib/token-manager';
@@ -179,6 +179,15 @@ describe('StorageBucket.createSignedUrls', () => {
 describe('StorageBucket.remove', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('accepts a union-typed target', () => {
+    const bucket = new StorageBucket('docs', makeHttp(vi.fn()));
+    const remove = (target: string | string[]) => bucket.remove(target);
+
+    expectTypeOf(remove).returns.toEqualTypeOf<
+      Promise<StorageResponse<{ message: string } | DeleteObjectsResponse>>
+    >();
   });
 
   it('deletes a single path with the single-object endpoint', async () => {
