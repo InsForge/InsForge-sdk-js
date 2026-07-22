@@ -41,7 +41,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.type-tests.json",
     "publish:dev": "npm version prerelease --preid=dev && npm run build && npm publish --tag dev",
     "publish:stable": "npm run build && npm publish"
   },
@@ -65,7 +65,7 @@
     "url": "https://github.com/InsForge/insforge-sdk-js/issues"
   },
   "dependencies": {
-    "@insforge/shared-schemas": "^1.1.58",
+    "@insforge/shared-schemas": "^1.2.0",
     "@supabase/postgrest-js": "^1.21.3",
     "socket.io-client": "^4.8.1"
   },

@@ -743,8 +743,14 @@ await bucket.list({ prefix: 'users/', limit: 10 });
 ### `bucket.remove()`
 
 ```javascript
+// Delete one object
 await bucket.remove('path/file.jpg');
 // Response: { data: { message }, error }
+
+// Delete multiple objects in one request (maximum 1000 keys)
+await bucket.remove(['path/a.jpg', 'path/b.txt']);
+// Response: { data: { results }, error }
+// results: { key, status: 'deleted' | 'notFound' | 'failed', message? }[]
 ```
 
 ### `bucket.getPublicUrl()`

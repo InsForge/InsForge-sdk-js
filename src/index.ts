@@ -26,6 +26,8 @@ export type {
   CreateUserRequest,
   CreateSessionRequest,
   AuthErrorResponse,
+  DeleteObjectResult,
+  DeleteObjectsResponse,
 } from '@insforge/shared-schemas';
 
 // Re-export auth module for advanced usage

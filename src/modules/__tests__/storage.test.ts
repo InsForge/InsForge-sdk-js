@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { StorageBucket } from '../storage';
+import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vitest';
+import { StorageBucket, type StorageResponse } from '../storage';
 import { HttpClient } from '../../lib/http-client';
 import { InsForgeError } from '../../types';
 import { TokenManager } from '../../lib/token-manager';
+import type { DeleteObjectsResponse } from '@insforge/shared-schemas';
 
 function makeTokenManager(): TokenManager {
   return {
@@ -321,5 +322,100 @@ describe('StorageBucket.createSignedUrls', () => {
 
     expect(fetchFn).toHaveBeenCalledTimes(3);
     expect(new URL(String(fetchFn.mock.calls[0][0])).searchParams.get('expiresIn')).toBe('60');
+  });
+});
+
+describe('StorageBucket.remove', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('accepts a union-typed target', () => {
+    const bucket = new StorageBucket('docs', makeHttp(vi.fn()));
+    const remove = (target: string | string[]) => bucket.remove(target);
+
+    expectTypeOf(remove).returns.toEqualTypeOf<
+      Promise<StorageResponse<{ message: string } | DeleteObjectsResponse>>
+    >();
+  });
+
+  it('deletes a single path with the single-object endpoint', async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonRes(200, { message: 'Object deleted' }));
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = await bucket.remove('files/old report.pdf');
+
+    expect(result).toEqual({ data: { message: 'Object deleted' }, error: null });
+    expect(fetchFn).toHaveBeenCalledOnce();
+    expect(new URL(String(fetchFn.mock.calls[0][0])).pathname).toBe(
+      '/api/storage/buckets/docs/objects/files%2Fold%20report.pdf'
+    );
+    expect(fetchFn.mock.calls[0][1]?.method).toBe('DELETE');
+  });
+
+  it('deletes multiple paths in one request and returns the server results unchanged', async () => {
+    const response = {
+      results: [
+        { key: 'a.pdf', status: 'deleted' },
+        { key: 'missing.pdf', status: 'notFound' },
+        { key: 'locked.pdf', status: 'failed', message: 'Delete denied' },
+      ],
+    } satisfies DeleteObjectsResponse;
+    const fetchFn = vi.fn().mockResolvedValue(jsonRes(200, response));
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = await bucket.remove(['a.pdf', 'missing.pdf', 'locked.pdf']);
+
+    expect(result).toEqual({ data: response, error: null });
+    expect(fetchFn).toHaveBeenCalledOnce();
+    expect(new URL(String(fetchFn.mock.calls[0][0])).pathname).toBe(
+      '/api/storage/buckets/docs/objects'
+    );
+    expect(fetchFn.mock.calls[0][1]?.method).toBe('DELETE');
+    expect(JSON.parse(String(fetchFn.mock.calls[0][1]?.body))).toEqual({
+      keys: ['a.pdf', 'missing.pdf', 'locked.pdf'],
+    });
+  });
+
+  it('surfaces a batch request error through the storage response envelope', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValue(
+        jsonRes(
+          400,
+          { error: 'STORAGE_ERROR', message: 'At least one object key is required' },
+          'Bad Request'
+        )
+      );
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = await bucket.remove([]);
+
+    expect(result.data).toBeNull();
+    expect(result.error).toBeInstanceOf(InsForgeError);
+    expect(result.error?.statusCode).toBe(400);
+    expect(result.error?.message).toBe('At least one object key is required');
+    expect(fetchFn).toHaveBeenCalledOnce();
+  });
+
+  it('does not split arrays that exceed the server limit into multiple requests', async () => {
+    const paths = Array.from({ length: 1001 }, (_, index) => `file-${index}.txt`);
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValue(
+        jsonRes(
+          400,
+          { error: 'STORAGE_ERROR', message: 'Cannot delete more than 1000 objects at once' },
+          'Bad Request'
+        )
+      );
+    const bucket = new StorageBucket('docs', makeHttp(fetchFn));
+
+    const result = await bucket.remove(paths);
+
+    expect(result.data).toBeNull();
+    expect(result.error?.statusCode).toBe(400);
+    expect(fetchFn).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(fetchFn.mock.calls[0][1]?.body)).keys).toHaveLength(1001);
   });
 });

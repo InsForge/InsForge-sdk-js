@@ -5,7 +5,11 @@
 
 import { HttpClient } from '../lib/http-client';
 import { InsForgeError } from '../types';
-import type { StorageFileSchema, ListObjectsResponseSchema } from '@insforge/shared-schemas';
+import type {
+  StorageFileSchema,
+  ListObjectsResponseSchema,
+  DeleteObjectsResponse,
+} from '@insforge/shared-schemas';
 
 export interface StorageResponse<T> {
   data: T | null;
@@ -437,15 +441,37 @@ export class StorageBucket {
     }
   }
 
+  /** Delete a single file. */
+  async remove(path: string): Promise<StorageResponse<{ message: string }>>;
+
+  /** Delete multiple files in a single request. */
+  async remove(paths: string[]): Promise<StorageResponse<DeleteObjectsResponse>>;
+
+  /** Delete one or more files when the input type is not narrowed. */
+  async remove(
+    pathOrPaths: string | string[]
+  ): Promise<StorageResponse<{ message: string } | DeleteObjectsResponse>>;
+
   /**
-   * Delete a file
-   * @param path - The object key/path
+   * Delete one or more files.
+   *
+   * A string uses the single-object endpoint. An array uses the batch endpoint,
+   * which accepts at most 1000 keys and returns one result per key.
+   *
+   * @param pathOrPaths - One object key/path or an array of object keys/paths
    */
-  async remove(path: string): Promise<StorageResponse<{ message: string }>> {
+  async remove(
+    pathOrPaths: string | string[]
+  ): Promise<StorageResponse<{ message: string } | DeleteObjectsResponse>> {
     try {
-      const response = await this.http.delete<{ message: string }>(
-        `/api/storage/buckets/${this.bucketName}/objects/${encodeURIComponent(path)}`
-      );
+      const response = Array.isArray(pathOrPaths)
+        ? await this.http.delete<DeleteObjectsResponse>(
+            `/api/storage/buckets/${this.bucketName}/objects`,
+            { body: { keys: pathOrPaths } }
+          )
+        : await this.http.delete<{ message: string }>(
+            `/api/storage/buckets/${this.bucketName}/objects/${encodeURIComponent(pathOrPaths)}`
+          );
 
       return { data: response, error: null };
     } catch (error) {
