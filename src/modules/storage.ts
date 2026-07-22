@@ -472,6 +472,11 @@ export class StorageBucket {
   /** Delete multiple files in a single request. */
   async remove(paths: string[]): Promise<StorageResponse<DeleteObjectsResponse>>;
 
+  /** Delete one or more files when the input type is not narrowed. */
+  async remove(
+    pathOrPaths: string | string[]
+  ): Promise<StorageResponse<{ message: string } | DeleteObjectsResponse>>;
+
   /**
    * Delete one or more files.
    *
