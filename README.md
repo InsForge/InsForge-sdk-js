@@ -495,6 +495,38 @@ SSR browser clients do not exchange OAuth callbacks automatically. OAuth
 callbacks must be completed on the server so the refresh token lands in the
 httpOnly app cookie.
 
+The same helper covers the email flows. `resendVerificationEmail()`,
+`sendResetPasswordEmail()`, `exchangeResetPasswordToken()` and
+`resetPassword()` neither open nor close a session, so they write no cookies —
+they are here so a Server Action can run every auth flow through one client:
+
+```typescript
+// app/actions.ts
+'use server';
+
+import { cookies } from 'next/headers';
+import { createAuthActions } from '@insforge/sdk/ssr';
+
+export async function resetPassword(formData: FormData) {
+  const auth = createAuthActions({ cookies: await cookies() });
+
+  // Exchange the emailed code for a single-use reset token, then spend it.
+  const { data, error } = await auth.exchangeResetPasswordToken({
+    email: String(formData.get('email')),
+    code: String(formData.get('code')),
+  });
+  if (error || !data) {
+    return { error };
+  }
+
+  const result = await auth.resetPassword({
+    newPassword: String(formData.get('password')),
+    otp: data.token,
+  });
+  return { error: result.error };
+}
+```
+
 For Route Handlers, pass request cookies for reading the current session and
 response cookies for writing the next session:
 
