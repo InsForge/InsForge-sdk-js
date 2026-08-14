@@ -1,4 +1,4 @@
-import type { InsForgeConfig } from './types';
+import type { AuthSession, InsForgeConfig } from './types';
 import { HttpClient } from './lib/http-client';
 import { Logger } from './lib/logger';
 import { AuthChangeEvent, TokenManager } from './lib/token-manager';
@@ -146,6 +146,24 @@ export class InsForgeClient {
     } else {
       this.tokenManager.setAccessToken(token, event);
     }
+  }
+
+  /**
+   * Record a session that was established outside the SDK — an app-owned
+   * refresh route, for example, which answers with both a token and the user
+   * it belongs to.
+   *
+   * `setAccessToken()` stores a token with no user behind it, which leaves
+   * `auth.getCurrentUser()` unable to answer from memory: it holds a token but
+   * no identity, so it goes back to the network for one. Pass both here when
+   * you have both.
+   */
+  setSession(
+    session: AuthSession,
+    event: AccessTokenChangeEvent = AuthChangeEvent.SIGNED_IN
+  ): void {
+    this.http.setAuthToken(session.accessToken);
+    this.tokenManager.saveSession(session, event);
   }
 
   /**

@@ -537,6 +537,21 @@ export class Auth {
   }
 
   /**
+   * Resolve the user an access token we already hold belongs to.
+   *
+   * `skipAuthRefresh` keeps a rejected token from tripping the HTTP client's
+   * own refresh: callers here decide what a 401 means, and in the browser that
+   * decision belongs to whoever owns the refresh cookie.
+   */
+  private async fetchCurrentUser(accessToken: string): Promise<UserSchema | null> {
+    this.http.setAuthToken(accessToken);
+    const response = await this.http.get<{ user: UserSchema }>('/api/auth/sessions/current', {
+      skipAuthRefresh: true,
+    });
+    return response.user ?? null;
+  }
+
+  /**
    * Get current user, automatically waits for pending OAuth callback
    */
   async getCurrentUser(): Promise<{
@@ -546,16 +561,14 @@ export class Auth {
     await this.authCallbackHandled;
 
     try {
+      const accessToken = this.tokenManager.getAccessToken();
+
       if (this.isServerMode()) {
-        const accessToken = this.tokenManager.getAccessToken();
         if (!accessToken) {
           return { data: { user: null }, error: null };
         }
 
-        this.http.setAuthToken(accessToken);
-        const response = await this.http.get<{ user: UserSchema }>('/api/auth/sessions/current');
-        const user = response.user ?? null;
-        return { data: { user }, error: null };
+        return { data: { user: await this.fetchCurrentUser(accessToken) }, error: null };
       }
 
       // Browser mode: check memory first
@@ -565,8 +578,31 @@ export class Auth {
         return { data: { user: session.user }, error: null };
       }
 
-      // Try refresh via httpOnly cookie (browser only)
       if (typeof window !== 'undefined') {
+        // A cold page load can hold an access token with no user behind it:
+        // createBrowserClient() hydrates the token from the readable
+        // insforge_access_token cookie, and setAccessToken() stores a token
+        // without a user, so getSession() above is null. Resolve the user with
+        // the token we already have. Falling straight through to the refresh
+        // below would post to the InsForge origin, which the httpOnly refresh
+        // cookie never reaches when it is scoped to the app's own domain.
+        if (accessToken) {
+          try {
+            const user = await this.fetchCurrentUser(accessToken);
+            if (user) {
+              this.tokenManager.setUser(user);
+              return { data: { user }, error: null };
+            }
+          } catch (error) {
+            // A rejected token is not fatal here — the refresh below mints a
+            // new one. Anything else is a real failure and should surface.
+            if (!(error instanceof InsForgeError) || error.statusCode !== 401) {
+              throw error;
+            }
+          }
+        }
+
+        // Try refresh via httpOnly cookie (browser only)
         const { data: refreshed, error: refreshError } = await this.refreshSession();
         if (refreshError) {
           return { data: { user: null }, error: refreshError };
