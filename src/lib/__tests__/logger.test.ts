@@ -66,6 +66,21 @@ describe('Logger', () => {
       expect(customFn.mock.calls[0][0]).toContain('test message');
     });
 
+    it('should route warn to console.warn when no custom function is provided', () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const logger = new Logger(true);
+      logger.warn('warn msg');
+
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(warnSpy.mock.calls[0][0]).toContain('[InsForge Debug]');
+      expect(warnSpy.mock.calls[0][0]).toContain('warn msg');
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
     it('should route warn and error through custom function', () => {
       const customFn = vi.fn();
       const logger = new Logger(customFn);

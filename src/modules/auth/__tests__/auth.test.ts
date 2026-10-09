@@ -274,6 +274,38 @@ describe('Auth', () => {
     });
   });
 
+  describe('signUp()', () => {
+    it('does not persist a session when sign-up requires email verification', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        createJsonResponse(200, {
+          user: { id: 'u1', email: 'user@example.com', emailVerified: false },
+          accessToken: null,
+          requireEmailVerification: true,
+        })
+      );
+      const tokenManager = new TokenManager();
+      const http = new HttpClient(
+        { baseUrl: 'http://localhost:7130', fetch: fetchMock as any, retryCount: 0, timeout: 0 },
+        tokenManager
+      );
+      const saveSessionSpy = vi.spyOn(tokenManager, 'saveSession');
+      const setAuthTokenSpy = vi.spyOn(http, 'setAuthToken');
+      const auth = new Auth(http, tokenManager, { isServerMode: false });
+
+      const { data, error } = await auth.signUp({
+        email: 'user@example.com',
+        password: 'password123',
+      });
+
+      expect(error).toBeNull();
+      expect(data?.requireEmailVerification).toBe(true);
+      // No access token came back, so nothing may be persisted.
+      expect(saveSessionSpy).not.toHaveBeenCalled();
+      expect(setAuthTokenSpy).not.toHaveBeenCalled();
+      expect(tokenManager.getAccessToken()).toBeNull();
+    });
+  });
+
   describe('signInWithOtp()', () => {
     it('posts the email to the send-otp endpoint and returns the generic success payload', async () => {
       const fetchMock = vi.fn().mockResolvedValue(

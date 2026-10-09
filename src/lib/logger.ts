@@ -99,7 +99,8 @@ function formatBody(body: any): string {
 /**
  * Sanitizes, formats and truncates a body for debug output.
  * @param body - The body to format
- * @returns A formatted string capped at 1000 characters, or empty string if null/undefined
+ * @returns The formatted string, with content beyond 1000 characters replaced by a
+ *   `... [truncated]` marker, or empty string if null/undefined
  */
 function formatTruncatedBody(body: unknown): string {
   const formatted = formatBody(sanitizeBody(body));
