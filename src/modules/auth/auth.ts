@@ -174,9 +174,7 @@ export class Auth {
         { credentials: 'include', skipAuthRefresh: true }
       );
 
-      if (response.accessToken && response.user) {
-        this.saveSessionFromResponse(response);
-      }
+      this.saveSessionFromResponse(response);
       if (response.refreshToken) {
         this.http.setRefreshToken(response.refreshToken);
       }

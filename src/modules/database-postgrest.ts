@@ -1,6 +1,5 @@
 /**
  * Database module using @supabase/postgrest-js
- * Complete replacement for custom QueryBuilder with full PostgREST features
  */
 
 import { PostgrestClient } from '@supabase/postgrest-js';
@@ -43,7 +42,6 @@ function createInsForgePostgrestFetch(httpClient: HttpClient): typeof fetch {
 
 /**
  * Database client using postgrest-js
- * Drop-in replacement with FULL PostgREST capabilities
  */
 export class Database {
   private postgrest: PostgrestClient<any, any, any>;

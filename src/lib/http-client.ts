@@ -430,10 +430,6 @@ export class HttpClient {
       maxAttempts,
     });
 
-    // Parse body via shared helper; logger fires after either way.
-    // Note: error-path logger now receives the InsForgeError instance
-    // (not the raw body) and uses err.statusCode as primary source.
-    // Parse failures are now logged here too (previously not logged).
     let data: T;
     try {
       data = await parseResponse<T>(response);

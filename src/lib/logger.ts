@@ -97,6 +97,16 @@ function formatBody(body: any): string {
 }
 
 /**
+ * Sanitizes, formats and truncates a body for debug output.
+ * @param body - The body to format
+ * @returns A formatted string capped at 1000 characters, or empty string if null/undefined
+ */
+function formatTruncatedBody(body: unknown): string {
+  const formatted = formatBody(sanitizeBody(body));
+  return formatted.length > 1000 ? formatted.slice(0, 1000) + '... [truncated]' : formatted;
+}
+
+/**
  * Debug logger for the InsForge SDK.
  * Logs HTTP request/response details with automatic redaction of sensitive data.
  *
@@ -130,12 +140,7 @@ export class Logger {
     }
   }
 
-  /**
-   * Logs a debug message at the info level.
-   * @param message - The message to log
-   * @param args - Additional arguments to pass to the log function
-   */
-  log(message: string, ...args: any[]): void {
+  private emit(level: 'log' | 'warn' | 'error', message: string, args: unknown[]): void {
     if (!this.enabled) {
       return;
     }
@@ -143,8 +148,17 @@ export class Logger {
     if (this.customLog) {
       this.customLog(formatted, ...args);
     } else {
-      console.log(formatted, ...args);
+      console[level](formatted, ...args);
     }
+  }
+
+  /**
+   * Logs a debug message at the info level.
+   * @param message - The message to log
+   * @param args - Additional arguments to pass to the log function
+   */
+  log(message: string, ...args: any[]): void {
+    this.emit('log', message, args);
   }
 
   /**
@@ -153,15 +167,7 @@ export class Logger {
    * @param args - Additional arguments to pass to the log function
    */
   warn(message: string, ...args: any[]): void {
-    if (!this.enabled) {
-      return;
-    }
-    const formatted = `[InsForge Debug] ${message}`;
-    if (this.customLog) {
-      this.customLog(formatted, ...args);
-    } else {
-      console.warn(formatted, ...args);
-    }
+    this.emit('warn', message, args);
   }
 
   /**
@@ -170,15 +176,7 @@ export class Logger {
    * @param args - Additional arguments to pass to the log function
    */
   error(message: string, ...args: any[]): void {
-    if (!this.enabled) {
-      return;
-    }
-    const formatted = `[InsForge Debug] ${message}`;
-    if (this.customLog) {
-      this.customLog(formatted, ...args);
-    } else {
-      console.error(formatted, ...args);
-    }
+    this.emit('error', message, args);
   }
 
   /**
@@ -197,13 +195,9 @@ export class Logger {
     if (headers && Object.keys(headers).length > 0) {
       parts.push(`  Headers: ${JSON.stringify(redactHeaders(headers))}`);
     }
-    const formattedBody = formatBody(sanitizeBody(body));
+    const formattedBody = formatTruncatedBody(body);
     if (formattedBody) {
-      const truncated =
-        formattedBody.length > 1000
-          ? formattedBody.slice(0, 1000) + '... [truncated]'
-          : formattedBody;
-      parts.push(`  Body: ${truncated}`);
+      parts.push(`  Body: ${formattedBody}`);
     }
     this.log(parts.join('\n'));
   }
@@ -222,13 +216,9 @@ export class Logger {
       return;
     }
     const parts: string[] = [`← ${method} ${url} ${status} (${durationMs}ms)`];
-    const formattedBody = formatBody(sanitizeBody(body));
+    const formattedBody = formatTruncatedBody(body);
     if (formattedBody) {
-      const truncated =
-        formattedBody.length > 1000
-          ? formattedBody.slice(0, 1000) + '... [truncated]'
-          : formattedBody;
-      parts.push(`  Body: ${truncated}`);
+      parts.push(`  Body: ${formattedBody}`);
     }
     if (status >= 400) {
       this.error(parts.join('\n'));

@@ -147,13 +147,4 @@ export class InsForgeClient {
       this.tokenManager.setAccessToken(token, event);
     }
   }
-
-  /**
-   * Future modules will be added here:
-   * - database: Database operations
-   * - storage: File storage operations
-   * - functions: Serverless functions
-   * - tables: Table management
-   * - metadata: Backend metadata
-   */
 }

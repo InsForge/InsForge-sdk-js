@@ -37,7 +37,6 @@ export type { PasswordSessionRequest, VerifyOtpRequest } from './modules/auth/au
 
 // Re-export database module (using postgrest-js)
 export { Database } from './modules/database-postgrest';
-// Note: QueryBuilder is no longer exported as we use postgrest-js QueryBuilder internally
 
 // Re-export storage module and types
 export { Storage, StorageBucket } from './modules/storage';
