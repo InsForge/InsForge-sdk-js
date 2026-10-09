@@ -18,6 +18,16 @@ export interface FunctionInvokeOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 }
 
+function toFunctionError(error: unknown): InsForgeError {
+  return error instanceof InsForgeError
+    ? error
+    : new InsForgeError(
+        error instanceof Error ? error.message : 'Function invocation failed',
+        500,
+        'FUNCTION_ERROR'
+      );
+}
+
 /**
  * Edge Functions client for invoking serverless functions.
  *
@@ -31,10 +41,12 @@ export interface FunctionInvokeOptions {
 export class Functions {
   private http: HttpClient;
   private functionsUrl: string | undefined;
+  private readonly localFunctionsUrl: string | undefined;
 
   constructor(http: HttpClient, functionsUrl?: string) {
     this.http = http;
-    this.functionsUrl = functionsUrl || Functions.deriveSubhostingUrl(http.baseUrl);
+    this.localFunctionsUrl = Functions.deriveSubhostingUrl(http.baseUrl);
+    this.functionsUrl = functionsUrl || this.localFunctionsUrl;
   }
 
   /**
@@ -102,11 +114,10 @@ export class Functions {
     // Only short-circuit when the target is the local derived subhosting URL —
     // otherwise we'd misroute cross-deployment calls to the local router.
     const dispatch = globalThis.__insforge_dispatch__;
-    const localFunctionsUrl = Functions.deriveSubhostingUrl(this.http.baseUrl);
     if (
       typeof dispatch === 'function' &&
-      !!localFunctionsUrl &&
-      this.functionsUrl === localFunctionsUrl
+      !!this.localFunctionsUrl &&
+      this.functionsUrl === this.localFunctionsUrl
     ) {
       try {
         const req = this.buildInProcessRequest(slug, method, body, headers);
@@ -117,17 +128,7 @@ export class Functions {
         if (error instanceof Error && error.name === 'AbortError') {
           throw error;
         }
-        return {
-          data: null,
-          error:
-            error instanceof InsForgeError
-              ? error
-              : new InsForgeError(
-                  error instanceof Error ? error.message : 'Function invocation failed',
-                  500,
-                  'FUNCTION_ERROR'
-                ),
-        };
+        return { data: null, error: toFunctionError(error) };
       }
     }
 
@@ -146,17 +147,7 @@ export class Functions {
         if (error instanceof InsForgeError && error.statusCode === 404) {
           // fall through to proxy
         } else {
-          return {
-            data: null,
-            error:
-              error instanceof InsForgeError
-                ? error
-                : new InsForgeError(
-                    error instanceof Error ? error.message : 'Function invocation failed',
-                    500,
-                    'FUNCTION_ERROR'
-                  ),
-          };
+          return { data: null, error: toFunctionError(error) };
         }
       }
     }
@@ -170,17 +161,7 @@ export class Functions {
       if (error instanceof Error && error.name === 'AbortError') {
         throw error;
       }
-      return {
-        data: null,
-        error:
-          error instanceof InsForgeError
-            ? error
-            : new InsForgeError(
-                error instanceof Error ? error.message : 'Function invocation failed',
-                500,
-                'FUNCTION_ERROR'
-              ),
-      };
+      return { data: null, error: toFunctionError(error) };
     }
   }
 }

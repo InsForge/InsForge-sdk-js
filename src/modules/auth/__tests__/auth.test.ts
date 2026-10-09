@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HttpClient } from '../../../lib/http-client';
-import { TokenManager } from '../../../lib/token-manager';
+import { AuthChangeEvent, TokenManager } from '../../../lib/token-manager';
 import * as tokenManagerModule from '../../../lib/token-manager';
 import { Auth } from '../auth';
 
@@ -271,6 +271,101 @@ describe('Auth', () => {
 
       const headers = new Headers(requestInit.headers);
       expect(headers.has('X-CSRF-Token')).toBe(false);
+    });
+  });
+
+  describe('signUp()', () => {
+    it('does not persist a session when sign-up requires email verification', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        createJsonResponse(200, {
+          user: { id: 'u1', email: 'user@example.com', emailVerified: false },
+          accessToken: null,
+          requireEmailVerification: true,
+        })
+      );
+      const tokenManager = new TokenManager();
+      const http = new HttpClient(
+        { baseUrl: 'http://localhost:7130', fetch: fetchMock as any, retryCount: 0, timeout: 0 },
+        tokenManager
+      );
+      const saveSessionSpy = vi.spyOn(tokenManager, 'saveSession');
+      const setAuthTokenSpy = vi.spyOn(http, 'setAuthToken');
+      const auth = new Auth(http, tokenManager, { isServerMode: false });
+
+      const { data, error } = await auth.signUp({
+        email: 'user@example.com',
+        password: 'password123',
+      });
+
+      expect(error).toBeNull();
+      expect(data?.requireEmailVerification).toBe(true);
+      // No access token came back, so nothing may be persisted.
+      expect(saveSessionSpy).not.toHaveBeenCalled();
+      expect(setAuthTokenSpy).not.toHaveBeenCalled();
+      expect(tokenManager.getAccessToken()).toBeNull();
+    });
+
+    it('does not persist a session when the response has an access token but no user', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        createJsonResponse(200, {
+          accessToken: 'token-without-user',
+        })
+      );
+      const tokenManager = new TokenManager();
+      const http = new HttpClient(
+        { baseUrl: 'http://localhost:7130', fetch: fetchMock as any, retryCount: 0, timeout: 0 },
+        tokenManager
+      );
+      const saveSessionSpy = vi.spyOn(tokenManager, 'saveSession');
+      const setAuthTokenSpy = vi.spyOn(http, 'setAuthToken');
+      const auth = new Auth(http, tokenManager, { isServerMode: false });
+
+      const { data, error } = await auth.signUp({
+        email: 'user@example.com',
+        password: 'password123',
+      });
+
+      expect(error).toBeNull();
+      expect(data?.accessToken).toBe('token-without-user');
+      // A session needs both a token and a user; without the user nothing may be persisted.
+      expect(saveSessionSpy).not.toHaveBeenCalled();
+      expect(setAuthTokenSpy).not.toHaveBeenCalled();
+      expect(tokenManager.getAccessToken()).toBeNull();
+    });
+
+    it('persists the session in browser mode when the response has an access token and a user', async () => {
+      const user = { id: 'u1', email: 'user@example.com', emailVerified: true };
+      const fetchMock = vi.fn().mockResolvedValue(
+        createJsonResponse(200, {
+          user,
+          accessToken: 'signed-up-token',
+        })
+      );
+      const tokenManager = new TokenManager();
+      const http = new HttpClient(
+        { baseUrl: 'http://localhost:7130', fetch: fetchMock as any, retryCount: 0, timeout: 0 },
+        tokenManager
+      );
+      const saveSessionSpy = vi.spyOn(tokenManager, 'saveSession');
+      const setAuthTokenSpy = vi.spyOn(http, 'setAuthToken');
+      const auth = new Auth(http, tokenManager, { isServerMode: false });
+
+      const { data, error } = await auth.signUp({
+        email: 'user@example.com',
+        password: 'password123',
+      });
+
+      expect(error).toBeNull();
+      expect(data?.accessToken).toBe('signed-up-token');
+      // Token and user both present: the session must be persisted and the HTTP auth header set.
+      expect(saveSessionSpy).toHaveBeenCalledTimes(1);
+      expect(saveSessionSpy).toHaveBeenCalledWith(
+        { accessToken: 'signed-up-token', user },
+        AuthChangeEvent.SIGNED_IN
+      );
+      expect(setAuthTokenSpy).toHaveBeenCalledWith('signed-up-token');
+      expect(tokenManager.getAccessToken()).toBe('signed-up-token');
+      expect(tokenManager.getUser()).toEqual(user);
     });
   });
 
