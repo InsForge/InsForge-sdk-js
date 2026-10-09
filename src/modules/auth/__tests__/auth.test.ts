@@ -304,6 +304,34 @@ describe('Auth', () => {
       expect(setAuthTokenSpy).not.toHaveBeenCalled();
       expect(tokenManager.getAccessToken()).toBeNull();
     });
+
+    it('does not persist a session when the response has an access token but no user', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        createJsonResponse(200, {
+          accessToken: 'token-without-user',
+        })
+      );
+      const tokenManager = new TokenManager();
+      const http = new HttpClient(
+        { baseUrl: 'http://localhost:7130', fetch: fetchMock as any, retryCount: 0, timeout: 0 },
+        tokenManager
+      );
+      const saveSessionSpy = vi.spyOn(tokenManager, 'saveSession');
+      const setAuthTokenSpy = vi.spyOn(http, 'setAuthToken');
+      const auth = new Auth(http, tokenManager, { isServerMode: false });
+
+      const { data, error } = await auth.signUp({
+        email: 'user@example.com',
+        password: 'password123',
+      });
+
+      expect(error).toBeNull();
+      expect(data?.accessToken).toBe('token-without-user');
+      // A session needs both a token and a user; without the user nothing may be persisted.
+      expect(saveSessionSpy).not.toHaveBeenCalled();
+      expect(setAuthTokenSpy).not.toHaveBeenCalled();
+      expect(tokenManager.getAccessToken()).toBeNull();
+    });
   });
 
   describe('signInWithOtp()', () => {
