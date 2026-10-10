@@ -694,6 +694,29 @@ describe('@insforge/sdk/ssr refresh route', () => {
     ).toBe(true);
   });
 
+  it.each([
+    ['https://hub.example.com/projects/abc', 'https://hub.example.com/projects/abc'],
+    ['https://hub.example.com/projects/abc/', 'https://hub.example.com/projects/abc'],
+  ])('keeps the path prefix of %s when refreshing', async (baseUrl, expectedBase) => {
+    const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
+    const fetch = vi.fn(async () => jsonResponse(200, { accessToken, user: { id: 'user-1' } }));
+
+    await refreshAuth({
+      request: new Request('https://app.test/api/auth/refresh', {
+        method: 'POST',
+        headers: { cookie: 'insforge_refresh_token=old-refresh' },
+      }),
+      baseUrl,
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      `${expectedBase}/api/auth/refresh?client_type=mobile`,
+      expect.anything()
+    );
+  });
+
   it('creates a POST route handler', async () => {
     const accessToken = jwtWithExp(Math.floor(Date.now() / 1000) + 900);
     const fetch = vi.fn(async () =>

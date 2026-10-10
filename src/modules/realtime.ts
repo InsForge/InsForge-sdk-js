@@ -90,7 +90,11 @@ export class Realtime {
       }
 
       await new Promise<void>((resolve, reject) => {
-        const socket = io(this.baseUrl, {
+        // Socket.IO reads a URL path as a namespace, so a path-prefixed base URL
+        // (for example a path-routed Hub URL) moves its prefix into `path`.
+        const { origin, pathname } = new URL(this.baseUrl);
+        const socket = io(origin, {
+          path: `${pathname.replace(/\/+$/, '')}/socket.io`,
           transports: ['websocket'],
           auth: (callback) => {
             void this.getHandshakeToken().then(

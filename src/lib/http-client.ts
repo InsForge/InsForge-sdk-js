@@ -1,5 +1,6 @@
 import { InsForgeConfig, ApiError, InsForgeError, AuthRefreshResponse } from '../types';
 import { Logger } from './logger';
+import { resolveUrl } from './url';
 import {
   AuthChangeEvent,
   clearCsrfToken,
@@ -130,7 +131,7 @@ export class HttpClient {
    */
   constructor(config: InsForgeConfig, tokenManager?: TokenManager, logger?: Logger) {
     this.config = config;
-    this.baseUrl = config.baseUrl || 'http://localhost:7130';
+    this.baseUrl = (config.baseUrl || 'http://localhost:7130').replace(/\/+$/, '');
     // Properly bind fetch to maintain its context
     this.fetch =
       config.fetch || (globalThis.fetch ? globalThis.fetch.bind(globalThis) : (undefined as any));
@@ -156,7 +157,7 @@ export class HttpClient {
    * Normalizes PostgREST select parameters for proper syntax.
    */
   private buildUrl(path: string, params?: Record<string, string>): string {
-    const url = new URL(path, this.baseUrl);
+    const url = resolveUrl(this.baseUrl, path);
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         // For select parameter, preserve the exact formatting by normalizing whitespace

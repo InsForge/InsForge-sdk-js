@@ -39,6 +39,18 @@ describe('StorageBucket.getPublicUrl', () => {
     vi.restoreAllMocks();
   });
 
+  it('keeps a path-prefixed base URL and does not double the slash', () => {
+    const http = new HttpClient(
+      { baseUrl: 'https://hub.example.com/projects/abc/', fetch: vi.fn() as any },
+      makeTokenManager()
+    );
+    const bucket = new StorageBucket('docs', http);
+
+    expect(bucket.getPublicUrl('logo.png').data?.publicUrl).toBe(
+      'https://hub.example.com/projects/abc/api/storage/buckets/docs/objects/logo.png'
+    );
+  });
+
   it('returns { data: { publicUrl }, error } and makes no request', () => {
     const fetchFn = vi.fn();
     const bucket = new StorageBucket('docs', makeHttp(fetchFn));

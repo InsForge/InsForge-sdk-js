@@ -107,6 +107,18 @@ describe('Realtime', () => {
     });
   });
 
+  it.each([
+    ['http://example.test', 'http://example.test', '/socket.io'],
+    ['http://example.test/', 'http://example.test', '/socket.io'],
+    ['https://hub.example.com/projects/abc', 'https://hub.example.com', '/projects/abc/socket.io'],
+    ['https://hub.example.com/projects/abc/', 'https://hub.example.com', '/projects/abc/socket.io'],
+  ])('connects %s to origin %s with engine path %s', async (baseUrl, origin, path) => {
+    const realtime = new Realtime(baseUrl, new TokenManager());
+    await connect(realtime);
+
+    expect(io).toHaveBeenCalledWith(origin, expect.objectContaining({ path }));
+  });
+
   it('keeps an established socket connected when an access token is refreshed', async () => {
     const tokens = new TokenManager();
     tokens.setAccessToken(jwt(300));

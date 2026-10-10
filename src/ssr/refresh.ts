@@ -9,6 +9,7 @@ import {
   type AuthCookieSettings,
   type CookieStore,
 } from './cookies';
+import { resolveUrl } from '../lib/url';
 
 export interface RefreshAuthOptions
   extends
@@ -148,7 +149,7 @@ export async function refreshAuth(options: RefreshAuthOptions = {}): Promise<Ref
 
   try {
     const response = await fetchImpl(
-      new URL('/api/auth/refresh?client_type=mobile', baseUrl).toString(),
+      resolveUrl(baseUrl, '/api/auth/refresh?client_type=mobile').toString(),
       {
         method: 'POST',
         headers: requestHeaders,
