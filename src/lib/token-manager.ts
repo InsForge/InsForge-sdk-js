@@ -16,7 +16,6 @@ export const AuthChangeEvent = {
 export type AuthChangeEvent = (typeof AuthChangeEvent)[keyof typeof AuthChangeEvent];
 export type AuthStateChangeCallback = (event: AuthChangeEvent) => void;
 
-// CSRF token cookie name
 export const CSRF_TOKEN_COOKIE = 'insforge_csrf_token';
 
 /**
@@ -64,13 +63,10 @@ export function clearCsrfToken(): void {
 }
 
 export class TokenManager {
-  // In-memory storage
   private accessToken: string | null = null;
   private user: UserSchema | null = null;
 
   private authStateChangeCallbacks = new Map<symbol, AuthStateChangeCallback>();
-
-  constructor() {}
 
   /**
    * Save session in memory

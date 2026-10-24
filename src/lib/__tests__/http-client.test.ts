@@ -196,6 +196,27 @@ describe('HttpClient', () => {
       expect(callHeaders['X-Other']).toBe('other');
     });
 
+    it('normalizes whitespace inside the select param and leaves other params untouched', async () => {
+      const cases: Array<[string, string]> = [
+        [' id , posts ( title , author ( name ) ) ', 'id , posts(title , author(name))'],
+        ['*, users!inner( * )', '*, users!inner(*)'],
+        ['id,posts(title, body)', 'id,posts(title,body)'],
+        ['a ( b ) , c', 'a(b), c'],
+      ];
+
+      for (const [input, expected] of cases) {
+        const mockFetch = vi.fn().mockResolvedValue(createJsonResponse(200, []));
+        const client = createClient(mockFetch);
+        await client.get('/api/database/records/posts', {
+          params: { select: input, limit: ' 5 ' },
+        });
+
+        const url = new URL(mockFetch.mock.calls[0][0]);
+        expect(url.searchParams.get('select')).toBe(expected);
+        expect(url.searchParams.get('limit')).toBe(' 5 ');
+      }
+    });
+
     it('should throw InsForgeError on 4xx error', async () => {
       const mockFetch = vi.fn().mockResolvedValue(
         createJsonResponse(401, {
@@ -1128,6 +1149,66 @@ describe('HttpClient', () => {
         url.includes('/api/auth/refresh')
       );
       expect(refreshCalls).toHaveLength(1);
+    });
+
+    it('a second refreshAccessToken() after the first settles issues a NEW request', async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          createJsonResponse(200, { accessToken: 'tok-1', user: { id: 'u1' } })
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(200, { accessToken: 'tok-2', user: { id: 'u1' } })
+        );
+      const client = createClient(mockFetch);
+
+      // If the in-flight marker's reset regresses, the first (stale) promise would be served
+      // forever and the client would never refresh again.
+      expect((await client.refreshAccessToken()).accessToken).toBe('tok-1');
+      expect((await client.refreshAccessToken()).accessToken).toBe('tok-2');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('a refreshAccessToken() after a FAILED refresh issues a NEW request', async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          createJsonResponse(
+            401,
+            { error: 'AUTH_UNAUTHORIZED', message: 'Refresh expired', statusCode: 401 },
+            'Unauthorized'
+          )
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(200, { accessToken: 'tok-2', user: { id: 'u1' } })
+        );
+      const client = createClient(mockFetch);
+
+      const first = (await client.refreshAccessToken().catch((e: unknown) => e)) as InsForgeError;
+      expect(first).toBeInstanceOf(InsForgeError);
+      expect(first.error).toBe('AUTH_UNAUTHORIZED');
+
+      expect((await client.refreshAccessToken()).accessToken).toBe('tok-2');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('recovers after a one-shot synchronous throw before the first await', async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(createJsonResponse(200, { accessToken: 'tok-ok', user: { id: 'u1' } }));
+      const client = createClient(mockFetch);
+
+      // getCsrfToken() runs synchronously inside the refresh IIFE; document.cookie can throw
+      // (opaque-origin documents). The finally block then runs BEFORE the IIFE's promise is
+      // assigned, so the in-flight marker must not be the promise itself or the rejected
+      // promise would be served forever and the client could never refresh again.
+      vi.spyOn(tokenManagerModule, 'getCsrfToken').mockImplementationOnce(() => {
+        throw new Error('SecurityError');
+      });
+      await expect(client.refreshAccessToken()).rejects.toThrow('SecurityError');
+
+      expect((await client.refreshAccessToken()).accessToken).toBe('tok-ok');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     it('rawFetch refresh succeeds, retry fails without clearing auth state', async () => {

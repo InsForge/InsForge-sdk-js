@@ -1,5 +1,7 @@
+import { ERROR_CODES } from '@insforge/shared-schemas';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HttpClient } from '../../../lib/http-client';
+import { InsForgeError } from '../../../types';
 import { AuthChangeEvent, TokenManager } from '../../../lib/token-manager';
 import * as tokenManagerModule from '../../../lib/token-manager';
 import { Auth } from '../auth';
@@ -366,6 +368,156 @@ describe('Auth', () => {
       expect(setAuthTokenSpy).toHaveBeenCalledWith('signed-up-token');
       expect(tokenManager.getAccessToken()).toBe('signed-up-token');
       expect(tokenManager.getUser()).toEqual(user);
+    });
+  });
+
+  describe('refreshSession()', () => {
+    function createRefreshFixture(
+      body: Record<string, unknown>,
+      { isServerMode = false }: { isServerMode?: boolean } = {}
+    ) {
+      const fetchMock = vi.fn().mockResolvedValue(createJsonResponse(200, body));
+      const tokenManager = new TokenManager();
+      const http = new HttpClient(
+        {
+          baseUrl: 'http://localhost:7130',
+          fetch: fetchMock as unknown as typeof fetch,
+          retryCount: 0,
+          timeout: 0,
+        },
+        tokenManager
+      );
+      const saveSessionSpy = vi.spyOn(tokenManager, 'saveSession');
+      const setAuthTokenSpy = vi.spyOn(http, 'setAuthToken');
+      const setRefreshTokenSpy = vi.spyOn(http, 'setRefreshToken');
+      const auth = new Auth(http, tokenManager, { isServerMode });
+      return { fetchMock, tokenManager, auth, saveSessionSpy, setAuthTokenSpy, setRefreshTokenSpy };
+    }
+
+    it('persists the refreshed session as TOKEN_REFRESHED when the response has a token and a user', async () => {
+      const user = { id: 'u1', email: 'user@example.com', emailVerified: true };
+      const { fetchMock, tokenManager, auth, saveSessionSpy, setAuthTokenSpy, setRefreshTokenSpy } =
+        createRefreshFixture({ accessToken: 'refreshed-token', user });
+
+      const { data, error } = await auth.refreshSession();
+
+      expect(error).toBeNull();
+      expect(data?.accessToken).toBe('refreshed-token');
+      expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:7130/api/auth/refresh');
+      expect(saveSessionSpy).toHaveBeenCalledTimes(1);
+      expect(saveSessionSpy).toHaveBeenCalledWith(
+        { accessToken: 'refreshed-token', user },
+        AuthChangeEvent.TOKEN_REFRESHED
+      );
+      expect(setAuthTokenSpy).toHaveBeenCalledWith('refreshed-token');
+      expect(setRefreshTokenSpy).toHaveBeenCalledWith(null);
+      expect(tokenManager.getAccessToken()).toBe('refreshed-token');
+      expect(tokenManager.getUser()).toEqual(user);
+    });
+
+    it('does not persist anything when the response has no access token', async () => {
+      const { auth, tokenManager, saveSessionSpy, setAuthTokenSpy, setRefreshTokenSpy } =
+        createRefreshFixture({
+          user: { id: 'u1', email: 'user@example.com', emailVerified: true },
+          accessToken: null,
+        });
+
+      const { data, error } = await auth.refreshSession();
+
+      expect(error).toBeNull();
+      expect(data?.accessToken).toBeNull();
+      expect(saveSessionSpy).not.toHaveBeenCalled();
+      expect(setAuthTokenSpy).not.toHaveBeenCalled();
+      expect(setRefreshTokenSpy).not.toHaveBeenCalled();
+      expect(tokenManager.getAccessToken()).toBeNull();
+    });
+
+    it('does not persist anything when the response has a token but no user', async () => {
+      const { auth, tokenManager, saveSessionSpy, setAuthTokenSpy, setRefreshTokenSpy } =
+        createRefreshFixture({ accessToken: 'token-without-user' });
+
+      const { data, error } = await auth.refreshSession();
+
+      expect(error).toBeNull();
+      expect(data?.accessToken).toBe('token-without-user');
+      expect(saveSessionSpy).not.toHaveBeenCalled();
+      expect(setAuthTokenSpy).not.toHaveBeenCalled();
+      expect(setRefreshTokenSpy).not.toHaveBeenCalled();
+      expect(tokenManager.getAccessToken()).toBeNull();
+    });
+
+    it('in server mode posts the refresh token to the mobile endpoint and only updates HTTP tokens', async () => {
+      const user = { id: 'u1', email: 'user@example.com', emailVerified: true };
+      const { fetchMock, tokenManager, auth, saveSessionSpy, setAuthTokenSpy, setRefreshTokenSpy } =
+        createRefreshFixture(
+          { accessToken: 'refreshed-token', refreshToken: 'rotated-refresh-token', user },
+          { isServerMode: true }
+        );
+      // Without this stub getCsrfToken() returns null in the node test environment regardless of
+      // mode, which would make the X-CSRF-Token assertion below pass even if server mode sent it.
+      vi.spyOn(tokenManagerModule, 'getCsrfToken').mockReturnValue('test-csrf-token-abc');
+
+      const { data, error } = await auth.refreshSession({ refreshToken: 'current-refresh-token' });
+
+      expect(error).toBeNull();
+      expect(data?.accessToken).toBe('refreshed-token');
+
+      const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const url = new URL(requestUrl);
+      expect(url.pathname).toBe('/api/auth/refresh');
+      expect(url.searchParams.get('client_type')).toBe('mobile');
+      expect(JSON.parse(requestInit.body as string)).toEqual({
+        refresh_token: 'current-refresh-token',
+      });
+      expect(new Headers(requestInit.headers).has('X-CSRF-Token')).toBe(false);
+
+      // Server mode never persists to the TokenManager; only the HTTP client tokens change.
+      expect(saveSessionSpy).not.toHaveBeenCalled();
+      expect(tokenManager.getAccessToken()).toBeNull();
+      expect(setAuthTokenSpy).toHaveBeenCalledWith('refreshed-token');
+      expect(setRefreshTokenSpy).toHaveBeenCalledWith('rotated-refresh-token');
+    });
+
+    it('in server mode returns a 400 AUTH_UNAUTHORIZED error without a request when refreshToken is missing', async () => {
+      const { fetchMock, auth, saveSessionSpy, setAuthTokenSpy, setRefreshTokenSpy } =
+        createRefreshFixture({ accessToken: 'should-not-be-used' }, { isServerMode: true });
+
+      const { data, error } = await auth.refreshSession();
+
+      expect(data).toBeNull();
+      expect(error).toBeInstanceOf(InsForgeError);
+      expect(error?.statusCode).toBe(400);
+      expect(error?.error).toBe(ERROR_CODES.AUTH_UNAUTHORIZED);
+      expect(error?.message).toBe(
+        'refreshToken is required when refreshing session in server mode'
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(saveSessionSpy).not.toHaveBeenCalled();
+      expect(setAuthTokenSpy).not.toHaveBeenCalled();
+      expect(setRefreshTokenSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not re-enter the HTTP client token refresh when the refresh endpoint itself returns 401', async () => {
+      const { fetchMock, auth, saveSessionSpy } = createRefreshFixture({});
+      fetchMock.mockResolvedValue(
+        createJsonResponse(
+          401,
+          { error: ERROR_CODES.AUTH_UNAUTHORIZED, message: 'Refresh expired', statusCode: 401 },
+          'Unauthorized'
+        )
+      );
+      // A user token must be set, otherwise the client would never attempt a refresh anyway.
+      auth['http'].setAuthToken('expired-token');
+
+      const { data, error } = await auth.refreshSession();
+
+      expect(data).toBeNull();
+      expect(error).toBeInstanceOf(InsForgeError);
+      expect(error?.statusCode).toBe(401);
+      // skipAuthRefresh: without it a 401 here would trigger refreshAccessToken() and a second
+      // POST to /api/auth/refresh from inside the refresh itself.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(saveSessionSpy).not.toHaveBeenCalled();
     });
   });
 

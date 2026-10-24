@@ -111,7 +111,6 @@ export class Database {
    * - Upserts
    */
   from(table: string) {
-    // Return postgrest query builder with all features
     return this.postgrest.from(table);
   }
 
