@@ -448,6 +448,9 @@ describe('Auth', () => {
           { accessToken: 'refreshed-token', refreshToken: 'rotated-refresh-token', user },
           { isServerMode: true }
         );
+      // Without this stub getCsrfToken() returns null in the node test environment regardless of
+      // mode, which would make the X-CSRF-Token assertion below pass even if server mode sent it.
+      vi.spyOn(tokenManagerModule, 'getCsrfToken').mockReturnValue('test-csrf-token-abc');
 
       const { data, error } = await auth.refreshSession({ refreshToken: 'current-refresh-token' });
 
