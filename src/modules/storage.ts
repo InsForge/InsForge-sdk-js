@@ -68,7 +68,6 @@ export class StorageBucket {
    */
   async upload(path: string, file: File | Blob): Promise<StorageResponse<StorageFileSchema>> {
     try {
-      // Get upload strategy from backend - this is required
       const strategyResponse = await this.http.post<UploadStrategy>(
         `/api/storage/buckets/${this.bucketName}/upload-strategy`,
         {
@@ -78,12 +77,10 @@ export class StorageBucket {
         }
       );
 
-      // Use presigned URL if available
       if (strategyResponse.method === 'presigned') {
         return await this.uploadWithPresignedUrl(strategyResponse, file);
       }
 
-      // Use direct upload if strategy says so
       if (strategyResponse.method === 'direct') {
         const formData = new FormData();
         formData.append('file', file);
@@ -140,10 +137,8 @@ export class StorageBucket {
     file: File | Blob
   ): Promise<StorageResponse<StorageFileSchema>> {
     try {
-      // Upload to presigned URL (e.g., S3)
       const formData = new FormData();
 
-      // Add all fields from the presigned URL
       if (strategy.fields) {
         Object.entries(strategy.fields).forEach(([key, value]) => {
           formData.append(key, value);
@@ -177,7 +172,6 @@ export class StorageBucket {
         return { data: confirmResponse, error: null };
       }
 
-      // If no confirmation required, return basic file info
       return {
         data: {
           key: strategy.key,
@@ -228,10 +222,8 @@ export class StorageBucket {
         }
       }
 
-      // Use URL from strategy
       const downloadUrl = strategyResponse.url;
 
-      // Download from the URL
       const headers: HeadersInit = {};
 
       // Only add auth header for direct downloads (not presigned URLs)

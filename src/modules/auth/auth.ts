@@ -524,9 +524,7 @@ export class Auth {
         }
       );
 
-      if (response.accessToken) {
-        this.saveSessionFromResponse(response, AuthChangeEvent.TOKEN_REFRESHED);
-      }
+      this.saveSessionFromResponse(response, AuthChangeEvent.TOKEN_REFRESHED);
 
       return { data: response, error: null };
     } catch (error) {

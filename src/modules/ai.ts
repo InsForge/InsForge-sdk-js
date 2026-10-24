@@ -106,7 +106,6 @@ class ChatCompletions {
    * ```
    */
   async create(params: ChatCompletionRequest): Promise<any> {
-    // Backend already expects camelCase, no transformation needed
     const backendParams = {
       model: params.model,
       messages: params.messages,
@@ -114,17 +113,14 @@ class ChatCompletions {
       maxTokens: params.maxTokens,
       topP: params.topP,
       stream: params.stream,
-      // New plugin options
       webSearch: params.webSearch,
       fileParser: params.fileParser,
       thinking: params.thinking,
-      // Tool calling options
       tools: params.tools,
       toolChoice: params.toolChoice,
       parallelToolCalls: params.parallelToolCalls,
     };
 
-    // For streaming, return an async iterable that yields OpenAI-like chunks
     if (params.stream) {
       const headers = this.http.getHeaders();
       headers['Content-Type'] = 'application/json';
@@ -140,17 +136,14 @@ class ChatCompletions {
         throw new Error(error.error || 'Stream request failed');
       }
 
-      // Return async iterable that parses SSE and transforms to OpenAI-like format
       return this.parseSSEStream(response, params.model);
     }
 
-    // Non-streaming: transform response to OpenAI-like format
     const response: ChatCompletionResponse = await this.http.post(
       '/api/ai/chat/completion',
       backendParams
     );
 
-    // Transform to OpenAI-like format
     const content = response.text || '';
 
     return {
@@ -164,9 +157,7 @@ class ChatCompletions {
           message: {
             role: 'assistant',
             content,
-            // Include tool_calls if present (from tool calling)
             ...(response.tool_calls?.length && { tool_calls: response.tool_calls }),
-            // Include annotations if present (from web search or file parsing)
             ...(response.annotations?.length && { annotations: response.annotations }),
           },
           finish_reason: response.tool_calls?.length ? 'tool_calls' : 'stop',
@@ -206,7 +197,6 @@ class ChatCompletions {
               try {
                 const data = JSON.parse(dataStr);
 
-                // Transform to OpenAI-like streaming format
                 if (data.chunk || data.content) {
                   yield {
                     id: `chatcmpl-${Date.now()}`,
@@ -225,7 +215,6 @@ class ChatCompletions {
                   };
                 }
 
-                // Yield tool_calls when received from stream
                 if (data.tool_calls?.length) {
                   yield {
                     id: `chatcmpl-${Date.now()}`,
@@ -244,13 +233,11 @@ class ChatCompletions {
                   };
                 }
 
-                // If we received the done signal, we can stop
                 if (data.done) {
                   reader.releaseLock();
                   return;
                 }
               } catch {
-                // Skip invalid JSON
                 console.warn('Failed to parse SSE data:', dataStr);
               }
             }
@@ -305,7 +292,6 @@ class Embeddings {
   async create(params: EmbeddingsRequest): Promise<any> {
     const response: EmbeddingsResponse = await this.http.post('/api/ai/embeddings', params);
 
-    // Return OpenAI-compatible format
     return {
       object: response.object,
       data: response.data,
@@ -356,21 +342,17 @@ class Images {
       params
     );
 
-    // Build data array based on response content
     let data: Array<{ b64_json?: string; content?: string }> = [];
 
     if (response.images && response.images.length > 0) {
-      // Has images - extract base64 and include text
       data = response.images.map((img) => ({
         b64_json: img.imageUrl.replace(/^data:image\/\w+;base64,/, ''),
         content: response.text,
       }));
     } else if (response.text) {
-      // Text-only response
       data = [{ content: response.text }];
     }
 
-    // Return OpenAI-compatible format
     return {
       created: Math.floor(Date.now() / 1000),
       data,

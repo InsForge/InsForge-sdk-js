@@ -369,6 +369,74 @@ describe('Auth', () => {
     });
   });
 
+  describe('refreshSession()', () => {
+    function createRefreshFixture(body: Record<string, unknown>) {
+      const fetchMock = vi.fn().mockResolvedValue(createJsonResponse(200, body));
+      const tokenManager = new TokenManager();
+      const http = new HttpClient(
+        { baseUrl: 'http://localhost:7130', fetch: fetchMock as any, retryCount: 0, timeout: 0 },
+        tokenManager
+      );
+      const saveSessionSpy = vi.spyOn(tokenManager, 'saveSession');
+      const setAuthTokenSpy = vi.spyOn(http, 'setAuthToken');
+      const setRefreshTokenSpy = vi.spyOn(http, 'setRefreshToken');
+      const auth = new Auth(http, tokenManager, { isServerMode: false });
+      return { fetchMock, tokenManager, auth, saveSessionSpy, setAuthTokenSpy, setRefreshTokenSpy };
+    }
+
+    it('persists the refreshed session as TOKEN_REFRESHED when the response has a token and a user', async () => {
+      const user = { id: 'u1', email: 'user@example.com', emailVerified: true };
+      const { fetchMock, tokenManager, auth, saveSessionSpy, setAuthTokenSpy, setRefreshTokenSpy } =
+        createRefreshFixture({ accessToken: 'refreshed-token', user });
+
+      const { data, error } = await auth.refreshSession();
+
+      expect(error).toBeNull();
+      expect(data?.accessToken).toBe('refreshed-token');
+      expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:7130/api/auth/refresh');
+      expect(saveSessionSpy).toHaveBeenCalledTimes(1);
+      expect(saveSessionSpy).toHaveBeenCalledWith(
+        { accessToken: 'refreshed-token', user },
+        AuthChangeEvent.TOKEN_REFRESHED
+      );
+      expect(setAuthTokenSpy).toHaveBeenCalledWith('refreshed-token');
+      expect(setRefreshTokenSpy).toHaveBeenCalledWith(null);
+      expect(tokenManager.getAccessToken()).toBe('refreshed-token');
+      expect(tokenManager.getUser()).toEqual(user);
+    });
+
+    it('does not persist anything when the response has no access token', async () => {
+      const { auth, tokenManager, saveSessionSpy, setAuthTokenSpy, setRefreshTokenSpy } =
+        createRefreshFixture({
+          user: { id: 'u1', email: 'user@example.com', emailVerified: true },
+          accessToken: null,
+        });
+
+      const { data, error } = await auth.refreshSession();
+
+      expect(error).toBeNull();
+      expect(data?.accessToken).toBeNull();
+      expect(saveSessionSpy).not.toHaveBeenCalled();
+      expect(setAuthTokenSpy).not.toHaveBeenCalled();
+      expect(setRefreshTokenSpy).not.toHaveBeenCalled();
+      expect(tokenManager.getAccessToken()).toBeNull();
+    });
+
+    it('does not persist anything when the response has a token but no user', async () => {
+      const { auth, tokenManager, saveSessionSpy, setAuthTokenSpy, setRefreshTokenSpy } =
+        createRefreshFixture({ accessToken: 'token-without-user' });
+
+      const { data, error } = await auth.refreshSession();
+
+      expect(error).toBeNull();
+      expect(data?.accessToken).toBe('token-without-user');
+      expect(saveSessionSpy).not.toHaveBeenCalled();
+      expect(setAuthTokenSpy).not.toHaveBeenCalled();
+      expect(setRefreshTokenSpy).not.toHaveBeenCalled();
+      expect(tokenManager.getAccessToken()).toBeNull();
+    });
+  });
+
   describe('signInWithOtp()', () => {
     it('posts the email to the send-otp endpoint and returns the generic success payload', async () => {
       const fetchMock = vi.fn().mockResolvedValue(

@@ -196,6 +196,27 @@ describe('HttpClient', () => {
       expect(callHeaders['X-Other']).toBe('other');
     });
 
+    it('normalizes whitespace inside the select param and leaves other params untouched', async () => {
+      const cases: Array<[string, string]> = [
+        [' id , posts ( title , author ( name ) ) ', 'id , posts(title , author(name))'],
+        ['*, users!inner( * )', '*, users!inner(*)'],
+        ['id,posts(title, body)', 'id,posts(title,body)'],
+        ['a ( b ) , c', 'a(b), c'],
+      ];
+
+      for (const [input, expected] of cases) {
+        const mockFetch = vi.fn().mockResolvedValue(createJsonResponse(200, []));
+        const client = createClient(mockFetch);
+        await client.get('/api/database/records/posts', {
+          params: { select: input, limit: ' 5 ' },
+        });
+
+        const url = new URL(mockFetch.mock.calls[0][0]);
+        expect(url.searchParams.get('select')).toBe(expected);
+        expect(url.searchParams.get('limit')).toBe(' 5 ');
+      }
+    });
+
     it('should throw InsForgeError on 4xx error', async () => {
       const mockFetch = vi.fn().mockResolvedValue(
         createJsonResponse(401, {

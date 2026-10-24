@@ -114,7 +114,6 @@ export class HttpClient {
   private anonKey: string | undefined;
   private userToken: string | null = null;
   private logger: Logger;
-  private isRefreshing: boolean = false;
   private refreshPromise: Promise<AuthRefreshResponse> | null = null;
   private tokenManager: TokenManager;
   private refreshToken: string | null = null;
@@ -159,16 +158,14 @@ export class HttpClient {
     const url = new URL(path, this.baseUrl);
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        // For select parameter, preserve the exact formatting by normalizing whitespace
-        // This ensures PostgREST relationship queries work correctly
+        // Whitespace is normalized so PostgREST relationship selects parse correctly.
         if (key === 'select') {
-          let normalizedValue = value.replace(/\s+/g, ' ').trim();
-          normalizedValue = normalizedValue
-            .replace(/\s*\(\s*/g, '(') // Remove spaces around opening parens
-            .replace(/\s*\)\s*/g, ')') // Remove spaces around closing parens
-            .replace(/\(\s+/g, '(') // Remove spaces after opening parens
-            .replace(/\s+\)/g, ')') // Remove spaces before closing parens
-            .replace(/,\s+(?=[^()]*\))/g, ','); // Remove spaces after commas inside parens
+          const normalizedValue = value
+            .replace(/\s+/g, ' ')
+            .trim()
+            .replace(/\s*\(\s*/g, '(')
+            .replace(/\s*\)\s*/g, ')')
+            .replace(/,\s+(?=[^()]*\))/g, ',');
           url.searchParams.append(key, normalizedValue);
         } else {
           url.searchParams.append(key, value);
@@ -289,7 +286,6 @@ export class HttpClient {
           ...(controller ? { signal: controller.signal } : {}),
         });
 
-        // If server error and retries remaining, continue loop.
         if (this.isRetryableStatus(response.status) && attempt < maxAttempts) {
           if (timer !== undefined) {
             clearTimeout(timer);
@@ -313,7 +309,6 @@ export class HttpClient {
           clearTimeout(timer);
         }
 
-        // Determine if this was an SDK timeout or a caller abort.
         if (err?.name === 'AbortError') {
           if (
             controller &&
@@ -327,11 +322,9 @@ export class HttpClient {
               'REQUEST_TIMEOUT'
             );
           }
-          // Caller-initiated abort - propagate as-is.
           throw err;
         }
 
-        // Network error - retry if attempts remain.
         if (attempt < maxAttempts) {
           lastError = err;
           continue;
@@ -385,7 +378,6 @@ export class HttpClient {
       ...this.defaultHeaders,
     };
 
-    // Set Authorization header: prefer the request-scoped token, fallback to anon key.
     const authToken = tokenOverride ?? this.userToken ?? this.anonKey;
     if (authToken) {
       requestHeaders['Authorization'] = `Bearer ${authToken}`;
@@ -652,7 +644,6 @@ export class HttpClient {
   getHeaders(): Record<string, string> {
     const headers = { ...this.defaultHeaders };
 
-    // Include Authorization header if token is available (same logic as request method)
     const authToken = this.userToken || this.anonKey;
     if (authToken) {
       headers['Authorization'] = `Bearer ${authToken}`;
@@ -662,11 +653,10 @@ export class HttpClient {
   }
 
   async refreshAccessToken(): Promise<AuthRefreshResponse> {
-    if (this.isRefreshing) {
-      return this.refreshPromise!;
+    if (this.refreshPromise) {
+      return this.refreshPromise;
     }
 
-    this.isRefreshing = true;
     this.refreshPromise = (async () => {
       try {
         const csrfToken = getCsrfToken();
@@ -682,7 +672,6 @@ export class HttpClient {
         );
         return response;
       } finally {
-        this.isRefreshing = false;
         this.refreshPromise = null;
       }
     })();
