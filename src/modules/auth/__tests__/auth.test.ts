@@ -1,5 +1,7 @@
+import { ERROR_CODES } from '@insforge/shared-schemas';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HttpClient } from '../../../lib/http-client';
+import { InsForgeError } from '../../../types';
 import { AuthChangeEvent, TokenManager } from '../../../lib/token-manager';
 import * as tokenManagerModule from '../../../lib/token-manager';
 import { Auth } from '../auth';
@@ -370,7 +372,10 @@ describe('Auth', () => {
   });
 
   describe('refreshSession()', () => {
-    function createRefreshFixture(body: Record<string, unknown>) {
+    function createRefreshFixture(
+      body: Record<string, unknown>,
+      { isServerMode = false }: { isServerMode?: boolean } = {}
+    ) {
       const fetchMock = vi.fn().mockResolvedValue(createJsonResponse(200, body));
       const tokenManager = new TokenManager();
       const http = new HttpClient(
@@ -380,7 +385,7 @@ describe('Auth', () => {
       const saveSessionSpy = vi.spyOn(tokenManager, 'saveSession');
       const setAuthTokenSpy = vi.spyOn(http, 'setAuthToken');
       const setRefreshTokenSpy = vi.spyOn(http, 'setRefreshToken');
-      const auth = new Auth(http, tokenManager, { isServerMode: false });
+      const auth = new Auth(http, tokenManager, { isServerMode });
       return { fetchMock, tokenManager, auth, saveSessionSpy, setAuthTokenSpy, setRefreshTokenSpy };
     }
 
@@ -434,6 +439,54 @@ describe('Auth', () => {
       expect(setAuthTokenSpy).not.toHaveBeenCalled();
       expect(setRefreshTokenSpy).not.toHaveBeenCalled();
       expect(tokenManager.getAccessToken()).toBeNull();
+    });
+
+    it('in server mode posts the refresh token to the mobile endpoint and only updates HTTP tokens', async () => {
+      const user = { id: 'u1', email: 'user@example.com', emailVerified: true };
+      const { fetchMock, tokenManager, auth, saveSessionSpy, setAuthTokenSpy, setRefreshTokenSpy } =
+        createRefreshFixture(
+          { accessToken: 'refreshed-token', refreshToken: 'rotated-refresh-token', user },
+          { isServerMode: true }
+        );
+
+      const { data, error } = await auth.refreshSession({ refreshToken: 'current-refresh-token' });
+
+      expect(error).toBeNull();
+      expect(data?.accessToken).toBe('refreshed-token');
+
+      const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const url = new URL(requestUrl);
+      expect(url.pathname).toBe('/api/auth/refresh');
+      expect(url.searchParams.get('client_type')).toBe('mobile');
+      expect(JSON.parse(requestInit.body as string)).toEqual({
+        refresh_token: 'current-refresh-token',
+      });
+      expect(new Headers(requestInit.headers).has('X-CSRF-Token')).toBe(false);
+
+      // Server mode never persists to the TokenManager; only the HTTP client tokens change.
+      expect(saveSessionSpy).not.toHaveBeenCalled();
+      expect(tokenManager.getAccessToken()).toBeNull();
+      expect(setAuthTokenSpy).toHaveBeenCalledWith('refreshed-token');
+      expect(setRefreshTokenSpy).toHaveBeenCalledWith('rotated-refresh-token');
+    });
+
+    it('in server mode returns a 400 AUTH_UNAUTHORIZED error without a request when refreshToken is missing', async () => {
+      const { fetchMock, auth, saveSessionSpy, setAuthTokenSpy, setRefreshTokenSpy } =
+        createRefreshFixture({ accessToken: 'should-not-be-used' }, { isServerMode: true });
+
+      const { data, error } = await auth.refreshSession();
+
+      expect(data).toBeNull();
+      expect(error).toBeInstanceOf(InsForgeError);
+      expect(error?.statusCode).toBe(400);
+      expect(error?.error).toBe(ERROR_CODES.AUTH_UNAUTHORIZED);
+      expect(error?.message).toBe(
+        'refreshToken is required when refreshing session in server mode'
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(saveSessionSpy).not.toHaveBeenCalled();
+      expect(setAuthTokenSpy).not.toHaveBeenCalled();
+      expect(setRefreshTokenSpy).not.toHaveBeenCalled();
     });
   });
 
