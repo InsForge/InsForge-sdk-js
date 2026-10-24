@@ -1162,8 +1162,8 @@ describe('HttpClient', () => {
         );
       const client = createClient(mockFetch);
 
-      // refreshPromise is the sole in-flight marker; if its reset regresses, the first
-      // (stale) promise would be served forever and the client would never refresh again.
+      // If the in-flight marker's reset regresses, the first (stale) promise would be served
+      // forever and the client would never refresh again.
       expect((await client.refreshAccessToken()).accessToken).toBe('tok-1');
       expect((await client.refreshAccessToken()).accessToken).toBe('tok-2');
       expect(mockFetch).toHaveBeenCalledTimes(2);
@@ -1190,6 +1190,25 @@ describe('HttpClient', () => {
 
       expect((await client.refreshAccessToken()).accessToken).toBe('tok-2');
       expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('recovers after a one-shot synchronous throw before the first await', async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(createJsonResponse(200, { accessToken: 'tok-ok', user: { id: 'u1' } }));
+      const client = createClient(mockFetch);
+
+      // getCsrfToken() runs synchronously inside the refresh IIFE; document.cookie can throw
+      // (opaque-origin documents). The finally block then runs BEFORE the IIFE's promise is
+      // assigned, so the in-flight marker must not be the promise itself or the rejected
+      // promise would be served forever and the client could never refresh again.
+      vi.spyOn(tokenManagerModule, 'getCsrfToken').mockImplementationOnce(() => {
+        throw new Error('SecurityError');
+      });
+      await expect(client.refreshAccessToken()).rejects.toThrow('SecurityError');
+
+      expect((await client.refreshAccessToken()).accessToken).toBe('tok-ok');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     it('rawFetch refresh succeeds, retry fails without clearing auth state', async () => {

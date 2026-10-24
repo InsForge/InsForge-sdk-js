@@ -491,6 +491,29 @@ describe('Auth', () => {
       expect(setAuthTokenSpy).not.toHaveBeenCalled();
       expect(setRefreshTokenSpy).not.toHaveBeenCalled();
     });
+
+    it('does not re-enter the HTTP client token refresh when the refresh endpoint itself returns 401', async () => {
+      const { fetchMock, auth, saveSessionSpy } = createRefreshFixture({});
+      fetchMock.mockResolvedValue(
+        createJsonResponse(
+          401,
+          { error: ERROR_CODES.AUTH_UNAUTHORIZED, message: 'Refresh expired', statusCode: 401 },
+          'Unauthorized'
+        )
+      );
+      // A user token must be set, otherwise the client would never attempt a refresh anyway.
+      auth['http'].setAuthToken('expired-token');
+
+      const { data, error } = await auth.refreshSession();
+
+      expect(data).toBeNull();
+      expect(error).toBeInstanceOf(InsForgeError);
+      expect(error?.statusCode).toBe(401);
+      // skipAuthRefresh: without it a 401 here would trigger refreshAccessToken() and a second
+      // POST to /api/auth/refresh from inside the refresh itself.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(saveSessionSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe('signInWithOtp()', () => {

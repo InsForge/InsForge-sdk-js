@@ -114,6 +114,7 @@ export class HttpClient {
   private anonKey: string | undefined;
   private userToken: string | null = null;
   private logger: Logger;
+  private isRefreshing: boolean = false;
   private refreshPromise: Promise<AuthRefreshResponse> | null = null;
   private tokenManager: TokenManager;
   private refreshToken: string | null = null;
@@ -309,6 +310,7 @@ export class HttpClient {
           clearTimeout(timer);
         }
 
+        // Determine if this was an SDK timeout or a caller abort.
         if (err?.name === 'AbortError') {
           if (
             controller &&
@@ -322,6 +324,7 @@ export class HttpClient {
               'REQUEST_TIMEOUT'
             );
           }
+          // Caller-initiated abort - propagate as-is.
           throw err;
         }
 
@@ -655,10 +658,15 @@ export class HttpClient {
   }
 
   async refreshAccessToken(): Promise<AuthRefreshResponse> {
-    if (this.refreshPromise) {
-      return this.refreshPromise;
+    // `isRefreshing` is deliberately a separate flag rather than `refreshPromise !== null`: the
+    // IIFE below runs synchronously up to its first await, so a synchronous throw there (e.g.
+    // `document.cookie` on an opaque-origin document) runs the `finally` BEFORE the promise is
+    // assigned, and the rejected promise would then be served to every later call.
+    if (this.isRefreshing) {
+      return this.refreshPromise!;
     }
 
+    this.isRefreshing = true;
     this.refreshPromise = (async () => {
       try {
         const csrfToken = getCsrfToken();
@@ -674,6 +682,7 @@ export class HttpClient {
         );
         return response;
       } finally {
+        this.isRefreshing = false;
         this.refreshPromise = null;
       }
     })();
