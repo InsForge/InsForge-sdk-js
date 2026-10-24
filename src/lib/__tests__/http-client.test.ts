@@ -1151,6 +1151,47 @@ describe('HttpClient', () => {
       expect(refreshCalls).toHaveLength(1);
     });
 
+    it('a second refreshAccessToken() after the first settles issues a NEW request', async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          createJsonResponse(200, { accessToken: 'tok-1', user: { id: 'u1' } })
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(200, { accessToken: 'tok-2', user: { id: 'u1' } })
+        );
+      const client = createClient(mockFetch);
+
+      // refreshPromise is the sole in-flight marker; if its reset regresses, the first
+      // (stale) promise would be served forever and the client would never refresh again.
+      expect((await client.refreshAccessToken()).accessToken).toBe('tok-1');
+      expect((await client.refreshAccessToken()).accessToken).toBe('tok-2');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('a refreshAccessToken() after a FAILED refresh issues a NEW request', async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          createJsonResponse(
+            401,
+            { error: 'AUTH_UNAUTHORIZED', message: 'Refresh expired', statusCode: 401 },
+            'Unauthorized'
+          )
+        )
+        .mockResolvedValueOnce(
+          createJsonResponse(200, { accessToken: 'tok-2', user: { id: 'u1' } })
+        );
+      const client = createClient(mockFetch);
+
+      const first = (await client.refreshAccessToken().catch((e: unknown) => e)) as InsForgeError;
+      expect(first).toBeInstanceOf(InsForgeError);
+      expect(first.error).toBe('AUTH_UNAUTHORIZED');
+
+      expect((await client.refreshAccessToken()).accessToken).toBe('tok-2');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
     it('rawFetch refresh succeeds, retry fails without clearing auth state', async () => {
       const tokenManager = createMockTokenManager();
       const mockFetch = vi

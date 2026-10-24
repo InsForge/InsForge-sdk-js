@@ -106,6 +106,7 @@ class ChatCompletions {
    * ```
    */
   async create(params: ChatCompletionRequest): Promise<any> {
+    // Backend already expects camelCase, no transformation needed
     const backendParams = {
       model: params.model,
       messages: params.messages,

@@ -644,6 +644,8 @@ export class HttpClient {
   getHeaders(): Record<string, string> {
     const headers = { ...this.defaultHeaders };
 
+    // Note: `||` here vs `??` in handleRequest(): an empty-string userToken falls back to the
+    // anon key here but not there. Pre-existing divergence, deliberately left as-is.
     const authToken = this.userToken || this.anonKey;
     if (authToken) {
       headers['Authorization'] = `Bearer ${authToken}`;
