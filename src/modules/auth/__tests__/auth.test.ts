@@ -379,7 +379,12 @@ describe('Auth', () => {
       const fetchMock = vi.fn().mockResolvedValue(createJsonResponse(200, body));
       const tokenManager = new TokenManager();
       const http = new HttpClient(
-        { baseUrl: 'http://localhost:7130', fetch: fetchMock as any, retryCount: 0, timeout: 0 },
+        {
+          baseUrl: 'http://localhost:7130',
+          fetch: fetchMock as unknown as typeof fetch,
+          retryCount: 0,
+          timeout: 0,
+        },
         tokenManager
       );
       const saveSessionSpy = vi.spyOn(tokenManager, 'saveSession');
