@@ -24,7 +24,11 @@ async function getWebCrypto(): Promise<WebCrypto> {
   }
 
   if (typeof process !== 'undefined' && process.versions?.node) {
-    const { webcrypto } = await import('node:crypto');
+    // Keep this Node-only fallback out of browser bundlers' static import graph.
+    const nodeCryptoId = 'node:crypto';
+    const { webcrypto } = (await import(
+      /* @vite-ignore */ nodeCryptoId
+    )) as typeof import('node:crypto');
     return webcrypto as unknown as WebCrypto;
   }
 
