@@ -226,6 +226,10 @@ export class StorageBucket {
 
       const headers: HeadersInit = {};
 
+      if (typeof window === 'undefined') {
+        headers['User-Agent'] = 'insforge-sdk';
+      }
+
       // Only add auth header for direct downloads (not presigned URLs)
       if (strategyResponse.method === 'direct') {
         Object.assign(headers, this.http.getHeaders());
