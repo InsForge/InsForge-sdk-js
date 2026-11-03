@@ -226,7 +226,15 @@ export class StorageBucket {
 
       const headers: HeadersInit = {};
 
-      if (typeof window === 'undefined') {
+      const globalObject = globalThis as typeof globalThis & {
+        WorkerGlobalScope?: abstract new (...args: never[]) => object;
+      };
+      const isBrowserWorker =
+        typeof globalObject.WorkerGlobalScope !== 'undefined' &&
+        typeof self !== 'undefined' &&
+        self instanceof globalObject.WorkerGlobalScope;
+
+      if (typeof window === 'undefined' && !isBrowserWorker) {
         headers['User-Agent'] = 'insforge-sdk';
       }
 
