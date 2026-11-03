@@ -226,6 +226,18 @@ export class StorageBucket {
 
       const headers: HeadersInit = {};
 
+      const globalObject = globalThis as typeof globalThis & {
+        WorkerGlobalScope?: abstract new (...args: never[]) => object;
+      };
+      const isBrowserWorker =
+        typeof globalObject.WorkerGlobalScope !== 'undefined' &&
+        typeof self !== 'undefined' &&
+        self instanceof globalObject.WorkerGlobalScope;
+
+      if (typeof window === 'undefined' && !isBrowserWorker) {
+        headers['User-Agent'] = 'insforge-sdk';
+      }
+
       // Only add auth header for direct downloads (not presigned URLs)
       if (strategyResponse.method === 'direct') {
         Object.assign(headers, this.http.getHeaders());

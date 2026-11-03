@@ -1,4 +1,4 @@
-import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi, afterEach, beforeEach } from 'vitest';
 import { StorageBucket, type StorageResponse } from '../storage';
 import { HttpClient } from '../../lib/http-client';
 import { InsForgeError } from '../../types';
@@ -417,5 +417,138 @@ describe('StorageBucket.remove', () => {
     expect(result.error?.statusCode).toBe(400);
     expect(fetchFn).toHaveBeenCalledOnce();
     expect(JSON.parse(String(fetchFn.mock.calls[0][1]?.body)).keys).toHaveLength(1001);
+  });
+});
+
+describe('StorageBucket.download', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends User-Agent in non-browser environments', async () => {
+    const downloadFetch = vi.fn().mockResolvedValue(new Response('file-content', { status: 200 }));
+
+    vi.stubGlobal('fetch', downloadFetch);
+
+    const strategyFetch = vi.fn().mockResolvedValue(
+      jsonRes(200, {
+        method: 'presigned',
+        url: 'https://cdn.insforge.dev/storage/file.pdf?signature=abc',
+      })
+    );
+
+    const bucket = new StorageBucket('docs', makeHttp(strategyFetch));
+
+    const result = await bucket.download('file.pdf');
+
+    expect(result.error).toBeNull();
+    expect(result.data).toBeInstanceOf(Blob);
+
+    const headers = new Headers(downloadFetch.mock.calls[0][1]?.headers);
+
+    expect(headers.get('User-Agent')).toBe('insforge-sdk');
+  });
+
+  it('does not manually set User-Agent in browser environments', async () => {
+    const downloadFetch = vi.fn().mockResolvedValue(new Response('file-content', { status: 200 }));
+
+    vi.stubGlobal('fetch', downloadFetch);
+    vi.stubGlobal('window', {});
+
+    const strategyFetch = vi.fn().mockResolvedValue(
+      jsonRes(200, {
+        method: 'presigned',
+        url: 'https://cdn.insforge.dev/storage/file.pdf?signature=abc',
+      })
+    );
+
+    const bucket = new StorageBucket('docs', makeHttp(strategyFetch));
+
+    const result = await bucket.download('file.pdf');
+
+    expect(result.error).toBeNull();
+
+    const headers = new Headers(downloadFetch.mock.calls[0][1]?.headers);
+
+    expect(headers.has('User-Agent')).toBe(false);
+  });
+
+  it('does not manually set User-Agent in browser workers', async () => {
+    const downloadFetch = vi.fn().mockResolvedValue(new Response('file-content', { status: 200 }));
+
+    vi.stubGlobal('fetch', downloadFetch);
+    const BrowserWorkerGlobalScope = class {};
+    vi.stubGlobal('WorkerGlobalScope', BrowserWorkerGlobalScope);
+    vi.stubGlobal('self', new BrowserWorkerGlobalScope());
+
+    const strategyFetch = vi.fn().mockResolvedValue(
+      jsonRes(200, {
+        method: 'presigned',
+        url: 'https://cdn.insforge.dev/storage/file.pdf?signature=abc',
+      })
+    );
+
+    const bucket = new StorageBucket('docs', makeHttp(strategyFetch));
+
+    const result = await bucket.download('file.pdf');
+
+    expect(result.error).toBeNull();
+
+    const headers = new Headers(downloadFetch.mock.calls[0][1]?.headers);
+
+    expect(headers.has('User-Agent')).toBe(false);
+  });
+
+  it('does not forward Authorization headers to presigned URLs', async () => {
+    const downloadFetch = vi.fn().mockResolvedValue(new Response('file-content', { status: 200 }));
+
+    vi.stubGlobal('fetch', downloadFetch);
+
+    const strategyFetch = vi.fn().mockResolvedValue(
+      jsonRes(200, {
+        method: 'presigned',
+        url: 'https://cdn.insforge.dev/storage/file.pdf?signature=abc',
+      })
+    );
+
+    const http = makeHttp(strategyFetch);
+    http.setAuthToken('test-token');
+    const bucket = new StorageBucket('docs', http);
+
+    await bucket.download('file.pdf');
+
+    const headers = new Headers(downloadFetch.mock.calls[0][1]?.headers);
+
+    expect(headers.has('Authorization')).toBe(false);
+  });
+
+  it('returns an error when the download request fails', async () => {
+    const downloadFetch = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 403,
+        statusText: 'Forbidden',
+      })
+    );
+
+    vi.stubGlobal('fetch', downloadFetch);
+
+    const strategyFetch = vi.fn().mockResolvedValue(
+      jsonRes(200, {
+        method: 'presigned',
+        url: 'https://cdn.insforge.dev/storage/file.pdf?signature=abc',
+      })
+    );
+
+    const bucket = new StorageBucket('docs', makeHttp(strategyFetch));
+
+    const result = await bucket.download('file.pdf');
+
+    expect(result.data).toBeNull();
+    expect(result.error).toBeInstanceOf(InsForgeError);
+    expect(result.error?.statusCode).toBe(403);
   });
 });
