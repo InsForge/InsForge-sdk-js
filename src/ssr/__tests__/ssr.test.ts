@@ -532,6 +532,104 @@ describe('@insforge/sdk/ssr auth actions', () => {
     expect(cookies.values.get('insforge_refresh_token')).toBe(refreshToken);
   });
 
+  it('resends a verification email without touching cookies', async () => {
+    const cookies = cookieStore();
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe('https://api.insforge.test/api/auth/email/send-verification');
+      expect(JSON.parse(String(init.body))).toEqual({ email: 'user@example.com' });
+      return jsonResponse(200, { success: true, message: 'Verification email sent' });
+    });
+
+    const auth = createAuthActions({
+      cookies,
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const result = await auth.resendVerificationEmail({ email: 'user@example.com' });
+
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual({ success: true, message: 'Verification email sent' });
+    expect(cookies.set).not.toHaveBeenCalled();
+  });
+
+  it('sends a password reset email without touching cookies', async () => {
+    const cookies = cookieStore();
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe('https://api.insforge.test/api/auth/email/send-reset-password');
+      expect(JSON.parse(String(init.body))).toEqual({ email: 'user@example.com' });
+      return jsonResponse(200, { success: true, message: 'Reset email sent' });
+    });
+
+    const auth = createAuthActions({
+      cookies,
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const result = await auth.sendResetPasswordEmail({ email: 'user@example.com' });
+
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual({ success: true, message: 'Reset email sent' });
+    expect(cookies.set).not.toHaveBeenCalled();
+  });
+
+  it('exchanges a reset code for the reset token the caller needs', async () => {
+    const cookies = cookieStore();
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe('https://api.insforge.test/api/auth/email/exchange-reset-password-token');
+      expect(JSON.parse(String(init.body))).toEqual({
+        email: 'user@example.com',
+        code: '123456',
+      });
+      return jsonResponse(200, { token: 'reset-token', expiresAt: '2026-01-01T00:00:00Z' });
+    });
+
+    const auth = createAuthActions({
+      cookies,
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const result = await auth.exchangeResetPasswordToken({
+      email: 'user@example.com',
+      code: '123456',
+    });
+
+    expect(result.error).toBeNull();
+    // A single-use reset credential, not a session token: the caller cannot
+    // finish the reset without it.
+    expect(result.data).toEqual({ token: 'reset-token', expiresAt: '2026-01-01T00:00:00Z' });
+    expect(cookies.set).not.toHaveBeenCalled();
+  });
+
+  it('resets the password without opening a session', async () => {
+    const cookies = cookieStore();
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe('https://api.insforge.test/api/auth/email/reset-password');
+      expect(JSON.parse(String(init.body))).toEqual({
+        newPassword: 'new-secret',
+        otp: 'reset-token',
+      });
+      return jsonResponse(200, { message: 'Password updated' });
+    });
+
+    const auth = createAuthActions({
+      cookies,
+      baseUrl: 'https://api.insforge.test',
+      anonKey: 'anon-key',
+      fetch: fetch as any,
+    });
+    const result = await auth.resetPassword({
+      newPassword: 'new-secret',
+      otp: 'reset-token',
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual({ message: 'Password updated' });
+    expect(cookies.set).not.toHaveBeenCalled();
+  });
+
   it('throws when auth actions cannot resolve a writable cookie store', () => {
     expect(() =>
       createAuthActions({

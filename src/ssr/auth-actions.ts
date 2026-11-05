@@ -48,9 +48,13 @@ export interface AuthActions {
   signInWithOAuth: InsForgeClient['auth']['signInWithOAuth'];
   signInWithIdToken: SafeAuthAction<InsForgeClient['auth']['signInWithIdToken']>;
   exchangeOAuthCode: SafeAuthAction<InsForgeClient['auth']['exchangeOAuthCode']>;
+  resendVerificationEmail: InsForgeClient['auth']['resendVerificationEmail'];
   verifyEmail: SafeAuthAction<InsForgeClient['auth']['verifyEmail']>;
   signInWithOtp: InsForgeClient['auth']['signInWithOtp'];
   verifyOtp: SafeAuthAction<InsForgeClient['auth']['verifyOtp']>;
+  sendResetPasswordEmail: InsForgeClient['auth']['sendResetPasswordEmail'];
+  exchangeResetPasswordToken: InsForgeClient['auth']['exchangeResetPasswordToken'];
+  resetPassword: InsForgeClient['auth']['resetPassword'];
   signOut: InsForgeClient['auth']['signOut'];
 }
 
@@ -156,6 +160,15 @@ export function createAuthActions(options: CreateAuthActionsOptions = {}): AuthA
       return toSafeAuthResult<InsForgeClient['auth']['exchangeOAuthCode']>(result);
     },
 
+    // The email-verification and password-reset senders, the reset-code
+    // exchange, and the reset itself neither open nor close a session, so
+    // there is nothing to write to the cookie store. The exchange hands back a
+    // single-use reset token rather than session credentials, and the caller
+    // needs it to complete the reset, so it is returned as-is.
+    resendVerificationEmail: async (request) => {
+      return createClient().auth.resendVerificationEmail(request);
+    },
+
     verifyEmail: async (request) => {
       const result = await createClient().auth.verifyEmail(request);
       persistSessionCookies(writeCookies, result.data, cookieSettings);
@@ -170,6 +183,18 @@ export function createAuthActions(options: CreateAuthActionsOptions = {}): AuthA
       const result = await createClient().auth.verifyOtp(request);
       persistSessionCookies(writeCookies, result.data, cookieSettings);
       return toSafeAuthResult<InsForgeClient['auth']['verifyOtp']>(result);
+    },
+
+    sendResetPasswordEmail: async (request) => {
+      return createClient().auth.sendResetPasswordEmail(request);
+    },
+
+    exchangeResetPasswordToken: async (request) => {
+      return createClient().auth.exchangeResetPasswordToken(request);
+    },
+
+    resetPassword: async (request) => {
+      return createClient().auth.resetPassword(request);
     },
 
     signOut: async () => {

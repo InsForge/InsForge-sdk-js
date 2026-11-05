@@ -90,6 +90,13 @@ through a Server Action or Route Handler that can set cookies. Do not return
 raw auth responses from Server Actions; return only the user or app-specific
 safe fields.
 
+`createAuthActions()` also exposes the flows that carry no session —
+`resendVerificationEmail()`, `sendResetPasswordEmail()`,
+`exchangeResetPasswordToken()` and `resetPassword()` — so an SSR app can run
+every auth flow through one client. These write no cookies. Note that the
+session-bearing actions return `SafeAuthData`, which strips `accessToken` and
+`refreshToken`: check `data?.user` for success, not `data?.accessToken`.
+
 ```typescript
 // app/actions.ts
 'use server';
