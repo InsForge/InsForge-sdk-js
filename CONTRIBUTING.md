@@ -4,7 +4,7 @@ Thanks for helping improve the InsForge JavaScript SDK.
 
 ## Development Setup
 
-1. Fork and clone this repository.
+1. Fork and clone this repository. Use Node 20.19 or newer (or 22.12+) for development: the test tooling needs it. The published SDK still supports Node 18.
 2. Install dependencies:
 
 ```bash

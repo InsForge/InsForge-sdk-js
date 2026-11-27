@@ -48,12 +48,38 @@ jobs:
           name: dist
           path: dist/
 
+  node18-smoke:
+    name: Node 18 smoke (built SDK)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 18
+          cache: npm
+      # Runtime dependencies only: the test tooling (vitest 4) needs Node 20.
+      - run: npm ci --omit=dev --ignore-scripts
+      - uses: actions/download-artifact@v7
+        with:
+          name: dist
+          path: dist/
+      - name: Import the ESM build on Node 18
+        run: |
+          node --input-type=module -e "
+          const sdk = await import('./dist/index.mjs');
+          if (typeof sdk.createClient !== 'function') throw new Error('createClient missing');
+          sdk.createClient({ baseUrl: 'http://localhost:7130', anonKey: 'smoke' });
+          await import('./dist/ssr.mjs');
+          console.log('ok on', process.version);
+          "
+
   unit-tests:
     name: Unit Tests (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18, 20, 22]
+        node-version: [20, 22]
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7
